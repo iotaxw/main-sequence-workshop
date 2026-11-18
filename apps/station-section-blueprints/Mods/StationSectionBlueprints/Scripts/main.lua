@@ -24,6 +24,11 @@ local attached
 local failed_hud
 
 local function find_hud()
+    local session = designer_native.find_session()
+    if session then
+        return session.hud
+    end
+
     local found = {}
     ForEachUObject(function(object)
         if native.class_name(object) ~= "WBP_DesignerHUD_C" then

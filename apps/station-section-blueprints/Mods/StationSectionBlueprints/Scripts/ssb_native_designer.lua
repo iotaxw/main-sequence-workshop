@@ -50,7 +50,73 @@ local function gameplay_statics()
     return class:GetCDO()
 end
 
+function M.find_session()
+    local sessions = {}
+    local session_error
+    ForEachUObject(function(controller)
+        if native.full_name(controller):find("Default__", 1, true) then
+            return
+        end
+        local controller_class = native.class_name(controller)
+        if controller_class ~= "BP_PlayerController_C" and controller_class ~= "BP_DesignerController_C" then
+            return
+        end
+        local pawn_ok, pawn = pcall(function()
+            return controller.Pawn
+        end)
+        if not pawn_ok or not native.is_valid(pawn) or native.class_name(pawn) ~= "BP_DesignerPawn_C" then
+            return
+        end
+        local component_ok, component = pcall(function()
+            return pawn.BPC_Designer
+        end)
+        if not component_ok or not native.is_valid(component) then
+            session_error = "invalid_designer_component"
+            return
+        end
+        local designer_ok, designer = pcall(function()
+            return component.Designer
+        end)
+        if not designer_ok or not native.is_valid(designer) then
+            session_error = "invalid_session_designer"
+            return
+        end
+        local owner_ok, owner = pcall(function()
+            return designer.Controller
+        end)
+        if not owner_ok or not native.is_valid(owner) or owner:GetAddress() ~= controller:GetAddress() then
+            session_error = "designer_controller_mismatch"
+            return
+        end
+        local hud_ok, hud = pcall(function()
+            return pawn.DesignerHUD
+        end)
+        sessions[#sessions + 1] = {
+            controller = controller,
+            pawn = pawn,
+            component = component,
+            designer = designer,
+            hud = hud_ok and hud or nil,
+        }
+    end)
+    if #sessions > 1 then
+        return nil, "multiple_designer_sessions"
+    end
+    if #sessions == 0 then
+        return nil, session_error or "no_designer_session"
+    end
+    return sessions[1]
+end
+
 function M.find_designer()
+    local session, session_error = M.find_session()
+    if session then
+        return session.designer
+    end
+    if session_error == "multiple_designer_sessions" or session_error == "designer_controller_mismatch" then
+        return nil, session_error
+    end
+
     local found = {}
     ForEachUObject(function(object)
         if native.class_name(object) ~= "Designer" then
@@ -68,7 +134,7 @@ function M.find_designer()
         end
         designer = object
     end
-    return designer, designer and nil or "no_active_designer"
+    return designer, designer and nil or session_error or "no_active_designer"
 end
 
 function M.copy_selection(designer)

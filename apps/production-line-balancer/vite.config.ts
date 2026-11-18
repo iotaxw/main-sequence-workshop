@@ -17,15 +17,25 @@ function serveGameIcons(request: Connect.IncomingMessage, response: import('node
     response.end('Invalid icon');
     return;
   }
-  const filePath = resolve(iconRoot, fileName);
-  if (!existsSync(filePath) || !statSync(filePath).isFile()) {
-    response.statusCode = 404;
-    response.end('Icon not found');
-    return;
+  for (const candidate of [fileName, ...iconAliases(fileName)]) {
+    const filePath = resolve(iconRoot, candidate);
+    if (existsSync(filePath) && statSync(filePath).isFile()) {
+      response.setHeader('Content-Type', 'image/png');
+      response.setHeader('Cache-Control', 'no-cache');
+      createReadStream(filePath).pipe(response);
+      return;
+    }
   }
-  response.setHeader('Content-Type', 'image/png');
-  response.setHeader('Cache-Control', 'no-cache');
-  createReadStream(filePath).pipe(response);
+  response.statusCode = 404;
+  response.end('Icon not found');
+}
+
+// The vendored icon set keeps the game asset prefix (DAT_/CRAFT_), while the UI
+// asks for `<itemId>.png`. Map the id form onto the vendored file names.
+function iconAliases(fileName: string): string[] {
+  const stem = fileName.slice(0, -'.png'.length);
+  const bare = stem.replace(/^ITEM_/, '');
+  return [`DAT_${bare}.png`, `CRAFT_${bare}.png`, `DAT_${bare.replace(/s$/, '')}.png`];
 }
 
 function gameIcons(): Plugin {

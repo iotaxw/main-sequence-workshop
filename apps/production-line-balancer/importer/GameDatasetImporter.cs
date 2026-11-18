@@ -203,28 +203,33 @@ public static class GameDatasetImporter
             }
         }
 
+        var machineSources = crafterIds.ToDictionary(
+            id => id,
+            id => ResolveMachineSource(
+                provider,
+                id,
+                buildableExports.TryGetValue(id, out var buildable) ? buildable : crafterExports[id]),
+            StringComparer.Ordinal);
         var englishItemNames = referencedItemIds.ToDictionary(
             id => id,
             id => ItemName(provider, id, itemExports[id], buildableExports),
             StringComparer.Ordinal);
         var englishMachineNames = crafterIds.ToDictionary(
             id => id,
-            id => Text(buildableExports.TryGetValue(id, out var buildable)
-                ? buildable["DisplayName"]!
-                : crafterExports[id]["DisplayName"]!),
+            id => Text(machineSources[id]["DisplayName"]!),
             StringComparer.Ordinal);
         provider.ChangeCulture("zh-Hans");
         var chineseItemExports = referencedItemIds.ToDictionary(
             id => id,
             id => LoadExport(provider, itemPaths[id], "Item"),
             StringComparer.Ordinal);
-        var chineseCrafterExports = crafterIds.ToDictionary(
-            id => id,
-            id => LoadExport(provider, $"MainSequence/Content/Data/Crafters/{id}.uasset", "Crafter"),
-            StringComparer.Ordinal);
         var chineseBuildableExports = buildableExports.ToDictionary(
             pair => pair.Key,
             pair => LoadExport(provider, VfsPath(pair.Value["SourceAsset"]!.Value<string>()!), "Buildable"),
+            StringComparer.Ordinal);
+        var chineseMachineSources = machineSources.ToDictionary(
+            pair => pair.Key,
+            pair => LoadDefaultObjectOrExport(provider, VfsPath(pair.Value["SourceAsset"]!.Value<string>()!)),
             StringComparer.Ordinal);
 
         foreach (var id in referencedItemIds)
@@ -256,14 +261,13 @@ public static class GameDatasetImporter
 
         var machines = crafterIds.Select(id =>
         {
-            var hasBuildable = buildableExports.TryGetValue(id, out var buildable);
-            var source = hasBuildable ? buildable! : crafterExports[id];
+            var source = machineSources[id];
             if (source["Icon"] is not JObject)
             {
                 throw new InvalidDataException($"Machine has no icon asset: {id}.");
             }
             IconExporter.Export(provider, source["Icon"]!, Path.Combine(iconDirectory, $"{id}.png"));
-            var chineseSource = hasBuildable ? chineseBuildableExports[id] : chineseCrafterExports[id];
+            var chineseSource = chineseMachineSources[id];
             return new JObject
             {
                 ["id"] = id,
@@ -273,7 +277,7 @@ public static class GameDatasetImporter
                     ["en"] = englishMachineNames[id],
                     ["zh-Hans"] = Text(chineseSource["DisplayName"]!),
                 },
-                ["powerKW"] = hasBuildable ? PowerKilowatts(source) : null,
+                ["powerKW"] = PowerKilowatts(source),
                 ["sourceAsset"] = source["SourceAsset"]!.Value<string>(),
                 ["iconAsset"] = source["Icon"]!["ObjectPath"]!.Value<string>(),
             };
@@ -346,11 +350,87 @@ public static class GameDatasetImporter
             .Select(item => JObject.FromObject(item))
             .SingleOrDefault(item => item["Type"]?.Value<string>() == expectedType)
             ?? throw new InvalidDataException($"Expected one {expectedType} export in {path}.");
+        return ExportProperties(export, path);
+    }
+
+    private static JObject LoadDefaultObject(DefaultFileProvider provider, string path)
+    {
+        var export = provider.LoadPackage(path).GetExports()
+            .Select(item => JObject.FromObject(item))
+            .SingleOrDefault(item => item["Flags"]?.Value<string>()?.Contains("RF_ClassDefaultObject", StringComparison.Ordinal) == true)
+            ?? throw new InvalidDataException($"Expected one class default object in {path}.");
+        return ExportProperties(export, path);
+    }
+
+    private static JObject LoadDefaultObjectOrExport(DefaultFileProvider provider, string path)
+    {
+        var exports = provider.LoadPackage(path).GetExports()
+            .Select(item => JObject.FromObject(item))
+            .ToArray();
+        var export = exports.SingleOrDefault(item =>
+                item["Flags"]?.Value<string>()?.Contains("RF_ClassDefaultObject", StringComparison.Ordinal) == true)
+            ?? exports.SingleOrDefault(item => item["Properties"] is JObject)
+            ?? throw new InvalidDataException($"Expected one asset export in {path}.");
+        return ExportProperties(export, path);
+    }
+
+    private static JObject ExportProperties(JObject export, string path)
+    {
         var properties = export["Properties"] as JObject
             ?? throw new InvalidDataException($"Asset has no Properties field: {path}.");
         properties["AssetName"] = export["Name"]!.Value<string>();
         properties["SourceAsset"] = export["Package"]!.Value<string>();
         return properties;
+    }
+
+    private static JObject ResolveMachineSource(DefaultFileProvider provider, string crafterId, JObject source)
+    {
+        var sourceAsset = source["SourceAsset"]!.Value<string>()!;
+        if (PowerKilowatts(source) is not null
+            || !sourceAsset.Contains("/Data/Buildables/NonBuildable/", StringComparison.Ordinal))
+        {
+            return source;
+        }
+
+        var machinePaths = provider.Files.Keys
+            .Where(path => path.StartsWith("MainSequence/Content/Blueprints/Machines/BPO_", StringComparison.Ordinal)
+                && path.EndsWith(".uasset", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal);
+        var machines = machinePaths
+            .Select(path => LoadDefaultObject(provider, path))
+            .Where(candidate => candidate["CrafterType"] is JObject crafterType && ReferenceId(crafterType) == crafterId)
+            .ToArray();
+        if (machines.Length == 0)
+        {
+            return source;
+        }
+        if (machines.Length != 1)
+        {
+            throw new InvalidDataException($"Multiple machine objects match crafter {crafterId}.");
+        }
+
+        var machineAsset = machines[0]["SourceAsset"]!.Value<string>()!;
+        var blockPaths = provider.Files.Keys
+            .Where(path => path.StartsWith("MainSequence/Content/Blueprints/BuildingBlocks/BPO_", StringComparison.Ordinal)
+                && path.EndsWith(".uasset", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal);
+        var blocks = blockPaths
+            .Select(path => LoadDefaultObject(provider, path))
+            .Where(candidate => candidate["DefaultMachines"] is JArray defaultMachines
+                && defaultMachines.Any(machine => ReferencesAsset(machine["Class"], machineAsset)))
+            .ToArray();
+        return blocks.Length switch
+        {
+            0 => source,
+            1 => blocks[0],
+            _ => throw new InvalidDataException($"Multiple building blocks contain machine {machineAsset}."),
+        };
+    }
+
+    private static bool ReferencesAsset(JToken? reference, string sourceAsset)
+    {
+        return reference?["ObjectPath"]?.Value<string>() is { } objectPath
+            && objectPath.StartsWith($"{sourceAsset}.", StringComparison.Ordinal);
     }
 
     private static string FindItemPath(DefaultFileProvider provider, string id)
@@ -433,14 +513,22 @@ public static class GameDatasetImporter
             : throw new InvalidDataException($"Unsupported object reference: {objectName}.");
     }
 
-    private static string? PowerKilowatts(JObject buildable)
+    private static string? PowerKilowatts(JObject source)
     {
-        var detail = buildable["ItemDetails"]?.SingleOrDefault(candidate =>
-            candidate["DetailTypeText"]?["Key"]?.Value<string>() == "ConsumePower");
-        if (detail is null)
+        var details = new[] { source["ItemDetails"], source["BlockDetails"] }
+            .OfType<JArray>()
+            .SelectMany(items => items)
+            .Where(candidate => candidate["DetailTypeText"]?["Key"]?.Value<string>() == "ConsumePower")
+            .ToArray();
+        if (details.Length == 0)
         {
             return null;
         }
+        if (details.Length != 1)
+        {
+            throw new InvalidDataException($"Multiple power details found in {source["SourceAsset"]}.");
+        }
+        var detail = details[0];
         var statValue = detail["StatValue"]?["CultureInvariantString"]?.Value<string>();
         var megawatts = statValue is null
             ? detail["FloatValue"]!.Value<decimal>()

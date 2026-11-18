@@ -1134,8 +1134,8 @@
         "en": "Deep Space Observatory",
         "zh-Hans": "深空天文台"
       },
-      "powerKW": null,
-      "sourceAsset": "/Game/Data/Buildables/NonBuildable/DAT_DeepSpaceObservatory",
+      "powerKW": "96000",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_DeepSpaceObservatory",
       "iconAsset": "/Game/Editor/IconRender/T_DeepSpaceObservatory.0",
       "shortCode": "DS"
     },

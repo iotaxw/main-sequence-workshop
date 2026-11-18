@@ -111,6 +111,27 @@ describe('real game dataset', () => {
     });
   });
 
+  it('computes power for both deep space observatory recipes', () => {
+    const survey = solved(solvePlan(dataset, index, input('ITEM_StellarSurveyData', '5', {
+      inputItemIds: [...dataset.rawItemIds, 'ITEM_AdvancedCircuits'],
+    })));
+    expect(survey.rows.find(row => row.recipeId === 'REC_ObservedStellarSurveyData')).toMatchObject({
+      machines: { exact: '1/2', built: '1' },
+      powerKW: { exact: '48000', built: '96000' },
+    });
+    expect(survey.summary.powerKW).toEqual({ exact: '48000', built: '96000' });
+
+    const warpFuel = solved(solvePlan(dataset, index, input('ITEM_WarpFuel', '15', {
+      inputItemIds: [...dataset.rawItemIds, 'ITEM_StrangeMatterCrystal'],
+      recipeByItem: { ITEM_WarpFuel: 'REC_StrangeWarpFuel' },
+    })));
+    expect(warpFuel.rows.find(row => row.recipeId === 'REC_StrangeWarpFuel')).toMatchObject({
+      machines: { exact: '1', built: '1' },
+      powerKW: { exact: '96000', built: '96000' },
+    });
+    expect(warpFuel.summary.powerKW).toEqual({ exact: '96000', built: '96000' });
+  });
+
   it('retains ExtraOutputs as a byproduct', () => {
     const result = solved(solvePlan(dataset, index, input('ITEM_AlphaProtein', '10', {
       inputItemIds: [
