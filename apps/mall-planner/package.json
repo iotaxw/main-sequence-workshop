@@ -1,0 +1,10 @@
+{
+  "name": "main-sequence-mall-planner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/data.js && node --check src/default-plan.js && node --check src/model.js && node --check src/app.js && node scripts/check-data.mjs",
+    "build": "node scripts/build.mjs"
+  }
+}

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>主星序 · 总线超市规划器</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>总线超市规划器</h1>
+      <p>配方拓扑、层级缓存与隔离分区</p>
+    </div>
+    <div class="header-actions">
+      <span id="build-badge" class="badge"></span>
+      <button id="auto-levels" class="secondary">全部自动分层</button>
+      <button id="collaboration-summary" class="secondary">协作摘要</button>
+      <button id="export-plan" class="secondary">导出方案</button>
+      <button id="import-plan" class="secondary">导入方案</button>
+      <button id="reset-plan" class="danger-secondary">重置</button>
+      <input id="import-file" type="file" accept="application/json,.json" hidden>
+    </div>
+  </header>
+
+  <section id="stats" class="stats" aria-label="方案统计"></section>
+
+  <div class="workspace">
+    <aside class="panel catalog-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>完整物品表</h2>
+          <p>原生顺序 · 基础类与生产机器</p>
+        </div>
+        <span id="catalog-count" class="badge"></span>
+      </div>
+      <input id="item-search" class="search" type="search" placeholder="搜索中文、英文或物品 ID" aria-label="搜索物品">
+      <div id="catalog-list" class="catalog-list"></div>
+    </aside>
+
+    <main class="center-column">
+      <section class="panel graph-panel">
+        <div class="graph-toolbar">
+          <label>分区 <select id="zone-filter"><option value="all">全部分区</option></select></label>
+          <label>链条 <select id="chain-filter">
+            <option value="all">完整网络</option>
+            <option value="upstream">选中物品上游</option>
+            <option value="downstream">选中物品下游</option>
+            <option value="related">选中物品相关链</option>
+          </select></label>
+          <div class="toolbar-spacer"></div>
+          <button id="zoom-out" class="icon-button" title="缩小">−</button>
+          <button id="zoom-fit" class="secondary">适配</button>
+          <button id="zoom-in" class="icon-button" title="放大">+</button>
+        </div>
+        <div id="graph-scroll" class="graph-scroll">
+          <svg id="dependency-graph" role="img" aria-label="物品配方依赖图"></svg>
+          <div id="graph-empty" class="empty-state" hidden>当前筛选没有物品</div>
+        </div>
+        <div class="legend">
+          <span><i class="legend-node raw"></i>外部原料</span>
+          <span><i class="legend-node target"></i>常备目标</span>
+          <span><i class="legend-node isolated"></i>隔离分区</span>
+          <span><i class="legend-line byproduct"></i>副产连接</span>
+          <span>点击物品查看原生配方</span>
+        </div>
+      </section>
+
+      <section class="panel issues-panel">
+        <button id="issues-toggle" class="issues-heading" aria-expanded="false">
+          <span>方案问题</span><span id="issue-count" class="badge">0</span>
+        </button>
+        <div id="issues-list" hidden></div>
+      </section>
+    </main>
+
+    <aside class="panel detail-panel">
+      <div id="item-settings"></div>
+      <div id="recipe-list"></div>
+    </aside>
+  </div>
+
+  <dialog id="summary-dialog" class="summary-dialog">
+    <div class="summary-header"><h2>人 / Agent 协作摘要</h2><button id="summary-close" class="icon-button">×</button></div>
+    <p>包含当前常备目标及用途、层级、分区、手动覆盖与问题，可直接粘贴给 Agent。</p>
+    <textarea id="summary-text" readonly aria-label="协作摘要全文"></textarea>
+    <div class="button-row"><button id="summary-copy" class="primary">复制全文</button><button id="summary-download" class="secondary">下载 Markdown</button></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="src/data.js"></script>
+  <script src="src/construction-data.js"></script>
+  <script src="src/default-plan.js"></script>
+  <script src="src/model.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

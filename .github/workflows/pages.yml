@@ -1,4 +1,4 @@
-name: Deploy production line balancer to GitHub Pages
+name: Deploy workshop tools to GitHub Pages
 
 on:
   push:
@@ -17,9 +17,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/production-line-balancer
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -29,12 +26,23 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/production-line-balancer/package-lock.json
-      - name: Install dependencies
+      - name: Install balancer dependencies
+        working-directory: apps/production-line-balancer
         run: npm ci
-      - name: Run tests
+      - name: Test balancer
+        working-directory: apps/production-line-balancer
         run: npm test
-      - name: Build site
+      - name: Build balancer
+        working-directory: apps/production-line-balancer
         run: npm run build
+      - name: Check mall planner
+        working-directory: apps/mall-planner
+        run: npm run check
+      - name: Build mall planner
+        working-directory: apps/mall-planner
+        run: npm run build
+      - name: Assemble workshop site
+        run: cp -R apps/mall-planner/dist apps/production-line-balancer/dist/mall-planner
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact

@@ -10,6 +10,8 @@ machine names, recipes, or other game data. Those materials remain the
 property of their respective rights holders and are subject to the applicable
 game and asset usage terms.
 
-Native PNG icons under apps/production-line-balancer/public/icons are included
-as game-derived assets. They must not be redistributed under the MIT License
-as if they were original project artwork.
+Native PNG icons under apps/production-line-balancer/public/icons and
+apps/mall-planner/icons are included as game-derived assets. Recipe, item,
+machine, and construction data in both web applications is likewise excluded
+from the MIT License. These materials must not be redistributed as if they were
+original project artwork or data.

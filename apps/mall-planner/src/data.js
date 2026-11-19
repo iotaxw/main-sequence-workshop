@@ -1,0 +1,3174 @@
+window.GAME_DATA = {
+  "schemaVersion": 1,
+  "game": {
+    "id": "Main Sequence",
+    "buildId": "26639889",
+    "engineVersion": "5.7"
+  },
+  "source": {
+    "kind": "game-import",
+    "importer": "MainSequence.Importer 1; CUE4Parse 1.2.2.202611",
+    "craftingTime": "durationSeconds = CraftingTime / 30; verified from Recipe:GetCraftingSeconds machine code",
+    "rawItems": "DAT_ItemRegistry Raw Resources category excluding ITEM_AnyItemFilter",
+    "itemOrder": "DAT_ItemRegistry ItemCategories order; unregistered items and machine items follow in stable asset-ID order",
+    "unregisteredItems": "Ordinary items absent from DAT_ItemRegistry remain computable but are hidden from item pickers",
+    "unsupportedRecipes": [
+      {
+        "id": "REC_ConveyorBelt2",
+        "sourceAsset": "/Game/Data/Recipes/Machines/REC_ConveyorBelt2",
+        "reason": "wildcard-or-empty-input"
+      },
+      {
+        "id": "REC_LargeConveyorBelt",
+        "sourceAsset": "/Game/Data/Recipes/Machines/REC_LargeConveyorBelt",
+        "reason": "wildcard-or-empty-input"
+      },
+      {
+        "id": "REC_UndergroundBelt",
+        "sourceAsset": "/Game/Data/Recipes/Machines/REC_UndergroundBelt",
+        "reason": "wildcard-or-empty-input"
+      }
+    ]
+  },
+  "items": [
+    {
+      "id": "ITEM_TitaniumOre",
+      "name": "Titanium Ore",
+      "localizedNames": {
+        "en": "Titanium Ore",
+        "zh-Hans": "钛矿石"
+      },
+      "category": "raw",
+      "nativeOrder": 0,
+      "sourceAsset": "/Game/Data/Items/ITEM_TitaniumOre",
+      "iconAsset": "/Game/Editor/IconRender/T_TitaniumOre.0",
+      "shortCode": "TO"
+    },
+    {
+      "id": "ITEM_EnrichedTitaniumOre",
+      "name": "Enriched Titanium Ore",
+      "localizedNames": {
+        "en": "Enriched Titanium Ore",
+        "zh-Hans": "浓缩钛矿石"
+      },
+      "category": "raw",
+      "nativeOrder": 1,
+      "sourceAsset": "/Game/Data/Items/ITEM_EnrichedTitaniumOre",
+      "iconAsset": "/Game/Materials/Icons/Items/T_EnrichedTitanium.0",
+      "shortCode": "ET"
+    },
+    {
+      "id": "ITEM_NickelOre",
+      "name": "Nickel Ore",
+      "localizedNames": {
+        "en": "Nickel Ore",
+        "zh-Hans": "镍矿石"
+      },
+      "category": "raw",
+      "nativeOrder": 2,
+      "sourceAsset": "/Game/Data/Items/ITEM_NickelOre",
+      "iconAsset": "/Game/Editor/IconRender/T_NickelOre.0",
+      "shortCode": "NO"
+    },
+    {
+      "id": "ITEM_EnrichedNickelOre",
+      "name": "Enriched Nickel Ore",
+      "localizedNames": {
+        "en": "Enriched Nickel Ore",
+        "zh-Hans": "浓缩镍矿石"
+      },
+      "category": "raw",
+      "nativeOrder": 3,
+      "sourceAsset": "/Game/Data/Items/ITEM_EnrichedNickelOre",
+      "iconAsset": "/Game/Materials/Icons/Items/T_EnrichedNickel.0",
+      "shortCode": "EN"
+    },
+    {
+      "id": "ITEM_CobaltOre",
+      "name": "Cobalt Ore",
+      "localizedNames": {
+        "en": "Cobalt Ore",
+        "zh-Hans": "钴矿石"
+      },
+      "category": "raw",
+      "nativeOrder": 4,
+      "sourceAsset": "/Game/Data/Items/ITEM_CobaltOre",
+      "iconAsset": "/Game/Editor/IconRender/T_CobaltOre.0",
+      "shortCode": "CO2"
+    },
+    {
+      "id": "ITEM_EnrichedCobaltOre",
+      "name": "Enriched Cobalt Ore",
+      "localizedNames": {
+        "en": "Enriched Cobalt Ore",
+        "zh-Hans": "浓缩钴矿石"
+      },
+      "category": "raw",
+      "nativeOrder": 5,
+      "sourceAsset": "/Game/Data/Items/ITEM_EnrichedCobaltOre",
+      "iconAsset": "/Game/Materials/Icons/Items/T_EnrichedCobalt.0",
+      "shortCode": "EC2"
+    },
+    {
+      "id": "ITEM_IridiumOre",
+      "name": "Iridium Ore",
+      "localizedNames": {
+        "en": "Iridium Ore",
+        "zh-Hans": "铱矿石"
+      },
+      "category": "raw",
+      "nativeOrder": 6,
+      "sourceAsset": "/Game/Data/Items/ITEM_IridiumOre",
+      "iconAsset": "/Game/Editor/IconRender/T_IridiumOre.0",
+      "shortCode": "IO"
+    },
+    {
+      "id": "ITEM_WaterIce",
+      "name": "Water Ice",
+      "localizedNames": {
+        "en": "Water Ice",
+        "zh-Hans": "水冰"
+      },
+      "category": "raw",
+      "nativeOrder": 7,
+      "sourceAsset": "/Game/Data/Items/ITEM_WaterIce",
+      "iconAsset": "/Game/Materials/Icons/Items/T_WaterIce1.0",
+      "shortCode": "WI"
+    },
+    {
+      "id": "ITEM_Silica",
+      "name": "Silica",
+      "localizedNames": {
+        "en": "Silica",
+        "zh-Hans": "二氧化硅"
+      },
+      "category": "raw",
+      "nativeOrder": 8,
+      "sourceAsset": "/Game/Data/Items/ITEM_Silica",
+      "iconAsset": "/Game/Editor/IconRender/T_Silica.0",
+      "shortCode": "SI"
+    },
+    {
+      "id": "ITEM_Graphite",
+      "name": "Graphite",
+      "localizedNames": {
+        "en": "Graphite",
+        "zh-Hans": "石墨"
+      },
+      "category": "raw",
+      "nativeOrder": 9,
+      "sourceAsset": "/Game/Data/Items/ITEM_Graphite",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Graphite.0",
+      "shortCode": "GR2"
+    },
+    {
+      "id": "ITEM_Lonsdaleite",
+      "name": "Lonsdaleite",
+      "localizedNames": {
+        "en": "Lonsdaleite",
+        "zh-Hans": "六方金刚石"
+      },
+      "category": "raw",
+      "nativeOrder": 10,
+      "sourceAsset": "/Game/Data/Items/ITEM_Lonsdaleite",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Lonsdaleite.0",
+      "shortCode": "LO"
+    },
+    {
+      "id": "ITEM_StrangeMatterCrystal",
+      "name": "Strange Matter Crystal",
+      "localizedNames": {
+        "en": "Strange Matter Crystal",
+        "zh-Hans": "奇异物质晶体"
+      },
+      "category": "raw",
+      "nativeOrder": 11,
+      "sourceAsset": "/Game/Data/Items/ITEM_StrangeMatterCrystal",
+      "iconAsset": "/Game/Editor/IconRender/T_StrangeMatterCrystal.0",
+      "shortCode": "SM2"
+    },
+    {
+      "id": "ITEM_NitrogenGas",
+      "name": "Nitrogen Gas",
+      "localizedNames": {
+        "en": "Nitrogen Gas",
+        "zh-Hans": "氮气"
+      },
+      "category": "raw",
+      "nativeOrder": 12,
+      "sourceAsset": "/Game/Data/Items/ITEM_NitrogenGas",
+      "iconAsset": "/Game/Materials/Icons/Items/T_NitrogenGas.0",
+      "shortCode": "NG"
+    },
+    {
+      "id": "ITEM_Protomatter",
+      "name": "Protomatter",
+      "localizedNames": {
+        "en": "Protomatter",
+        "zh-Hans": "原物质"
+      },
+      "category": "raw",
+      "nativeOrder": 13,
+      "sourceAsset": "/Game/Data/Items/ITEM_Protomatter",
+      "iconAsset": "/Game/Editor/IconRender/T_Protomatter.0",
+      "shortCode": "PR"
+    },
+    {
+      "id": "ITEM_TitaniumPlates",
+      "name": "Titanium Plates",
+      "localizedNames": {
+        "en": "Titanium Plates",
+        "zh-Hans": "钛板"
+      },
+      "category": "item",
+      "nativeOrder": 14,
+      "sourceAsset": "/Game/Data/Items/ITEM_TitaniumPlates",
+      "iconAsset": "/Game/Materials/Icons/Items/T_TitaniumPlates1.0",
+      "shortCode": "TP"
+    },
+    {
+      "id": "ITEM_NickelPlates",
+      "name": "Nickel Plates",
+      "localizedNames": {
+        "en": "Nickel Plates",
+        "zh-Hans": "镍板"
+      },
+      "category": "item",
+      "nativeOrder": 15,
+      "sourceAsset": "/Game/Data/Items/ITEM_NickelPlates",
+      "iconAsset": "/Game/Materials/Icons/Items/T_NickelPlates1.0",
+      "shortCode": "NP"
+    },
+    {
+      "id": "ITEM_CobaltPlates",
+      "name": "Cobalt Plates",
+      "localizedNames": {
+        "en": "Cobalt Plates",
+        "zh-Hans": "钴板"
+      },
+      "category": "item",
+      "nativeOrder": 16,
+      "sourceAsset": "/Game/Data/Items/ITEM_CobaltPlates",
+      "iconAsset": "/Game/Materials/Icons/Items/T_CobaltPlates.0",
+      "shortCode": "CP"
+    },
+    {
+      "id": "ITEM_IridiumPlates",
+      "name": "Iridium Plates",
+      "localizedNames": {
+        "en": "Iridium Plates",
+        "zh-Hans": "铱板"
+      },
+      "category": "item",
+      "nativeOrder": 17,
+      "sourceAsset": "/Game/Data/Items/ITEM_IridiumPlates",
+      "iconAsset": "/Game/Editor/IconRender/T_IridiumPlates2.0",
+      "shortCode": "IP"
+    },
+    {
+      "id": "ITEM_HydrogenFuel",
+      "name": "Hydrogen Fuel",
+      "localizedNames": {
+        "en": "Hydrogen Fuel",
+        "zh-Hans": "氢燃料"
+      },
+      "category": "item",
+      "nativeOrder": 18,
+      "sourceAsset": "/Game/Data/Items/ITEM_HydrogenFuel",
+      "iconAsset": "/Game/Materials/Icons/Items/T_HydrogenFuel.0",
+      "shortCode": "HF"
+    },
+    {
+      "id": "ITEM_EnrichedFuel",
+      "name": "Deuterium Fuel",
+      "localizedNames": {
+        "en": "Deuterium Fuel",
+        "zh-Hans": "氘燃料"
+      },
+      "category": "item",
+      "nativeOrder": 19,
+      "sourceAsset": "/Game/Data/Items/ITEM_EnrichedFuel",
+      "iconAsset": "/Game/Materials/Icons/Items/T_DeuteriumFuel1.0",
+      "shortCode": "DF"
+    },
+    {
+      "id": "ITEM_WarpFuel",
+      "name": "Warp Fuel",
+      "localizedNames": {
+        "en": "Warp Fuel",
+        "zh-Hans": "曲速燃料"
+      },
+      "category": "item",
+      "nativeOrder": 20,
+      "sourceAsset": "/Game/Data/Items/ITEM_WarpFuel",
+      "iconAsset": "/Game/Materials/Icons/Items/T_WarpFuel1.0",
+      "shortCode": "WF"
+    },
+    {
+      "id": "ITEM_Coolant",
+      "name": "Coolant",
+      "localizedNames": {
+        "en": "Coolant",
+        "zh-Hans": "冷却剂"
+      },
+      "category": "item",
+      "nativeOrder": 21,
+      "sourceAsset": "/Game/Data/Items/ITEM_Coolant",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Coolant.0",
+      "shortCode": "CO3"
+    },
+    {
+      "id": "ITEM_SiliconWafers",
+      "name": "Silicon Wafers",
+      "localizedNames": {
+        "en": "Silicon Wafers",
+        "zh-Hans": "硅晶圆"
+      },
+      "category": "item",
+      "nativeOrder": 22,
+      "sourceAsset": "/Game/Data/Items/ITEM_SiliconWafers",
+      "iconAsset": "/Game/Materials/Icons/Items/T_SiliconWafer2.0",
+      "shortCode": "SW"
+    },
+    {
+      "id": "ITEM_Graphene",
+      "name": "Graphene",
+      "localizedNames": {
+        "en": "Graphene",
+        "zh-Hans": "石墨烯"
+      },
+      "category": "item",
+      "nativeOrder": 23,
+      "sourceAsset": "/Game/Data/Items/ITEM_Graphene",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Graphene.0",
+      "shortCode": "GR"
+    },
+    {
+      "id": "ITEM_HullPlates",
+      "name": "Hull Plate",
+      "localizedNames": {
+        "en": "Hull Plate",
+        "zh-Hans": "船体板"
+      },
+      "category": "item",
+      "nativeOrder": 24,
+      "sourceAsset": "/Game/Data/Items/ITEM_HullPlates",
+      "iconAsset": "/Game/Materials/Icons/Items/T_HullPlate.0",
+      "shortCode": "HP"
+    },
+    {
+      "id": "ITEM_ReinforcedPlates",
+      "name": "Reinforced Plate",
+      "localizedNames": {
+        "en": "Reinforced Plate",
+        "zh-Hans": "强化板材"
+      },
+      "category": "item",
+      "nativeOrder": 25,
+      "sourceAsset": "/Game/Data/Items/ITEM_ReinforcedPlates",
+      "iconAsset": "/Game/Editor/IconRender/T_ReinforcedPlate.0",
+      "shortCode": "RP"
+    },
+    {
+      "id": "ITEM_AdvancedPlates",
+      "name": "Advanced Plate",
+      "localizedNames": {
+        "en": "Advanced Plate",
+        "zh-Hans": "高级板材"
+      },
+      "category": "item",
+      "nativeOrder": 26,
+      "sourceAsset": "/Game/Data/Items/ITEM_AdvancedPlates",
+      "iconAsset": "/Game/Materials/Icons/Items/T_AdvancedPlate.0",
+      "shortCode": "AP"
+    },
+    {
+      "id": "ITEM_BasicMotor",
+      "name": "Basic Motor",
+      "localizedNames": {
+        "en": "Basic Motor",
+        "zh-Hans": "基础马达"
+      },
+      "category": "item",
+      "nativeOrder": 27,
+      "sourceAsset": "/Game/Data/Items/ITEM_BasicMotor",
+      "iconAsset": "/Game/Editor/IconRender/T_BasicMotor.0",
+      "shortCode": "BM4"
+    },
+    {
+      "id": "ITEM_Servomotor",
+      "name": "Servomotor",
+      "localizedNames": {
+        "en": "Servomotor",
+        "zh-Hans": "伺服电机"
+      },
+      "category": "item",
+      "nativeOrder": 28,
+      "sourceAsset": "/Game/Data/Items/ITEM_Servomotor",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Servomotor.0",
+      "shortCode": "SE"
+    },
+    {
+      "id": "ITEM_ServoPlates",
+      "name": "Servo Plate",
+      "localizedNames": {
+        "en": "Servo Plate",
+        "zh-Hans": "伺服板"
+      },
+      "category": "item",
+      "nativeOrder": 29,
+      "sourceAsset": "/Game/Data/Items/ITEM_ServoPlates",
+      "iconAsset": "/Game/Materials/Icons/Items/T_ServoPlate.0",
+      "shortCode": "SP"
+    },
+    {
+      "id": "ITEM_LightweightFrame",
+      "name": "Lightweight Frames",
+      "localizedNames": {
+        "en": "Lightweight Frames",
+        "zh-Hans": "轻型框架"
+      },
+      "category": "item",
+      "nativeOrder": 30,
+      "sourceAsset": "/Game/Data/Items/ITEM_LightweightFrame",
+      "iconAsset": "/Game/Materials/Icons/Items/T_LightweightFrame1.0",
+      "shortCode": "LF"
+    },
+    {
+      "id": "ITEM_SuperalloyFrame",
+      "name": "Superalloy Frame",
+      "localizedNames": {
+        "en": "Superalloy Frame",
+        "zh-Hans": "超级合金框架"
+      },
+      "category": "item",
+      "nativeOrder": 31,
+      "sourceAsset": "/Game/Data/Items/ITEM_SuperalloyFrame",
+      "iconAsset": "/Game/Materials/Icons/Items/T_SuperalloyFrame.0",
+      "shortCode": "SF"
+    },
+    {
+      "id": "ITEM_MagneticCoils",
+      "name": "Magnetic Coils",
+      "localizedNames": {
+        "en": "Magnetic Coils",
+        "zh-Hans": "磁线圈"
+      },
+      "category": "item",
+      "nativeOrder": 32,
+      "sourceAsset": "/Game/Data/Items/ITEM_MagneticCoils",
+      "iconAsset": "/Game/Materials/Icons/Items/T_MagneticCoil1.0",
+      "shortCode": "MC2"
+    },
+    {
+      "id": "ITEM_Capacitor",
+      "name": "Capacitor",
+      "localizedNames": {
+        "en": "Capacitor",
+        "zh-Hans": "电容器"
+      },
+      "category": "item",
+      "nativeOrder": 33,
+      "sourceAsset": "/Game/Data/Items/ITEM_Capacitor",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Capacitor1.0",
+      "shortCode": "CA"
+    },
+    {
+      "id": "ITEM_ContainmentCoil",
+      "name": "Containment Coil",
+      "localizedNames": {
+        "en": "Containment Coil",
+        "zh-Hans": "约束线圈"
+      },
+      "category": "item",
+      "nativeOrder": 34,
+      "sourceAsset": "/Game/Data/Items/ITEM_ContainmentCoil",
+      "iconAsset": "/Game/Materials/Icons/Items/T_ContainmentCoil1.0",
+      "shortCode": "CC2"
+    },
+    {
+      "id": "ITEM_SuperconductorCoil",
+      "name": "Superconductor Coil",
+      "localizedNames": {
+        "en": "Superconductor Coil",
+        "zh-Hans": "超导线圈"
+      },
+      "category": "item",
+      "nativeOrder": 35,
+      "sourceAsset": "/Game/Data/Items/ITEM_SuperconductorCoil",
+      "iconAsset": "/Game/Materials/Icons/Items/T_SuperconductorCoil1.0",
+      "shortCode": "SC"
+    },
+    {
+      "id": "ITEM_BasicCircuit",
+      "name": "Basic Circuits",
+      "localizedNames": {
+        "en": "Basic Circuits",
+        "zh-Hans": "基础电路"
+      },
+      "category": "item",
+      "nativeOrder": 36,
+      "sourceAsset": "/Game/Data/Items/ITEM_BasicCircuit",
+      "iconAsset": "/Game/Materials/Icons/Items/T_BasicCircuit.0",
+      "shortCode": "BC"
+    },
+    {
+      "id": "ITEM_AdvancedCircuits",
+      "name": "Advanced Circuits",
+      "localizedNames": {
+        "en": "Advanced Circuits",
+        "zh-Hans": "高级电路"
+      },
+      "category": "item",
+      "nativeOrder": 37,
+      "sourceAsset": "/Game/Data/Items/ITEM_AdvancedCircuits",
+      "iconAsset": "/Game/Materials/Icons/Items/T_AdvancedCircuit.0",
+      "shortCode": "AC"
+    },
+    {
+      "id": "ITEM_ReinforcedGlass",
+      "name": "Reinforced Glass",
+      "localizedNames": {
+        "en": "Reinforced Glass",
+        "zh-Hans": "强化玻璃"
+      },
+      "category": "item",
+      "nativeOrder": 38,
+      "sourceAsset": "/Game/Data/Items/ITEM_ReinforcedGlass",
+      "iconAsset": "/Game/Materials/Icons/Items/T_ReinforcedGlass1.0",
+      "shortCode": "RG"
+    },
+    {
+      "id": "ITEM_DetectorArray",
+      "name": "Detector Array",
+      "localizedNames": {
+        "en": "Detector Array",
+        "zh-Hans": "探测器阵列"
+      },
+      "category": "item",
+      "nativeOrder": 39,
+      "sourceAsset": "/Game/Data/Items/ITEM_DetectorArray",
+      "iconAsset": "/Game/Materials/Icons/Items/T_DetectorArray.0",
+      "shortCode": "DA"
+    },
+    {
+      "id": "ITEM_MaglevCoupling",
+      "name": "Maglev Coupling",
+      "localizedNames": {
+        "en": "Maglev Coupling",
+        "zh-Hans": "磁悬浮列车耦合器"
+      },
+      "category": "item",
+      "nativeOrder": 40,
+      "sourceAsset": "/Game/Data/Items/ITEM_MaglevCoupling",
+      "iconAsset": "/Game/Editor/IconRender/T_MaglevCoupling.0",
+      "shortCode": "MC"
+    },
+    {
+      "id": "ITEM_Superalloy",
+      "name": "Superalloy",
+      "localizedNames": {
+        "en": "Superalloy",
+        "zh-Hans": "超级合金"
+      },
+      "category": "item",
+      "nativeOrder": 41,
+      "sourceAsset": "/Game/Data/Items/ITEM_Superalloy",
+      "iconAsset": "/Game/Editor/IconRender/T_Superalloy.0",
+      "shortCode": "SU"
+    },
+    {
+      "id": "ITEM_ChromaticAlloy",
+      "name": "Chromatic Alloy",
+      "localizedNames": {
+        "en": "Chromatic Alloy",
+        "zh-Hans": "有色合金"
+      },
+      "category": "item",
+      "nativeOrder": 42,
+      "sourceAsset": "/Game/Data/Items/ITEM_ChromaticAlloy",
+      "iconAsset": "/Game/Editor/IconRender/T_ChromaticAlloy.0",
+      "shortCode": "CA2"
+    },
+    {
+      "id": "ITEM_Multisensor",
+      "name": "Multisensor",
+      "localizedNames": {
+        "en": "Multisensor",
+        "zh-Hans": "多传感器"
+      },
+      "category": "item",
+      "nativeOrder": 43,
+      "sourceAsset": "/Game/Data/Items/ITEM_Multisensor",
+      "iconAsset": "/Game/Editor/IconRender/T_Multisensor.0",
+      "shortCode": "MU"
+    },
+    {
+      "id": "ITEM_RepairKit",
+      "name": "Repair Kit",
+      "localizedNames": {
+        "en": "Repair Kit",
+        "zh-Hans": "修理包"
+      },
+      "category": "item",
+      "nativeOrder": 44,
+      "sourceAsset": "/Game/Data/Items/ITEM_RepairKit",
+      "iconAsset": "/Game/Materials/Icons/Items/T_RepairKit.0",
+      "shortCode": "RK"
+    },
+    {
+      "id": "ITEM_RepairKitHull",
+      "name": "Hull Repair Kit",
+      "localizedNames": {
+        "en": "Hull Repair Kit",
+        "zh-Hans": "船体修理包"
+      },
+      "category": "item",
+      "nativeOrder": 45,
+      "sourceAsset": "/Game/Data/Items/ITEM_RepairKitHull",
+      "iconAsset": "/Game/Materials/Icons/Items/T_RepairKit.0",
+      "shortCode": "HR"
+    },
+    {
+      "id": "ITEM_RepairKitElectric",
+      "name": "Electrical Repair Kit",
+      "localizedNames": {
+        "en": "Electrical Repair Kit",
+        "zh-Hans": "电力修理包"
+      },
+      "category": "item",
+      "nativeOrder": 46,
+      "sourceAsset": "/Game/Data/Items/ITEM_RepairKitElectric",
+      "iconAsset": "/Game/Materials/Icons/Items/T_RepairKit.0",
+      "shortCode": "ER"
+    },
+    {
+      "id": "ITEM_Missile",
+      "name": "Missile",
+      "localizedNames": {
+        "en": "Missile",
+        "zh-Hans": "导弹"
+      },
+      "category": "item",
+      "nativeOrder": 47,
+      "sourceAsset": "/Game/Data/Items/ITEM_Missile",
+      "iconAsset": "/Game/Materials/Icons/Items/T_MissileItem.0",
+      "shortCode": "MI"
+    },
+    {
+      "id": "ITEM_StellarSurveyData",
+      "name": "Stellar Survey Data",
+      "localizedNames": {
+        "en": "Stellar Survey Data",
+        "zh-Hans": "星体勘测数据"
+      },
+      "category": "item",
+      "nativeOrder": 48,
+      "sourceAsset": "/Game/Data/Items/ITEM_StellarSurveyData",
+      "iconAsset": "/Game/Editor/IconRender/T_StellarSurveyData.0",
+      "shortCode": "SS"
+    },
+    {
+      "id": "ITEM_EmptySimulationMatrix",
+      "name": "Empty Simulation Matrix",
+      "localizedNames": {
+        "en": "Empty Simulation Matrix",
+        "zh-Hans": "空模拟矩阵"
+      },
+      "category": "item",
+      "nativeOrder": 49,
+      "sourceAsset": "/Game/Data/Items/ITEM_EmptySimulationMatrix",
+      "iconAsset": "/Game/Editor/IconRender/T_EmptySimulationMatrix.0",
+      "shortCode": "ES"
+    },
+    {
+      "id": "ITEM_EncodedSimulationMatrix",
+      "name": "Encoded Simulation Matrix",
+      "localizedNames": {
+        "en": "Encoded Simulation Matrix",
+        "zh-Hans": "编码模拟矩阵"
+      },
+      "category": "item",
+      "nativeOrder": 50,
+      "sourceAsset": "/Game/Data/Items/ITEM_EncodedSimulationMatrix",
+      "iconAsset": "/Game/Editor/IconRender/T_EncodedSimulationMatrix.0",
+      "shortCode": "ES2"
+    },
+    {
+      "id": "ITEM_Nutrients",
+      "name": "Nutrients",
+      "localizedNames": {
+        "en": "Nutrients",
+        "zh-Hans": "营养素"
+      },
+      "category": "item",
+      "nativeOrder": 51,
+      "sourceAsset": "/Game/Data/Items/ITEM_Nutrients",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Nutrients.0",
+      "shortCode": "NU"
+    },
+    {
+      "id": "ITEM_Xenobacteria",
+      "name": "Xenobacteria",
+      "localizedNames": {
+        "en": "Xenobacteria",
+        "zh-Hans": "异源细菌"
+      },
+      "category": "item",
+      "nativeOrder": 52,
+      "sourceAsset": "/Game/Data/Items/ITEM_Xenobacteria",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Xenobacteria.0",
+      "shortCode": "XE2"
+    },
+    {
+      "id": "ITEM_Xenoarchaea",
+      "name": "Xenoarchaea",
+      "localizedNames": {
+        "en": "Xenoarchaea",
+        "zh-Hans": "异源古菌"
+      },
+      "category": "item",
+      "nativeOrder": 53,
+      "sourceAsset": "/Game/Data/Items/ITEM_Xenoarchaea",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Xenoarchaea.0",
+      "shortCode": "XE"
+    },
+    {
+      "id": "ITEM_Xenoeukarya",
+      "name": "Xenoeukarya",
+      "localizedNames": {
+        "en": "Xenoeukarya",
+        "zh-Hans": "异源真核生物"
+      },
+      "category": "item",
+      "nativeOrder": 54,
+      "sourceAsset": "/Game/Data/Items/ITEM_Xenoeukarya",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Xenoeukarya.0",
+      "shortCode": "XE3"
+    },
+    {
+      "id": "ITEM_Biomass",
+      "name": "Biomass",
+      "localizedNames": {
+        "en": "Biomass",
+        "zh-Hans": "生物质"
+      },
+      "category": "item",
+      "nativeOrder": 55,
+      "sourceAsset": "/Game/Data/Items/ITEM_Biomass",
+      "iconAsset": "/Game/Materials/Icons/Items/T_LeavesIcon.0",
+      "shortCode": "BI2"
+    },
+    {
+      "id": "ITEM_Enzyme",
+      "name": "Enzyme",
+      "localizedNames": {
+        "en": "Enzyme",
+        "zh-Hans": "酶"
+      },
+      "category": "item",
+      "nativeOrder": 56,
+      "sourceAsset": "/Game/Data/Items/ITEM_Enzyme",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Enzyme.0",
+      "shortCode": "EN2"
+    },
+    {
+      "id": "ITEM_AlphaProtein",
+      "name": "Alpha Protein",
+      "localizedNames": {
+        "en": "Alpha Protein",
+        "zh-Hans": "α蛋白"
+      },
+      "category": "item",
+      "nativeOrder": 57,
+      "sourceAsset": "/Game/Data/Items/ITEM_AlphaProtein",
+      "iconAsset": "/Game/Materials/Icons/Items/T_AlphaProtein.0",
+      "shortCode": "AP2"
+    },
+    {
+      "id": "ITEM_BetaProtein",
+      "name": "Beta Protein",
+      "localizedNames": {
+        "en": "Beta Protein",
+        "zh-Hans": "β蛋白"
+      },
+      "category": "item",
+      "nativeOrder": 58,
+      "sourceAsset": "/Game/Data/Items/ITEM_BetaProtein",
+      "iconAsset": "/Game/Materials/Icons/Items/T_BetaProtein.0",
+      "shortCode": "BP"
+    },
+    {
+      "id": "ITEM_Biolattice",
+      "name": "Biolattice",
+      "localizedNames": {
+        "en": "Biolattice",
+        "zh-Hans": "生物晶格"
+      },
+      "category": "item",
+      "nativeOrder": 59,
+      "sourceAsset": "/Game/Data/Items/ITEM_Biolattice",
+      "iconAsset": "/Game/Editor/IconRender/T_Biolattice.0",
+      "shortCode": "BI"
+    },
+    {
+      "id": "ITEM_ChitinComposite",
+      "name": "Chitin Composite",
+      "localizedNames": {
+        "en": "Chitin Composite",
+        "zh-Hans": "甲壳质复合材料"
+      },
+      "category": "item",
+      "nativeOrder": 60,
+      "sourceAsset": "/Game/Data/Items/ITEM_ChitinComposite",
+      "iconAsset": "/Game/Editor/IconRender/T_ChitinComposite.0",
+      "shortCode": "CC"
+    },
+    {
+      "id": "ITEM_RelicShard",
+      "name": "Relic Shard",
+      "localizedNames": {
+        "en": "Relic Shard",
+        "zh-Hans": "遗迹碎片"
+      },
+      "category": "item",
+      "nativeOrder": 61,
+      "sourceAsset": "/Game/Data/Items/ITEM_RelicShard",
+      "iconAsset": "/Game/Materials/Icons/Items/T_RelicShard.0",
+      "shortCode": "RS"
+    },
+    {
+      "id": "ITEM_RelicCapacitor",
+      "name": "Relic Capacitor",
+      "localizedNames": {
+        "en": "Relic Capacitor",
+        "zh-Hans": "遗迹电容器"
+      },
+      "category": "item",
+      "nativeOrder": 63,
+      "sourceAsset": "/Game/Data/Items/ITEM_RelicCapacitor",
+      "iconAsset": "/Game/Materials/Icons/Items/T_RelicCapacitor.0",
+      "shortCode": "RC"
+    },
+    {
+      "id": "ITEM_BackpackMk1",
+      "name": "Backpack Mk. 1",
+      "localizedNames": {
+        "en": "Backpack Mk. 1",
+        "zh-Hans": "背包1型"
+      },
+      "category": "item",
+      "nativeOrder": 64,
+      "sourceAsset": "/Game/Data/Items/ITEM_BackpackMk1",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Backpack_1.0",
+      "shortCode": "BM"
+    },
+    {
+      "id": "ITEM_BackpackMk2",
+      "name": "Backpack Mk. 2",
+      "localizedNames": {
+        "en": "Backpack Mk. 2",
+        "zh-Hans": "背包2型"
+      },
+      "category": "item",
+      "nativeOrder": 65,
+      "sourceAsset": "/Game/Data/Items/ITEM_BackpackMk2",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Backpack_1.0",
+      "shortCode": "BM2"
+    },
+    {
+      "id": "ITEM_BackpackMk3",
+      "name": "Backpack Mk. 3",
+      "localizedNames": {
+        "en": "Backpack Mk. 3",
+        "zh-Hans": "背包3型"
+      },
+      "category": "item",
+      "nativeOrder": 66,
+      "sourceAsset": "/Game/Data/Items/ITEM_BackpackMk3",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Backpack_1.0",
+      "shortCode": "BM3"
+    },
+    {
+      "id": "ITEM_ExoskeletonMk1",
+      "name": "Exoskeleton Mk. 1",
+      "localizedNames": {
+        "en": "Exoskeleton Mk. 1",
+        "zh-Hans": "外骨骼1型"
+      },
+      "category": "item",
+      "nativeOrder": 67,
+      "sourceAsset": "/Game/Data/Items/ITEM_ExoskeletonMk1",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Exoskeleton_1.0",
+      "shortCode": "EM"
+    },
+    {
+      "id": "ITEM_ExoskeletonMk2",
+      "name": "Exoskeleton Mk. 2",
+      "localizedNames": {
+        "en": "Exoskeleton Mk. 2",
+        "zh-Hans": "外骨骼2型"
+      },
+      "category": "item",
+      "nativeOrder": 68,
+      "sourceAsset": "/Game/Data/Items/ITEM_ExoskeletonMk2",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Exoskeleton_1.0",
+      "shortCode": "EM2"
+    },
+    {
+      "id": "ITEM_ExoskeletonMk3",
+      "name": "Exoskeleton Mk. 3",
+      "localizedNames": {
+        "en": "Exoskeleton Mk. 3",
+        "zh-Hans": "外骨骼3型"
+      },
+      "category": "item",
+      "nativeOrder": 69,
+      "sourceAsset": "/Game/Data/Items/ITEM_ExoskeletonMk3",
+      "iconAsset": "/Game/Materials/Icons/Items/T_Exoskeleton_1.0",
+      "shortCode": "EM3"
+    },
+    {
+      "id": "ITEM_Exosuit",
+      "name": "Exosuit",
+      "localizedNames": {
+        "en": "Exosuit",
+        "zh-Hans": "外骨骼套装"
+      },
+      "category": "item",
+      "nativeOrder": 70,
+      "sourceAsset": "/Game/Data/Items/ITEM_Exosuit",
+      "iconAsset": "/Game/Editor/IconRender/T_Exosuit.0",
+      "shortCode": "EX"
+    },
+    {
+      "id": "DAT_Assembler",
+      "name": "Assembler",
+      "localizedNames": {
+        "en": "Assembler",
+        "zh-Hans": "装配机"
+      },
+      "category": "machine",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/MachineItems/DAT_Assembler",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_Assembler.0",
+      "shortCode": "AS"
+    },
+    {
+      "id": "DAT_CompSciLab",
+      "name": "Computation Science Lab",
+      "localizedNames": {
+        "en": "Computation Science Lab",
+        "zh-Hans": "计算科学实验室"
+      },
+      "category": "machine",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/MachineItems/DAT_CompSciLab",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_CompSciLab.0",
+      "shortCode": "CS"
+    },
+    {
+      "id": "DAT_Container",
+      "name": "Container",
+      "localizedNames": {
+        "en": "Container",
+        "zh-Hans": "容器"
+      },
+      "category": "machine",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/MachineItems/DAT_Container",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_Container_1.0",
+      "shortCode": "CO"
+    },
+    {
+      "id": "DAT_ConveyorBelt",
+      "name": "Conveyor Belt Mk. 1",
+      "localizedNames": {
+        "en": "Conveyor Belt Mk. 1",
+        "zh-Hans": "传送带1型"
+      },
+      "category": "machine",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/MachineItems/DAT_ConveyorBelt",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_Conveyor_01-1.0",
+      "shortCode": "CB"
+    },
+    {
+      "id": "DAT_EnrichmentChamber",
+      "name": "Enrichment Chamber",
+      "localizedNames": {
+        "en": "Enrichment Chamber",
+        "zh-Hans": "富集舱"
+      },
+      "category": "machine",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/MachineItems/DAT_EnrichmentChamber",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_EnrichmentChamber2.0",
+      "shortCode": "EC"
+    },
+    {
+      "id": "DAT_MatSciLab",
+      "name": "Material Science Lab",
+      "localizedNames": {
+        "en": "Material Science Lab",
+        "zh-Hans": "材料科学实验室"
+      },
+      "category": "machine",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/MachineItems/DAT_MatSciLab",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_MatSciLab.0",
+      "shortCode": "MS"
+    },
+    {
+      "id": "DAT_Refinery",
+      "name": "Refinery",
+      "localizedNames": {
+        "en": "Refinery",
+        "zh-Hans": "精炼机"
+      },
+      "category": "machine",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/MachineItems/DAT_Refinery",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_Refinery.0",
+      "shortCode": "RE"
+    },
+    {
+      "id": "DAT_Splitter",
+      "name": "Splitter Mk. 1",
+      "localizedNames": {
+        "en": "Splitter Mk. 1",
+        "zh-Hans": "分流器1型"
+      },
+      "category": "machine",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/MachineItems/DAT_Splitter",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_Splitter_1.0",
+      "shortCode": "SM"
+    },
+    {
+      "id": "ITEM_Thruster",
+      "name": "ITEM_Thruster",
+      "localizedNames": {
+        "en": "ITEM_Thruster",
+        "zh-Hans": "ITEM_Thruster"
+      },
+      "category": "item",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/ITEM_Thruster",
+      "iconAsset": "/Game/Materials/Icons/Items/T_MissileItem.0",
+      "shortCode": "IT"
+    },
+    {
+      "id": "ITEM_UpgradeShipSpeed_1",
+      "name": "ITEM_UpgradeShipSpeed_1",
+      "localizedNames": {
+        "en": "ITEM_UpgradeShipSpeed_1",
+        "zh-Hans": "ITEM_UpgradeShipSpeed_1"
+      },
+      "category": "item",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/ITEM_UpgradeShipSpeed_1",
+      "iconAsset": "/Game/Materials/Icons/UI/T_UI_Boost.0",
+      "shortCode": "IT2"
+    },
+    {
+      "id": "ITEM_UpgradeShipSpeed_2",
+      "name": "ITEM_UpgradeShipSpeed_2",
+      "localizedNames": {
+        "en": "ITEM_UpgradeShipSpeed_2",
+        "zh-Hans": "ITEM_UpgradeShipSpeed_2"
+      },
+      "category": "item",
+      "nativeOrder": null,
+      "sourceAsset": "/Game/Data/Items/ITEM_UpgradeShipSpeed_2",
+      "iconAsset": "/Game/Materials/Icons/UI/T_UI_Boost.0",
+      "shortCode": "IT3"
+    }
+  ],
+  "machines": [
+    {
+      "id": "CRAFT_AdvancedAssembler",
+      "name": "Advanced Assembler",
+      "localizedNames": {
+        "en": "Advanced Assembler",
+        "zh-Hans": "高级装配机"
+      },
+      "powerKW": "18000",
+      "sourceAsset": "/Game/Data/Buildables/DAT_AdvancedAssembler",
+      "iconAsset": "/Game/Editor/IconRender/T_AdvancedAssembler1.0",
+      "shortCode": "AA"
+    },
+    {
+      "id": "CRAFT_Armoury",
+      "name": "Armoury",
+      "localizedNames": {
+        "en": "Armoury",
+        "zh-Hans": "军械库"
+      },
+      "powerKW": null,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Armoury",
+      "iconAsset": "/Game/Editor/IconRender/T_Armoury.0",
+      "shortCode": "AR"
+    },
+    {
+      "id": "CRAFT_Assembler",
+      "name": "Assembler",
+      "localizedNames": {
+        "en": "Assembler",
+        "zh-Hans": "装配机"
+      },
+      "powerKW": "6000",
+      "sourceAsset": "/Game/Data/Buildables/DAT_Assembler",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_Assembler.0",
+      "shortCode": "AS"
+    },
+    {
+      "id": "CRAFT_DeepSpaceObservatory",
+      "name": "Deep Space Observatory",
+      "localizedNames": {
+        "en": "Deep Space Observatory",
+        "zh-Hans": "深空天文台"
+      },
+      "powerKW": "96000",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_DeepSpaceObservatory",
+      "iconAsset": "/Game/Editor/IconRender/T_DeepSpaceObservatory.0",
+      "shortCode": "DS"
+    },
+    {
+      "id": "CRAFT_Enrichment",
+      "name": "Enrichment Chamber",
+      "localizedNames": {
+        "en": "Enrichment Chamber",
+        "zh-Hans": "富集舱"
+      },
+      "powerKW": "18000",
+      "sourceAsset": "/Game/Data/Buildables/DAT_EnrichmentChamber",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_EnrichmentChamber2.0",
+      "shortCode": "EC"
+    },
+    {
+      "id": "CRAFT_GrowthChamber",
+      "name": "Growth Chamber",
+      "localizedNames": {
+        "en": "Growth Chamber",
+        "zh-Hans": "生长舱"
+      },
+      "powerKW": "6000",
+      "sourceAsset": "/Game/Data/Buildables/DAT_GrowthChamber",
+      "iconAsset": "/Game/Editor/IconRender/T_GrowthChamber1.0",
+      "shortCode": "GC"
+    },
+    {
+      "id": "CRAFT_Refinery",
+      "name": "Refinery",
+      "localizedNames": {
+        "en": "Refinery",
+        "zh-Hans": "精炼机"
+      },
+      "powerKW": "4500",
+      "sourceAsset": "/Game/Data/Buildables/DAT_Refinery",
+      "iconAsset": "/Game/Materials/Icons/Machines/T_Refinery.0",
+      "shortCode": "RE"
+    },
+    {
+      "id": "CRAFT_RelicSynthesizer",
+      "name": "Relic Synthesizer",
+      "localizedNames": {
+        "en": "Relic Synthesizer",
+        "zh-Hans": "遗迹合成器"
+      },
+      "powerKW": "54000",
+      "sourceAsset": "/Game/Data/Buildables/DAT_RelicSynthesizer",
+      "iconAsset": "/Game/Editor/IconRender/T_RelicSynthesizer.0",
+      "shortCode": "RS"
+    },
+    {
+      "id": "CRAFT_Supercomputer",
+      "name": "Supercomputer",
+      "localizedNames": {
+        "en": "Supercomputer",
+        "zh-Hans": "超级计算机"
+      },
+      "powerKW": "6000",
+      "sourceAsset": "/Game/Data/Buildables/DAT_Supercomputer",
+      "iconAsset": "/Game/Editor/IconRender/T_Supercomputer.0",
+      "shortCode": "SU"
+    }
+  ],
+  "recipes": [
+    {
+      "id": "REC_Assembler",
+      "name": "REC_Assembler",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "4"
+        },
+        {
+          "itemId": "ITEM_Servomotor",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_Assembler",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/Machines/REC_Assembler"
+    },
+    {
+      "id": "REC_CompSciLab",
+      "name": "REC_CompSciLab",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "3/2",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "4"
+        },
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "quantity": "4"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_CompSciLab",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/Machines/REC_CompSciLab"
+    },
+    {
+      "id": "REC_Container",
+      "name": "REC_Container",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "1",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "8"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_Container",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/Machines/REC_Container"
+    },
+    {
+      "id": "REC_ConveyorBelt",
+      "name": "REC_ConveyorBelt",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "1",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_ConveyorBelt",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/Machines/REC_ConveyorBelt"
+    },
+    {
+      "id": "REC_EnrichmentChamber",
+      "name": "REC_EnrichmentChamber",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "3/2",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "6"
+        },
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "4"
+        },
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "quantity": "8"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_EnrichmentChamber",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/Machines/REC_EnrichmentChamber"
+    },
+    {
+      "id": "REC_MatSciLab",
+      "name": "REC_MatSciLab",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "3/2",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_NickelPlates",
+          "quantity": "6"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_MatSciLab",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/Machines/REC_MatSciLab"
+    },
+    {
+      "id": "REC_Refinery",
+      "name": "REC_Refinery",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "3/2",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "quantity": "3"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_Refinery",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/Machines/REC_Refinery"
+    },
+    {
+      "id": "REC_Splitter",
+      "name": "REC_Splitter",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "1",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Servomotor",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_Splitter",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/Machines/REC_Splitter"
+    },
+    {
+      "id": "REC_AdvancedCircuits",
+      "name": "REC_AdvancedCircuits",
+      "machineId": "CRAFT_AdvancedAssembler",
+      "durationSeconds": "12",
+      "inputs": [
+        {
+          "itemId": "ITEM_DetectorArray",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Coolant",
+          "quantity": "6"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_AdvancedCircuits",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_AdvancedCircuits"
+    },
+    {
+      "id": "REC_AdvancedPlates",
+      "name": "REC_AdvancedPlates",
+      "machineId": "CRAFT_AdvancedAssembler",
+      "durationSeconds": "12",
+      "inputs": [
+        {
+          "itemId": "ITEM_ChromaticAlloy",
+          "quantity": "6"
+        },
+        {
+          "itemId": "ITEM_ChitinComposite",
+          "quantity": "6"
+        },
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_Multisensor",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_AdvancedPlates",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_AdvancedPlates"
+    },
+    {
+      "id": "REC_AlphaProtein",
+      "name": "REC_AlphaProtein",
+      "machineId": "CRAFT_GrowthChamber",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenoeukarya",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Enzyme",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Nutrients",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_AlphaProtein",
+          "quantity": "1",
+          "isByproduct": false
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "quantity": "1",
+          "isByproduct": true
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_AlphaProtein"
+    },
+    {
+      "id": "REC_BackpackMk1",
+      "name": "REC_BackpackMk1",
+      "machineId": "CRAFT_Armoury",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "quantity": "10"
+        },
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "10"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BackpackMk1",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_BackpackMk1"
+    },
+    {
+      "id": "REC_BackpackMk2",
+      "name": "REC_BackpackMk2",
+      "machineId": "CRAFT_Armoury",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "quantity": "10"
+        },
+        {
+          "itemId": "ITEM_Graphene",
+          "quantity": "20"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BackpackMk2",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_BackpackMk2"
+    },
+    {
+      "id": "REC_BackpackMk3",
+      "name": "REC_BackpackMk3",
+      "machineId": "CRAFT_Armoury",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_SuperalloyFrame",
+          "quantity": "10"
+        },
+        {
+          "itemId": "ITEM_Biolattice",
+          "quantity": "10"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BackpackMk3",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_BackpackMk3"
+    },
+    {
+      "id": "REC_BasicCircuit",
+      "name": "REC_BasicCircuit",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_SiliconWafers",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_BasicCircuit"
+    },
+    {
+      "id": "REC_BasicMotor",
+      "name": "REC_BasicMotor",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BasicMotor",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_BasicMotor"
+    },
+    {
+      "id": "REC_BetaProtein",
+      "name": "REC_BetaProtein",
+      "machineId": "CRAFT_GrowthChamber",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenoarchaea",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Enzyme",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Nutrients",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BetaProtein",
+          "quantity": "1",
+          "isByproduct": false
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "quantity": "1",
+          "isByproduct": true
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_BetaProtein"
+    },
+    {
+      "id": "REC_Biolattice",
+      "name": "REC_Biolattice",
+      "machineId": "CRAFT_GrowthChamber",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_AlphaProtein",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_BetaProtein",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_Nutrients",
+          "quantity": "4"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Biolattice",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Biolattice"
+    },
+    {
+      "id": "REC_Capacitor",
+      "name": "REC_Capacitor",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Capacitor",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Capacitor"
+    },
+    {
+      "id": "REC_ChitinComposite",
+      "name": "REC_ChitinComposite",
+      "machineId": "CRAFT_AdvancedAssembler",
+      "durationSeconds": "12",
+      "inputs": [
+        {
+          "itemId": "ITEM_Biolattice",
+          "quantity": "6"
+        },
+        {
+          "itemId": "ITEM_Graphene",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_ReinforcedGlass",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_Enzyme",
+          "quantity": "12"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ChitinComposite",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ChitinComposite"
+    },
+    {
+      "id": "REC_ChromaticAlloy",
+      "name": "REC_ChromaticAlloy",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_IridiumPlates",
+          "quantity": "6"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "quantity": "3"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ChromaticAlloy",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ChromaticAlloy"
+    },
+    {
+      "id": "REC_CobaltPlates",
+      "name": "REC_CobaltPlates",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_CobaltOre",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_CobaltPlates"
+    },
+    {
+      "id": "REC_CobaltSynthesis",
+      "name": "REC_CobaltSynthesis",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_CobaltOre",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_CobaltSynthesis"
+    },
+    {
+      "id": "REC_ContainmentCoil",
+      "name": "REC_ContainmentCoil",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_Capacitor",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ContainmentCoil",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ContainmentCoil"
+    },
+    {
+      "id": "REC_Coolant",
+      "name": "REC_Coolant",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_NitrogenGas",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Coolant",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Coolant"
+    },
+    {
+      "id": "REC_DetectorArray",
+      "name": "REC_DetectorArray",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_Graphene",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_DetectorArray",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_DetectorArray"
+    },
+    {
+      "id": "REC_EmptySimulationMatrix",
+      "name": "REC_EmptySimulationMatrix",
+      "machineId": "CRAFT_AdvancedAssembler",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_AdvancedCircuits",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_Lonsdaleite",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EmptySimulationMatrix",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_EmptySimulationMatrix"
+    },
+    {
+      "id": "REC_EncodedSimulationMatrix",
+      "name": "REC_EncodedSimulationMatrix",
+      "machineId": "CRAFT_Supercomputer",
+      "durationSeconds": "30",
+      "inputs": [
+        {
+          "itemId": "ITEM_EmptySimulationMatrix",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_StellarSurveyData",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EncodedSimulationMatrix",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_EncodedSimulationMatrix"
+    },
+    {
+      "id": "REC_EnrichedCobaltOre",
+      "name": "REC_EnrichedCobaltOre",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_CobaltOre",
+          "quantity": "3"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EnrichedCobaltOre",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_EnrichedCobaltOre"
+    },
+    {
+      "id": "REC_EnrichedCobaltPlates",
+      "name": "REC_EnrichedCobaltPlates",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedCobaltOre",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "quantity": "3",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_EnrichedCobaltPlates"
+    },
+    {
+      "id": "REC_EnrichedFuel",
+      "name": "REC_EnrichedFuel",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_HydrogenFuel",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EnrichedFuel",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_EnrichedFuel"
+    },
+    {
+      "id": "REC_EnrichedNickelOre",
+      "name": "REC_EnrichedNickelOre",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelOre",
+          "quantity": "3"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EnrichedNickelOre",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_EnrichedNickelOre"
+    },
+    {
+      "id": "REC_EnrichedNickelPlates",
+      "name": "REC_EnrichedNickelPlates",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedNickelOre",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "quantity": "3",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_EnrichedNickelPlates"
+    },
+    {
+      "id": "REC_EnrichedTitaniumOre",
+      "name": "REC_EnrichedTitaniumOre",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumOre",
+          "quantity": "3"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EnrichedTitaniumOre",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_EnrichedTitaniumOre"
+    },
+    {
+      "id": "REC_EnrichedTitaniumPlates",
+      "name": "REC_EnrichedTitaniumPlates",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedTitaniumOre",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "3",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_EnrichedTitaniumPlates"
+    },
+    {
+      "id": "REC_Enzyme",
+      "name": "REC_Enzyme",
+      "machineId": "CRAFT_GrowthChamber",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenobacteria",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Nutrients",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Enzyme",
+          "quantity": "1",
+          "isByproduct": false
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "quantity": "1",
+          "isByproduct": true
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Enzyme"
+    },
+    {
+      "id": "REC_ExoskeletonMk1",
+      "name": "REC_ExoskeletonMk1",
+      "machineId": "CRAFT_Armoury",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Servomotor",
+          "quantity": "30"
+        },
+        {
+          "itemId": "ITEM_Capacitor",
+          "quantity": "20"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ExoskeletonMk1",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ExoskeletonMk1"
+    },
+    {
+      "id": "REC_ExoskeletonMk2",
+      "name": "REC_ExoskeletonMk2",
+      "machineId": "CRAFT_Armoury",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "quantity": "20"
+        },
+        {
+          "itemId": "ITEM_Coolant",
+          "quantity": "20"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ExoskeletonMk2",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ExoskeletonMk2"
+    },
+    {
+      "id": "REC_ExoskeletonMk3",
+      "name": "REC_ExoskeletonMk3",
+      "machineId": "CRAFT_Armoury",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_ChitinComposite",
+          "quantity": "10"
+        },
+        {
+          "itemId": "ITEM_ChromaticAlloy",
+          "quantity": "10"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ExoskeletonMk3",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ExoskeletonMk3"
+    },
+    {
+      "id": "REC_Exosuit",
+      "name": "REC_Exosuit",
+      "machineId": "CRAFT_Armoury",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_AdvancedPlates",
+          "quantity": "30"
+        },
+        {
+          "itemId": "ITEM_BackpackMk3",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_ExoskeletonMk3",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Exosuit",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Exosuit"
+    },
+    {
+      "id": "REC_Graphene",
+      "name": "REC_Graphene",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_Graphite",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Graphene",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Graphene"
+    },
+    {
+      "id": "REC_GraphiteSynthesis",
+      "name": "REC_GraphiteSynthesis",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Graphite",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_GraphiteSynthesis"
+    },
+    {
+      "id": "REC_HullPlates",
+      "name": "REC_HullPlates",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_HullPlates"
+    },
+    {
+      "id": "REC_HydrogenFuel",
+      "name": "REC_HydrogenFuel",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_WaterIce",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_HydrogenFuel",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_HydrogenFuel"
+    },
+    {
+      "id": "REC_IridiumPlates",
+      "name": "REC_IridiumPlates",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_IridiumOre",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_IridiumPlates",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_IridiumPlates"
+    },
+    {
+      "id": "REC_LightweightFrame",
+      "name": "REC_LightweightFrame",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_LightweightFrame"
+    },
+    {
+      "id": "REC_MageticCoils",
+      "name": "REC_MageticCoils",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_MageticCoils"
+    },
+    {
+      "id": "REC_MaglevCoupling",
+      "name": "REC_MaglevCoupling",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_Servomotor",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_MaglevCoupling"
+    },
+    {
+      "id": "REC_MaglevCouplingAlt",
+      "name": "REC_MaglevCouplingAlt",
+      "machineId": "CRAFT_AdvancedAssembler",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_BasicMotor",
+          "quantity": "8"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_MaglevCouplingAlt"
+    },
+    {
+      "id": "REC_MagneticCoilsAlt1",
+      "name": "REC_MagneticCoilsAlt1",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "quantity": "8",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_MagneticCoilsAlt1"
+    },
+    {
+      "id": "REC_Missile",
+      "name": "REC_Missile",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_ContainmentCoil",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Coolant",
+          "quantity": "4"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Missile",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Missile"
+    },
+    {
+      "id": "REC_Multisensor",
+      "name": "REC_Multisensor",
+      "machineId": "CRAFT_AdvancedAssembler",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_ChromaticAlloy",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_Lonsdaleite",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_EncodedSimulationMatrix",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_SuperconductorCoil",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Multisensor",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Multisensor"
+    },
+    {
+      "id": "REC_NickelPlates",
+      "name": "REC_NickelPlates",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelOre",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_NickelPlates"
+    },
+    {
+      "id": "REC_NickelSynthesis",
+      "name": "REC_NickelSynthesis",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_NickelOre",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_NickelSynthesis"
+    },
+    {
+      "id": "REC_Nutrients",
+      "name": "REC_Nutrients",
+      "machineId": "CRAFT_GrowthChamber",
+      "durationSeconds": "1",
+      "inputs": [
+        {
+          "itemId": "ITEM_Graphite",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Silica",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_WaterIce",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Nutrients",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Nutrients"
+    },
+    {
+      "id": "REC_ObservedStellarSurveyData",
+      "name": "REC_ObservedStellarSurveyData",
+      "machineId": "CRAFT_DeepSpaceObservatory",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_AdvancedCircuits",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_StellarSurveyData",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ObservedStellarSurveyData"
+    },
+    {
+      "id": "REC_Protomatter",
+      "name": "REC_Protomatter",
+      "machineId": "CRAFT_RelicSynthesizer",
+      "durationSeconds": "1",
+      "inputs": [],
+      "outputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Protomatter"
+    },
+    {
+      "id": "REC_ReinforcedGlass",
+      "name": "REC_ReinforcedGlass",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_Silica",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ReinforcedGlass",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ReinforcedGlass"
+    },
+    {
+      "id": "REC_ReinforcedPlates",
+      "name": "REC_ReinforcedPlates",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "quantity": "6"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "quantity": "3"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ReinforcedPlates"
+    },
+    {
+      "id": "REC_ReinforcedPlatesAlt",
+      "name": "REC_ReinforcedPlatesAlt",
+      "machineId": "CRAFT_AdvancedAssembler",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "quantity": "3"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ReinforcedPlatesAlt"
+    },
+    {
+      "id": "REC_RelicCapacitor",
+      "name": "REC_RelicCapacitor",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_Capacitor",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_RelicShard",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RelicCapacitor",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_RelicCapacitor"
+    },
+    {
+      "id": "REC_RelicShardSynthesis",
+      "name": "REC_RelicShardSynthesis",
+      "machineId": "CRAFT_RelicSynthesizer",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_Superalloy",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RelicShard",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_RelicShardSynthesis"
+    },
+    {
+      "id": "REC_RepairKit",
+      "name": "REC_RepairKit",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "3/2",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_NickelPlates",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RepairKit",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_RepairKit"
+    },
+    {
+      "id": "REC_RepairKitElectric",
+      "name": "REC_RepairKitElectric",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "3/2",
+      "inputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "quantity": "10"
+        },
+        {
+          "itemId": "ITEM_Capacitor",
+          "quantity": "10"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RepairKitElectric",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_RepairKitElectric"
+    },
+    {
+      "id": "REC_RepairKitHull",
+      "name": "REC_RepairKitHull",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "3/2",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "quantity": "5"
+        },
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "5"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RepairKitHull",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_RepairKitHull"
+    },
+    {
+      "id": "REC_ServoPlates",
+      "name": "REC_ServoPlates",
+      "machineId": "CRAFT_AdvancedAssembler",
+      "durationSeconds": "6",
+      "inputs": [
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "quantity": "2"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ServoPlates",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_ServoPlates"
+    },
+    {
+      "id": "REC_Servomotor",
+      "name": "REC_Servomotor",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_BasicMotor",
+          "quantity": "4"
+        },
+        {
+          "itemId": "ITEM_Capacitor",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Servomotor",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Servomotor"
+    },
+    {
+      "id": "REC_SilicaSynthesis",
+      "name": "REC_SilicaSynthesis",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Silica",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_SilicaSynthesis"
+    },
+    {
+      "id": "REC_SiliconWafers",
+      "name": "REC_SiliconWafers",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_Silica",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_SiliconWafers",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_SiliconWafers"
+    },
+    {
+      "id": "REC_StrangeWarpFuel",
+      "name": "REC_StrangeWarpFuel",
+      "machineId": "CRAFT_DeepSpaceObservatory",
+      "durationSeconds": "8",
+      "inputs": [
+        {
+          "itemId": "ITEM_StrangeMatterCrystal",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_WarpFuel",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_StrangeWarpFuel"
+    },
+    {
+      "id": "REC_Superalloy",
+      "name": "REC_Superalloy",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "4",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedTitaniumOre",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_EnrichedNickelOre",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_EnrichedCobaltOre",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Superalloy",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Superalloy"
+    },
+    {
+      "id": "REC_SuperalloyFrame",
+      "name": "REC_SuperalloyFrame",
+      "machineId": "CRAFT_AdvancedAssembler",
+      "durationSeconds": "12",
+      "inputs": [
+        {
+          "itemId": "ITEM_Superalloy",
+          "quantity": "3"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_SuperalloyFrame",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_SuperalloyFrame"
+    },
+    {
+      "id": "REC_SuperconductorCoil",
+      "name": "REC_SuperconductorCoil",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "12",
+      "inputs": [
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_ContainmentCoil",
+          "quantity": "3"
+        },
+        {
+          "itemId": "ITEM_Coolant",
+          "quantity": "12"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_SuperconductorCoil",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_SuperconductorCoil"
+    },
+    {
+      "id": "REC_Thruster",
+      "name": "REC_Thruster",
+      "machineId": "CRAFT_Assembler",
+      "durationSeconds": "5",
+      "inputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "quantity": "5"
+        },
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "4"
+        },
+        {
+          "itemId": "ITEM_Servomotor",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Thruster",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Thruster"
+    },
+    {
+      "id": "REC_TitaniumPlates",
+      "name": "REC_TitaniumPlates",
+      "machineId": "CRAFT_Refinery",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumOre",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_TitaniumPlates"
+    },
+    {
+      "id": "REC_TitaniumSynthesis",
+      "name": "REC_TitaniumSynthesis",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_TitaniumOre",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_TitaniumSynthesis"
+    },
+    {
+      "id": "REC_UpgradesShipSpeed_1",
+      "name": "REC_UpgradesShipSpeed_1",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "quantity": "10"
+        },
+        {
+          "itemId": "ITEM_HydrogenFuel",
+          "quantity": "10"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_UpgradeShipSpeed_1",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_UpgradesShipSpeed_1"
+    },
+    {
+      "id": "REC_UpgradesShipSpeed_2",
+      "name": "REC_UpgradesShipSpeed_2",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "3",
+      "inputs": [
+        {
+          "itemId": "ITEM_UpgradeShipSpeed_1",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "quantity": "10"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_UpgradeShipSpeed_2",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_UpgradesShipSpeed_2"
+    },
+    {
+      "id": "REC_WarpFuel",
+      "name": "REC_WarpFuel",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "12",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedFuel",
+          "quantity": "2"
+        },
+        {
+          "itemId": "ITEM_ContainmentCoil",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_WarpFuel",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_WarpFuel"
+    },
+    {
+      "id": "REC_WaterIceSynthesis",
+      "name": "REC_WaterIceSynthesis",
+      "machineId": "CRAFT_Enrichment",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_WaterIce",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_WaterIceSynthesis"
+    },
+    {
+      "id": "REC_XenoEukaryaRecycling",
+      "name": "REC_XenoEukaryaRecycling",
+      "machineId": "CRAFT_GrowthChamber",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenoeukarya",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Xenoeukarya",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_XenoEukaryaRecycling"
+    },
+    {
+      "id": "REC_XenoarchaeaRecycling",
+      "name": "REC_XenoarchaeaRecycling",
+      "machineId": "CRAFT_GrowthChamber",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenoarchaea",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Xenoarchaea",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_XenoarchaeaRecycling"
+    },
+    {
+      "id": "REC_XenobacteriaRecycling",
+      "name": "REC_XenobacteriaRecycling",
+      "machineId": "CRAFT_GrowthChamber",
+      "durationSeconds": "2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenobacteria",
+          "quantity": "1"
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "quantity": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Xenobacteria",
+          "quantity": "2",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_XenobacteriaRecycling"
+    }
+  ],
+  "rawItemIds": [
+    "ITEM_TitaniumOre",
+    "ITEM_EnrichedTitaniumOre",
+    "ITEM_NickelOre",
+    "ITEM_EnrichedNickelOre",
+    "ITEM_CobaltOre",
+    "ITEM_EnrichedCobaltOre",
+    "ITEM_IridiumOre",
+    "ITEM_WaterIce",
+    "ITEM_Silica",
+    "ITEM_Graphite",
+    "ITEM_Lonsdaleite",
+    "ITEM_StrangeMatterCrystal",
+    "ITEM_NitrogenGas",
+    "ITEM_Protomatter"
+  ]
+};

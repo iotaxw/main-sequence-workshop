@@ -1,0 +1,24 @@
+# Main Sequence 总线超市规划器
+
+面向《主星序 Main Sequence》的静态超市规划工具。浏览完整物品表与原生配方，编辑层级、常备目标、外部输入和隔离分区，并通过 JSON 或 Markdown 协作摘要交换方案。
+
+[打开线上规划器](https://iotaxw.github.io/main-sequence-workshop/mall-planner/)。
+
+## 使用
+
+直接用浏览器打开 `index.html`，无需安装依赖或启动服务器。方案自动保存在当前浏览器，可导出 JSON 备份或导入继续编辑。
+
+默认方案基于 Build `26639889`，包含 33 个常备目标、三类外部输入、最小原物质配方分支和能源隔离区。7 件军械库装备保留完整配方链，但按手动合成处理，不进入默认常备区。
+
+## 校验与构建
+
+需要 Node.js 24。
+
+```bash
+npm run check
+npm run build
+```
+
+`check` 对照配平器的版本化数据集校验浏览器数据、默认闭包、层级、方案迁移、建筑成本和图标完整性；`build` 将静态网页输出到 `dist/`。资源使用相对路径，可部署到 GitHub Pages 项目子路径。
+
+游戏配方、建筑成本与图标属于第三方内容。原创代码与文档采用根目录 [MIT License](../../LICENSE)，第三方内容边界见 [NOTICE](../../NOTICE)。
