@@ -2,9 +2,11 @@
 
 面向《主星序 Main Sequence》的纯网页产线规划工具。选择目标物品和每分钟速率后，可逐个选择配方分支与副产回流，获得净输入、机器连续量、整数建设量和耗电。
 
-## 本地使用
+## 使用
 
-需要 Node.js 24。
+线上入口：<https://iotaxw.github.io/main-sequence-workshop/production-line-balancer/>。
+
+本地开发需要 Node.js 24。
 
 ```bash
 npm ci
