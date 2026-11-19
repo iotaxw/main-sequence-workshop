@@ -116,10 +116,6 @@ public static class GameDatasetImporter
 
         string? UnsupportedReason(JObject recipe)
         {
-            if (recipe.Property("Inputs") is null)
-            {
-                return "missing-inputs-field";
-            }
             if (Inputs(recipe).Any(input => input["Item"] is not JObject))
             {
                 return "wildcard-or-empty-input";
@@ -499,8 +495,13 @@ public static class GameDatasetImporter
 
     private static JArray Inputs(JObject recipe)
     {
-        _ = recipe.Property("Inputs") ?? throw new InvalidDataException("Recipe has no Inputs field.");
-        return recipe["Inputs"] as JArray ?? [];
+        var inputs = recipe["Inputs"];
+        if (inputs is null || inputs.Type == JTokenType.Null)
+        {
+            return [];
+        }
+        return inputs as JArray
+            ?? throw new InvalidDataException($"Recipe Inputs must be an array: {recipe["SourceAsset"]}.");
     }
 
     private static string ReferenceId(JToken token)

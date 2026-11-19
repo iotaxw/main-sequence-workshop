@@ -60,6 +60,13 @@ function validateRecipe(recipe: RecipeDefinition, machines: ReadonlyMap<string, 
   }
 }
 
+export function defaultExternalInputItemIds(dataset: Dataset): string[] {
+  const producedWithoutInputs = new Set(dataset.recipes
+    .filter(recipe => recipe.inputs.length === 0)
+    .flatMap(recipe => recipe.outputs.map(output => output.itemId)));
+  return dataset.rawItemIds.filter(itemId => !producedWithoutInputs.has(itemId));
+}
+
 export function indexDataset(dataset: Dataset): DatasetIndex {
   assert(dataset.schemaVersion === 1, `Unsupported dataset schema: ${dataset.schemaVersion}.`);
   assert(dataset.game.buildId.length > 0, 'Dataset has no Build ID.');

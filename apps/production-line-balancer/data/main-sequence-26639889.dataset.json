@@ -27,11 +27,6 @@
         "id": "REC_UndergroundBelt",
         "sourceAsset": "/Game/Data/Recipes/Machines/REC_UndergroundBelt",
         "reason": "wildcard-or-empty-input"
-      },
-      {
-        "id": "REC_Protomatter",
-        "sourceAsset": "/Game/Data/Recipes/REC_Protomatter",
-        "reason": "missing-inputs-field"
       }
     ]
   },
@@ -2539,6 +2534,21 @@
         }
       ],
       "sourceAsset": "/Game/Data/Recipes/REC_ObservedStellarSurveyData"
+    },
+    {
+      "id": "REC_Protomatter",
+      "name": "REC_Protomatter",
+      "machineId": "CRAFT_RelicSynthesizer",
+      "durationSeconds": "1",
+      "inputs": [],
+      "outputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "quantity": "1",
+          "isByproduct": false
+        }
+      ],
+      "sourceAsset": "/Game/Data/Recipes/REC_Protomatter"
     },
     {
       "id": "REC_ReinforcedGlass",

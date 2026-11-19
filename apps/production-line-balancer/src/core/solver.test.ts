@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import datasetJson from '../../data/main-sequence-26639889.dataset.json';
-import { indexDataset } from './dataset';
+import { defaultExternalInputItemIds, indexDataset } from './dataset';
 import { Rational } from './rational';
 import { solvePlan } from './solver';
 import type { Dataset, PlanInput, SolvedPlan } from './types';
@@ -11,7 +11,7 @@ const index = indexDataset(dataset);
 function input(itemId: string, ratePerMin: string, overrides: Partial<PlanInput> = {}): PlanInput {
   return {
     target: { itemId, ratePerMin },
-    inputItemIds: dataset.rawItemIds,
+    inputItemIds: defaultExternalInputItemIds(dataset),
     recipeByItem: {},
     ...overrides,
   };
@@ -69,6 +69,36 @@ describe('real game dataset', () => {
     ]);
   });
 
+  it('produces Protomatter from its native zero-input recipe by default', () => {
+    expect(dataset.rawItemIds).toContain('ITEM_Protomatter');
+    expect(defaultExternalInputItemIds(dataset)).not.toContain('ITEM_Protomatter');
+    const result = solved(solvePlan(dataset, index, input('ITEM_Protomatter', '60')));
+    expect(result.rows).toHaveLength(1);
+    expect(result.rawInputs).toEqual([]);
+    expect(result.rows[0]).toMatchObject({
+      recipeId: 'REC_Protomatter',
+      machineId: 'CRAFT_RelicSynthesizer',
+      runsPerMin: '60',
+      inputs: [],
+      outputs: [{ itemId: 'ITEM_Protomatter', ratePerMin: '60', isByproduct: false }],
+      machines: { exact: '1', built: '1' },
+      powerKW: { exact: '54000', built: '54000' },
+    });
+  });
+
+  it('keeps explicitly supplied Protomatter external', () => {
+    const externalInputs = defaultExternalInputItemIds(dataset)
+      .filter(itemId => itemId !== 'ITEM_CobaltOre')
+      .concat('ITEM_Protomatter');
+    const result = solved(solvePlan(dataset, index, input('ITEM_CobaltPlates', '30', {
+      inputItemIds: externalInputs,
+      recipeByItem: { ITEM_CobaltPlates: 'REC_CobaltPlates' },
+    })));
+    expect(result.rows.some(row => row.recipeId === 'REC_Protomatter')).toBe(false);
+    expect(result.rows.some(row => row.recipeId === 'REC_CobaltSynthesis')).toBe(true);
+    expect(result.rawInputs).toContainEqual({ itemId: 'ITEM_Protomatter', ratePerMin: '60' });
+  });
+
   it('requires a recipe fork before calculating', () => {
     const result = solvePlan(dataset, index, input('ITEM_BasicCircuit', '10'));
     expect(result).toMatchObject({
@@ -113,7 +143,7 @@ describe('real game dataset', () => {
 
   it('computes power for both deep space observatory recipes', () => {
     const survey = solved(solvePlan(dataset, index, input('ITEM_StellarSurveyData', '5', {
-      inputItemIds: [...dataset.rawItemIds, 'ITEM_AdvancedCircuits'],
+      inputItemIds: [...defaultExternalInputItemIds(dataset), 'ITEM_AdvancedCircuits'],
     })));
     expect(survey.rows.find(row => row.recipeId === 'REC_ObservedStellarSurveyData')).toMatchObject({
       machines: { exact: '1/2', built: '1' },
@@ -122,7 +152,7 @@ describe('real game dataset', () => {
     expect(survey.summary.powerKW).toEqual({ exact: '48000', built: '96000' });
 
     const warpFuel = solved(solvePlan(dataset, index, input('ITEM_WarpFuel', '15', {
-      inputItemIds: [...dataset.rawItemIds, 'ITEM_StrangeMatterCrystal'],
+      inputItemIds: [...defaultExternalInputItemIds(dataset), 'ITEM_StrangeMatterCrystal'],
       recipeByItem: { ITEM_WarpFuel: 'REC_StrangeWarpFuel' },
     })));
     expect(warpFuel.rows.find(row => row.recipeId === 'REC_StrangeWarpFuel')).toMatchObject({
@@ -135,7 +165,7 @@ describe('real game dataset', () => {
   it('retains ExtraOutputs as a byproduct', () => {
     const result = solved(solvePlan(dataset, index, input('ITEM_AlphaProtein', '10', {
       inputItemIds: [
-        ...dataset.rawItemIds,
+        ...defaultExternalInputItemIds(dataset),
         'ITEM_Graphite',
         'ITEM_WaterIce',
         'ITEM_Xenobacteria',
@@ -147,7 +177,7 @@ describe('real game dataset', () => {
 
   it('can close the seed loop and leave only unused biomass', () => {
     const result = solved(solvePlan(dataset, index, input('ITEM_AlphaProtein', '10', {
-      inputItemIds: [...dataset.rawItemIds, 'ITEM_Graphite', 'ITEM_WaterIce', 'ITEM_Xenoeukarya'],
+      inputItemIds: [...defaultExternalInputItemIds(dataset), 'ITEM_Graphite', 'ITEM_WaterIce', 'ITEM_Xenoeukarya'],
     })));
     expect(result.rows.find(row => row.recipeId === 'REC_XenobacteriaRecycling')?.runsPerMin).toBe('10');
     expect(result.byproducts).toContainEqual({ itemId: 'ITEM_Biomass', ratePerMin: '10' });
@@ -156,7 +186,7 @@ describe('real game dataset', () => {
   it('uses the same fork logic for an explicit byproduct recycle request', () => {
     const pending = solvePlan(dataset, index, input('ITEM_AlphaProtein', '10', {
       inputItemIds: [
-        ...dataset.rawItemIds,
+        ...defaultExternalInputItemIds(dataset),
         'ITEM_Graphite',
         'ITEM_WaterIce',
         'ITEM_Xenobacteria',
@@ -170,7 +200,7 @@ describe('real game dataset', () => {
     });
     const result = solved(solvePlan(dataset, index, input('ITEM_AlphaProtein', '10', {
       inputItemIds: [
-        ...dataset.rawItemIds,
+        ...defaultExternalInputItemIds(dataset),
         'ITEM_Graphite',
         'ITEM_WaterIce',
         'ITEM_Xenobacteria',
@@ -184,7 +214,7 @@ describe('real game dataset', () => {
 
   it('rejects recycling more biomass than the closed network can supply', () => {
     const result = solvePlan(dataset, index, input('ITEM_AlphaProtein', '10', {
-      inputItemIds: [...dataset.rawItemIds, 'ITEM_Graphite', 'ITEM_WaterIce', 'ITEM_Xenoeukarya'],
+      inputItemIds: [...defaultExternalInputItemIds(dataset), 'ITEM_Graphite', 'ITEM_WaterIce', 'ITEM_Xenoeukarya'],
       recycleByItem: { ITEM_Biomass: 'REC_XenobacteriaRecycling' },
     }));
     expect(result).toMatchObject({ status: 'invalid' });

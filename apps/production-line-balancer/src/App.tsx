@@ -62,7 +62,7 @@ export default function App() {
       setStorageIssues([]);
     }
     savePlan({
-      schemaVersion: 1,
+      schemaVersion: 2,
       datasetBuildId: dataset.game.buildId,
       language,
       targetItemId,

@@ -18,6 +18,27 @@ Object.defineProperty(globalThis, 'localStorage', {
 describe('plan storage', () => {
   beforeEach(() => values.clear());
 
+  it('does not treat a zero-input native production source as a default external input', () => {
+    const result = loadPlan(dataset);
+    expect(result.plan.schemaVersion).toBe(2);
+    expect(result.plan.inputItemIds).toHaveLength(13);
+    expect(result.plan.inputItemIds).not.toContain('ITEM_Protomatter');
+    expect(dataset.rawItemIds).toHaveLength(14);
+  });
+
+  it('migrates the complete v1 default input set without removing additional supplies', () => {
+    values.set('main-sequence.planner.v1', JSON.stringify({
+      ...emptyStoredPlan,
+      schemaVersion: 1,
+      datasetBuildId: dataset.game.buildId,
+      inputItemIds: [...dataset.rawItemIds, 'ITEM_AdvancedCircuits'],
+    }));
+    const result = loadPlan(dataset);
+    expect(result.plan.schemaVersion).toBe(2);
+    expect(result.plan.inputItemIds).not.toContain('ITEM_Protomatter');
+    expect(result.plan.inputItemIds).toContain('ITEM_AdvancedCircuits');
+  });
+
   it('restores a plan from the same game Build', () => {
     const plan = {
       ...emptyStoredPlan,
