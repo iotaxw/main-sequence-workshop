@@ -42,13 +42,17 @@ jobs:
         working-directory: apps/mall-planner
         run: npm run build
       - name: Assemble workshop site
-        run: cp -R apps/mall-planner/dist apps/production-line-balancer/dist/mall-planner
+        run: |
+          mkdir -p dist
+          cp index.html dist/index.html
+          cp -R apps/production-line-balancer/dist dist/production-line-balancer
+          cp -R apps/mall-planner/dist dist/mall-planner
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/production-line-balancer/dist
+          path: dist
 
   deploy:
     environment:
