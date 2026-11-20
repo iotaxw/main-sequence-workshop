@@ -364,15 +364,15 @@
   };
   const selectItem = itemId => {
     if (!items.has(itemId)) return;
+    const scroll = $('#graph-scroll');
+    const scrollLeft = scroll.scrollLeft;
+    const scrollTop = scroll.scrollTop;
     selectedItemId = itemId;
     render();
-    const node = $('.graph-node.selected');
-    const scroll = $('#graph-scroll');
-    if (!node) return;
-    const nodeRect = node.getBoundingClientRect();
-    const scrollRect = scroll.getBoundingClientRect();
-    scroll.scrollLeft += nodeRect.left + nodeRect.width / 2 - scrollRect.left - scrollRect.width * 0.3;
-    scroll.scrollTop += nodeRect.top + nodeRect.height / 2 - scrollRect.top - scrollRect.height / 2;
+    requestAnimationFrame(() => {
+      scroll.scrollLeft = scrollLeft;
+      scroll.scrollTop = scrollTop;
+    });
   };
   const removeItem = itemId => {
     const dependents = state.includedItemIds.filter(id => model.selectedRecipe(state, id)?.inputs.some(input => input.itemId === itemId));
