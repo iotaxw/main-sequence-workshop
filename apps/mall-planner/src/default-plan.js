@@ -8,6 +8,7 @@ window.MALL_DEFAULTS = {
     'ITEM_TitaniumPlates', 'ITEM_DetectorArray', 'ITEM_IridiumPlates', 'ITEM_RelicShard', 'ITEM_ContainmentCoil',
     'ITEM_SuperalloyFrame', 'ITEM_RelicCapacitor', 'ITEM_ChromaticAlloy', 'ITEM_EnrichedFuel', 'ITEM_WarpFuel',
     'ITEM_Coolant', 'ITEM_RepairKit', 'ITEM_RepairKitHull', 'ITEM_RepairKitElectric', 'ITEM_Missile',
+    'ITEM_ChitinComposite', 'ITEM_Multisensor', 'ITEM_AdvancedPlates',
   ],
   manualOnlyItemIds: [
     'ITEM_BackpackMk1', 'ITEM_BackpackMk2', 'ITEM_BackpackMk3', 'ITEM_ExoskeletonMk1',
