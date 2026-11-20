@@ -232,7 +232,7 @@
       const x2 = to.x;
       const y2 = to.y + nodeHeight / 2;
       const bend = Math.max(35, Math.abs(x2 - x1) * 0.45);
-      const downstream = downstreamItems.has(edge.from) && downstreamItems.has(edge.to);
+      const downstream = edge.from === selectedItemId && directDownstream.has(edge.to);
       const color = downstream ? '#62c6e8' : edge.byproduct ? '#d1a65b' : '#466078';
       const marker = downstream ? 'downstream' : edge.byproduct ? 'byproduct' : 'normal';
       const gap = to.level - from.level - 1;
