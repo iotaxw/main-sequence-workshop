@@ -115,8 +115,34 @@
       ranks.set(component, result);
       return result;
     };
+    const componentDependents = components.map(() => new Set());
+    componentDependencies.forEach((deps, outputComponent) => {
+      for (const inputComponent of deps) componentDependents[inputComponent].add(outputComponent);
+    });
+    const componentLevels = components.map((_, index) => rank(index));
+    let improved = true;
+    while (improved) {
+      improved = false;
+      for (let component = 0; component < components.length; component++) {
+        const dependencies = [...componentDependencies[component]];
+        const dependents = [...componentDependents[component]];
+        const neighbors = [...dependencies, ...dependents].map(index => componentLevels[index]).sort((a, b) => a - b);
+        if (!neighbors.length) continue;
+        const lower = dependencies.length ? 1 + Math.max(...dependencies.map(index => componentLevels[index])) : 0;
+        const upper = dependents.length ? Math.min(...dependents.map(index => componentLevels[index])) - 1 : Infinity;
+        const middle = Math.floor(neighbors.length / 2);
+        const medianLow = neighbors[Math.floor((neighbors.length - 1) / 2)];
+        const medianHigh = neighbors[middle];
+        const closestMedian = Math.max(medianLow, Math.min(medianHigh, componentLevels[component]));
+        const next = Math.max(lower, Math.min(upper, closestMedian));
+        if (next !== componentLevels[component]) {
+          componentLevels[component] = next;
+          improved = true;
+        }
+      }
+    }
     const levels = {};
-    components.forEach((component, index) => component.forEach(itemId => { levels[itemId] = rank(index); }));
+    components.forEach((component, index) => component.forEach(itemId => { levels[itemId] = componentLevels[index]; }));
     return { levels, componentByItem };
   };
   const effectiveLevel = (state, topology, itemId) => state.manualLevels[itemId] ?? topology.levels[itemId] ?? 0;

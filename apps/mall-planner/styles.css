@@ -60,8 +60,15 @@ select, input[type="number"] { border: 1px solid var(--line); border-radius: 5px
 .toolbar-spacer { flex: 1; }
 .graph-scroll { position: relative; flex: 1; min-height: 450px; overflow: auto; background-color: #0c131b; background-image: radial-gradient(#233243 1px, transparent 1px); background-size: 22px 22px; }
 #dependency-graph { display: block; transform-origin: top left; }
-.graph-node { cursor: pointer; }
+.graph-edge { opacity: .32; transition: opacity .15s; }
+.graph-edge.downstream { opacity: 1; filter: drop-shadow(0 0 2px #62c6e855); }
+.graph-edge-label { fill: #71899f; font-size: 9px; pointer-events: none; }
+.graph-edge-label.downstream { fill: #a4e9ff; }
+.graph-node { cursor: pointer; transition: opacity .15s; }
+.graph-node.context { opacity: .48; }
+.graph-node:hover, .graph-node.downstream, .graph-node.selected { opacity: 1; }
 .graph-node:hover rect:first-child { stroke: var(--accent); }
+.graph-node.downstream rect:first-child { stroke: #469bb5; stroke-width: 1.5; }
 .graph-node.selected rect:first-child { stroke: #d7f3ff; stroke-width: 2; filter: drop-shadow(0 0 5px #4bbbd466); }
 .legend { display: flex; flex-wrap: wrap; gap: 15px; padding: 8px 12px; color: var(--muted); font-size: 10px; border-top: 1px solid var(--line); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }

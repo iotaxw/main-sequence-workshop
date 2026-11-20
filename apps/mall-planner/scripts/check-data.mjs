@@ -38,6 +38,22 @@ assert(window.MALL_DEFAULTS.manualOnlyItemIds.every(itemId => state.includedItem
 assert(state.externalItemIds.length === 3, `Expected 3 external inputs, got ${state.externalItemIds.length}.`);
 assert(state.includedItemIds.length === 69, `Expected 69 planned items, got ${state.includedItemIds.length}.`);
 assert(Math.max(...Object.values(topology.levels)) === 12, 'Expected the default network to reach L12.');
+assert(topology.levels.ITEM_Lonsdaleite === 7, `Expected compact Lonsdaleite placement at L7, got L${topology.levels.ITEM_Lonsdaleite}.`);
+let emptyLayers = 0;
+const countedEdges = new Set();
+for (const outputId of state.includedItemIds) {
+  const recipe = model.selectedRecipe(state, outputId);
+  if (!recipe) continue;
+  for (const output of recipe.outputs.filter(flow => state.includedItemIds.includes(flow.itemId))) {
+    for (const input of recipe.inputs.filter(flow => state.includedItemIds.includes(flow.itemId))) {
+      const edge = `${input.itemId}->${output.itemId}`;
+      if (countedEdges.has(edge)) continue;
+      countedEdges.add(edge);
+      emptyLayers += Math.max(0, topology.levels[output.itemId] - topology.levels[input.itemId] - 1);
+    }
+  }
+}
+assert(emptyLayers === 71, `Expected 71 empty layers in the full graph after compaction, got ${emptyLayers}.`);
 assert(issues.length === 0, `Default plan has issues: ${JSON.stringify(issues)}`);
 const migrated = model.validateImported({ ...state, version: 1, targetItemIds: [...state.targetItemIds, ...window.MALL_DEFAULTS.manualOnlyItemIds] });
 assert(migrated.version === 2 && migrated.targetItemIds.length === 33 && migrated.migrationNote, 'V1 target migration failed.');

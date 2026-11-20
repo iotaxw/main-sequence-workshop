@@ -14,7 +14,7 @@
     </div>
     <div class="header-actions">
       <span id="build-badge" class="badge"></span>
-      <button id="auto-levels" class="secondary">全部自动分层</button>
+      <button id="auto-levels" class="secondary">紧凑自动分层</button>
       <button id="collaboration-summary" class="secondary">协作摘要</button>
       <button id="export-plan" class="secondary">导出方案</button>
       <button id="import-plan" class="secondary">导入方案</button>
@@ -48,6 +48,7 @@
             <option value="downstream">选中物品下游</option>
             <option value="related">选中物品相关链</option>
           </select></label>
+          <span id="graph-metrics" class="badge" title="当前筛选下的跨层连接与缓存层"></span>
           <div class="toolbar-spacer"></div>
           <button id="zoom-out" class="icon-button" title="缩小">−</button>
           <button id="zoom-fit" class="secondary">适配</button>
@@ -62,7 +63,7 @@
           <span><i class="legend-node target"></i>常备目标</span>
           <span><i class="legend-node isolated"></i>隔离分区</span>
           <span><i class="legend-line byproduct"></i>副产连接</span>
-          <span>点击物品查看原生配方</span>
+          <span>点击物品高亮完整下游链并查看配方</span>
         </div>
       </section>
 

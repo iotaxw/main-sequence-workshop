@@ -204,6 +204,18 @@
       }
     }
     const issueItems = new Set(issues.map(issue => issue.itemId));
+    const downstreamItems = model.relatedItems(state, selectedItemId, 'downstream');
+    let skippingEdges = 0;
+    let emptyLayers = 0;
+    for (const edge of edges.values()) {
+      const gap = positions.get(edge.to).level - positions.get(edge.from).level - 1;
+      if (gap > 0) {
+        skippingEdges++;
+        emptyLayers += gap;
+      }
+    }
+    $('#graph-metrics').textContent = `${skippingEdges} 条跨层 · ${emptyLayers} 个缓存层`;
+    $('#graph-metrics').title = '跨层连接表示上下游不相邻；缓存层是各连接空跨层数之和，用于比较紧凑程度。';
     const levelLabels = [...levels.entries()].sort((a, b) => a[0] - b[0]).map(([level, entries]) => {
       const x = 25 + level * columnWidth;
       return `<text x="${x}" y="27" fill="#71899f" font-size="12">L${level} · ${entries.length} 种物品</text>`;
@@ -216,8 +228,16 @@
       const x2 = to.x;
       const y2 = to.y + nodeHeight / 2;
       const bend = Math.max(35, Math.abs(x2 - x1) * 0.45);
-      const color = edge.byproduct ? '#d1a65b' : '#466078';
-      return `<path d="M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}" fill="none" stroke="${color}" stroke-width="1.4" ${edge.byproduct ? 'stroke-dasharray="5 4"' : ''} marker-end="url(#arrow-${edge.byproduct ? 'byproduct' : 'normal'})"/>`;
+      const downstream = downstreamItems.has(edge.from) && downstreamItems.has(edge.to);
+      const color = downstream ? '#62c6e8' : edge.byproduct ? '#d1a65b' : '#466078';
+      const marker = downstream ? 'downstream' : edge.byproduct ? 'byproduct' : 'normal';
+      const gap = to.level - from.level - 1;
+      const label = gap > 0 ? `<text class="graph-edge-label ${downstream ? 'downstream' : ''}" x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 5}" text-anchor="middle">跨 ${gap} 层</text>` : '';
+      return `<g class="graph-edge ${downstream ? 'downstream' : ''}">
+        <title>${escapeHtml(nameOf(edge.from))} → ${escapeHtml(nameOf(edge.to))}${gap > 0 ? ` · 空跨 ${gap} 层` : ''}</title>
+        <path d="M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}" fill="none" stroke="${color}" stroke-width="${downstream ? 2.6 : 1.4}" ${edge.byproduct ? 'stroke-dasharray="5 4"' : ''} marker-end="url(#arrow-${marker})"/>
+        ${label}
+      </g>`;
     }).join('');
     const nodeSvg = visible.map(itemId => {
       const position = positions.get(itemId);
@@ -227,7 +247,8 @@
       const fill = external ? '#173b35' : target ? '#3a301d' : zone?.isolated ? '#2b2140' : '#172635';
       const stroke = issueItems.has(itemId) ? '#f18383' : zone?.isolated ? '#896bb5' : '#385066';
       const subtitle = external ? '外部输入' : target ? '常备目标' : zone?.isolated ? zone.name : `L${position.level}`;
-      return `<g class="graph-node ${selectedItemId === itemId ? 'selected' : ''}" data-select-item="${itemId}" data-node-id="${itemId}" tabindex="0" transform="translate(${position.x},${position.y})">
+      const relation = selectedItemId === itemId ? 'selected' : downstreamItems.has(itemId) ? 'downstream' : 'context';
+      return `<g class="graph-node ${relation}" data-select-item="${itemId}" data-node-id="${itemId}" tabindex="0" transform="translate(${position.x},${position.y})">
         <rect width="${nodeWidth}" height="${nodeHeight}" rx="7" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/>
         <image href="${iconOf(itemId)}" x="10" y="13" width="32" height="32"/>
         <text x="49" y="24" fill="#edf3f7" font-size="12">${escapeHtml(shortName(nameOf(itemId)))}</text>
@@ -242,6 +263,7 @@
     svg.innerHTML = `<defs>
       <marker id="arrow-normal" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#466078"/></marker>
       <marker id="arrow-byproduct" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d1a65b"/></marker>
+      <marker id="arrow-downstream" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#62c6e8"/></marker>
     </defs>${levelLabels}${edgeSvg}${nodeSvg}`;
     $('#graph-empty').hidden = visible.length > 0;
   };
@@ -340,6 +362,13 @@
     if (!items.has(itemId)) return;
     selectedItemId = itemId;
     render();
+    const node = $('.graph-node.selected');
+    const scroll = $('#graph-scroll');
+    if (!node) return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollRect = scroll.getBoundingClientRect();
+    scroll.scrollLeft += nodeRect.left + nodeRect.width / 2 - scrollRect.left - scrollRect.width * 0.3;
+    scroll.scrollTop += nodeRect.top + nodeRect.height / 2 - scrollRect.top - scrollRect.height / 2;
   };
   const removeItem = itemId => {
     const dependents = state.includedItemIds.filter(id => model.selectedRecipe(state, id)?.inputs.some(input => input.itemId === itemId));
