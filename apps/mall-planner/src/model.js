@@ -40,9 +40,8 @@
       visiting.delete(itemId);
     };
     defaults.targetItemIds.forEach(add);
-    defaults.manualOnlyItemIds.forEach(add);
     return {
-      version: 2,
+      version: 3,
       buildId: data.game.buildId,
       includedItemIds: [...included].sort(nativeOrder),
       targetItemIds: [...defaults.targetItemIds].sort(nativeOrder),
@@ -225,16 +224,30 @@
   };
   const validateImported = original => {
     let candidate = original;
-    let migrationNote = '';
+    const migrationNotes = [];
     if (candidate?.version === 1 && candidate.buildId === data.game.buildId) {
       candidate = {
         ...candidate,
         version: 2,
         targetItemIds: candidate.targetItemIds?.filter(itemId => !defaults.manualOnlyItemIds.includes(itemId)),
       };
-      migrationNote = '军械库产物已按新规划口径移出常备区，物品与配方链保持不变';
+      migrationNotes.push('version 1 军械库常备目标已移除');
     }
-    if (!candidate || candidate.version !== 2 || candidate.buildId !== data.game.buildId) throw new Error(`方案版本或 Build 不匹配，需要 version 1 或 2、Build ${data.game.buildId}。`);
+    if (candidate?.version === 2 && candidate.buildId === data.game.buildId) {
+      const manualOnly = new Set(defaults.manualOnlyItemIds);
+      candidate = {
+        ...candidate,
+        version: 3,
+        includedItemIds: candidate.includedItemIds?.filter(itemId => !manualOnly.has(itemId)),
+        targetItemIds: candidate.targetItemIds?.filter(itemId => !manualOnly.has(itemId)),
+        externalItemIds: candidate.externalItemIds?.filter(itemId => !manualOnly.has(itemId)),
+        recipeByItem: Object.fromEntries(Object.entries(candidate.recipeByItem ?? {}).filter(([itemId]) => !manualOnly.has(itemId))),
+        manualLevels: Object.fromEntries(Object.entries(candidate.manualLevels ?? {}).filter(([itemId]) => !manualOnly.has(itemId))),
+        zoneByItem: Object.fromEntries(Object.entries(candidate.zoneByItem ?? {}).filter(([itemId]) => !manualOnly.has(itemId))),
+      };
+      migrationNotes.push('军械库产物已移出默认总线设计，详情仍保留用途与手动加入入口');
+    }
+    if (!candidate || candidate.version !== 3 || candidate.buildId !== data.game.buildId) throw new Error(`方案版本或 Build 不匹配，需要 version 1 或 2、Build ${data.game.buildId}。`);
     for (const key of ['includedItemIds', 'targetItemIds', 'externalItemIds']) {
       if (!Array.isArray(candidate[key])) throw new Error(`方案缺少 ${key}。`);
       for (const itemId of candidate[key]) {
@@ -260,7 +273,7 @@
       if (!included.has(itemId) || !zoneIds.has(zoneId)) throw new Error(`非法分区归属 ${itemId} -> ${zoneId}。`);
     }
     const state = {
-      version: 2,
+      version: 3,
       buildId: candidate.buildId,
       includedItemIds: [...included].sort(nativeOrder),
       targetItemIds: [...new Set(candidate.targetItemIds)].sort(nativeOrder),
@@ -270,7 +283,7 @@
       zones: candidate.zones.map(zone => ({ id: zone.id, name: zone.name.trim(), isolated: zone.isolated })),
       zoneByItem: { ...candidate.zoneByItem },
     };
-    Object.defineProperty(state, 'migrationNote', { value: migrationNote, enumerable: false });
+    Object.defineProperty(state, 'migrationNote', { value: migrationNotes.join('；'), enumerable: false });
     return state;
   };
   window.MallModel = {

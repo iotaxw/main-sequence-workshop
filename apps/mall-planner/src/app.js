@@ -76,11 +76,12 @@
     const groups = usageGroups(itemId);
     return `<section class="detail-section usage-section">
       <div class="section-title"><h3>${isTarget ? '常备用途' : '手动合成与用途'}</h3></div>
-      ${manualOnlyItems.has(itemId) ? '<div class="manual-note">军械库产物按手动合成处理，不进入默认常备区，原生依赖链仍保留。</div>' : ''}
+      ${manualOnlyItems.has(itemId) ? '<div class="manual-note">军械库产物不可量产，默认不进入总线设计；点击“加入物品并补齐上游”后才进入方案。</div>' : ''}
       ${groups.length ? groups.map(group => `<div class="usage-group"><strong>${group.label} · ${group.entries.length} 处</strong><div>${group.entries.slice(0, 8).map(entry => `<span class="usage-entry" ${entry.itemId ? `data-select-item="${entry.itemId}" tabindex="0"` : ''}>${escapeHtml(entry.text)}</span>`).join('')}${group.entries.length > 8 ? `<span class="usage-entry">等 ${group.entries.length} 处</span>` : ''}</div></div>`).join('') : '<p>没有配方或建筑直接消耗，按终端物品处理。</p>'}
     </section>`;
   };
   const buildCollaborationSummary = () => {
+    const includedManualItems = [...manualOnlyItems].filter(itemId => state.includedItemIds.includes(itemId));
     const lines = [
       '# Main Sequence 总线超市协作摘要', '',
       `Build：${data.game.buildId}；方案版本：${state.version}`,
@@ -98,8 +99,10 @@
         const groups = usageGroups(itemId).map(group => `${group.label}[${group.entries.map(entry => entry.text).join('、')}]`).join('；');
         return `- ${nameOf(itemId)}｜L${model.effectiveLevel(state, topology, itemId)}｜${groups || '终端领取或消耗'}`;
       }), '',
-      '## 军械库手动合成（非常备）',
-      ...[...manualOnlyItems].filter(itemId => state.includedItemIds.includes(itemId)).map(itemId => `- ${nameOf(itemId)}｜L${model.effectiveLevel(state, topology, itemId)}｜${usageShort(itemId)}`), '',
+      '## 军械库手动合成（默认排除）',
+      ...(includedManualItems.length
+        ? includedManualItems.map(itemId => `- ${nameOf(itemId)}｜L${model.effectiveLevel(state, topology, itemId)}｜${usageShort(itemId)}`)
+        : ['- 默认不进入总线设计，仅在详情中展示用途；显式加入后才参与层级与依赖图。']), '',
       '## 手动层级覆盖',
       ...(Object.keys(state.manualLevels).length ? Object.entries(state.manualLevels).map(([itemId, level]) => `- ${nameOf(itemId)}：L${level}（自动 L${topology.levels[itemId] ?? 0}）`) : ['- 无']), '',
       '## 采用配方分支',
@@ -204,7 +207,8 @@
       }
     }
     const issueItems = new Set(issues.map(issue => issue.itemId));
-    const downstreamItems = model.relatedItems(state, selectedItemId, 'downstream');
+    const directDownstream = new Set(state.includedItemIds.filter(itemId => itemId !== selectedItemId && model.selectedRecipe(state, itemId)?.inputs.some(input => input.itemId === selectedItemId)));
+    const downstreamItems = new Set([selectedItemId, ...directDownstream]);
     let skippingEdges = 0;
     let emptyLayers = 0;
     for (const edge of edges.values()) {

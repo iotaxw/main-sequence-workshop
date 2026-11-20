@@ -32,12 +32,12 @@ for (const entry of [...data.items, ...data.machines]) {
 const state = model.createDefaultState();
 const topology = model.computeLevels(state);
 const issues = model.getIssues(state, topology);
-assert(state.version === 2, 'Expected plan schema v2.');
+assert(state.version === 3, 'Expected plan schema v3.');
 assert(state.targetItemIds.length === 33, `Expected 33 targets, got ${state.targetItemIds.length}.`);
-assert(window.MALL_DEFAULTS.manualOnlyItemIds.every(itemId => state.includedItemIds.includes(itemId) && !state.targetItemIds.includes(itemId)), 'Armoury items must remain planned but not stocked.');
+assert(window.MALL_DEFAULTS.manualOnlyItemIds.every(itemId => !state.includedItemIds.includes(itemId) && !state.targetItemIds.includes(itemId)), 'Armoury items must stay outside the default plan.');
 assert(state.externalItemIds.length === 3, `Expected 3 external inputs, got ${state.externalItemIds.length}.`);
-assert(state.includedItemIds.length === 69, `Expected 69 planned items, got ${state.includedItemIds.length}.`);
-assert(Math.max(...Object.values(topology.levels)) === 12, 'Expected the default network to reach L12.');
+assert(state.includedItemIds.length === 59, `Expected 59 planned items, got ${state.includedItemIds.length}.`);
+assert(Math.max(...Object.values(topology.levels)) === 9, 'Expected the default network to reach L9.');
 assert(topology.levels.ITEM_Lonsdaleite === 7, `Expected compact Lonsdaleite placement at L7, got L${topology.levels.ITEM_Lonsdaleite}.`);
 let emptyLayers = 0;
 const countedEdges = new Set();
@@ -53,8 +53,15 @@ for (const outputId of state.includedItemIds) {
     }
   }
 }
-assert(emptyLayers === 71, `Expected 71 empty layers in the full graph after compaction, got ${emptyLayers}.`);
+assert(emptyLayers === 28, `Expected 28 empty layers in the full graph after armoury exclusion and compaction, got ${emptyLayers}.`);
 assert(issues.length === 0, `Default plan has issues: ${JSON.stringify(issues)}`);
 const migrated = model.validateImported({ ...state, version: 1, targetItemIds: [...state.targetItemIds, ...window.MALL_DEFAULTS.manualOnlyItemIds] });
-assert(migrated.version === 2 && migrated.targetItemIds.length === 33 && migrated.migrationNote, 'V1 target migration failed.');
-console.log(`Checked Build ${data.game.buildId}: ${state.includedItemIds.length} planned items, ${state.targetItemIds.length} targets, L0-L12, ${data.recipes.length} recipes, ${construction.entries.length} construction entries, no default issues.`);
+assert(migrated.version === 3 && migrated.targetItemIds.length === 33 && migrated.includedItemIds.length === 59 && migrated.migrationNote, 'V1 armoury migration failed.');
+const migratedV2 = model.validateImported({
+  ...state,
+  version: 2,
+  includedItemIds: [...state.includedItemIds, ...window.MALL_DEFAULTS.manualOnlyItemIds],
+  targetItemIds: [...state.targetItemIds, ...window.MALL_DEFAULTS.manualOnlyItemIds],
+});
+assert(migratedV2.version === 3 && migratedV2.includedItemIds.length === 59 && migratedV2.targetItemIds.length === 33, 'V2 armoury plan migration failed.');
+console.log(`Checked Build ${data.game.buildId}: ${state.includedItemIds.length} planned items, ${state.targetItemIds.length} targets, L0-L9, ${data.recipes.length} recipes, ${construction.entries.length} construction entries, no default issues.`);
