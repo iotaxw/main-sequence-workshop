@@ -25,7 +25,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: apps/production-line-balancer/package-lock.json
+          cache-dependency-path: |
+            apps/production-line-balancer/package-lock.json
+            apps/station-blueprint-designer/package-lock.json
       - name: Install balancer dependencies
         working-directory: apps/production-line-balancer
         run: npm ci
@@ -41,12 +43,22 @@ jobs:
       - name: Build mall planner
         working-directory: apps/mall-planner
         run: npm run build
+      - name: Install station blueprint designer dependencies
+        working-directory: apps/station-blueprint-designer
+        run: npm ci
+      - name: Test station blueprint designer
+        working-directory: apps/station-blueprint-designer
+        run: npm test
+      - name: Build station blueprint designer
+        working-directory: apps/station-blueprint-designer
+        run: npm run build
       - name: Assemble workshop site
         run: |
           mkdir -p dist
           cp index.html dist/index.html
           cp -R apps/production-line-balancer/dist dist/production-line-balancer
           cp -R apps/mall-planner/dist dist/mall-planner
+          cp -R apps/station-blueprint-designer/dist dist/station-blueprint-designer
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact

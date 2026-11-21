@@ -12,6 +12,7 @@ game and asset usage terms.
 
 Native PNG icons under apps/production-line-balancer/public/icons and
 apps/mall-planner/icons are included as game-derived assets. Recipe, item,
-machine, and construction data in both web applications is likewise excluded
-from the MIT License. These materials must not be redistributed as if they were
-original project artwork or data.
+machine, station module, and construction data across all web applications
+(including apps/station-blueprint-designer/src/data/catalog-26639889.json) is
+likewise excluded from the MIT License. These materials must not be
+redistributed as if they were original project artwork or data.

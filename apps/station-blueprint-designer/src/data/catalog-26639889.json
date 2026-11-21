@@ -1,0 +1,5453 @@
+{
+  "catalogVersion": 1,
+  "game": {
+    "id": "Main Sequence",
+    "buildId": "26639889",
+    "engineVersion": "5.7",
+    "extractedAt": "2026-11-21",
+    "source": "Read-only CUE4Parse extraction from local Build 26639889 Paks + binary verification of 2x2 B balcony & 7x7 bounds"
+  },
+  "stationModules": [
+    {
+      "id": "BPO_Station_01",
+      "nameEn": "Station 1×1",
+      "nameZh": "空间站1×1",
+      "descriptionZh": "大型模块，含有工厂楼层，用于建造机器。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": 0,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": 0,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "rect",
+          "minX": -7,
+          "maxX": 7,
+          "minY": -7,
+          "maxY": 7,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "W",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "S",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "N",
+              "start": -3,
+              "end": 3
+            }
+          ]
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Station_01"
+    },
+    {
+      "id": "BPO_Station_2x1",
+      "nameEn": "Station 2×1",
+      "nameZh": "空间站2×1",
+      "descriptionZh": "大型模块，含有工厂楼层，用于建造机器。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        2,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -15.99,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 15.99,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": 4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "rect",
+          "minX": -15,
+          "maxX": 15,
+          "minY": -7,
+          "maxY": 7,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "W",
+              "start": -3,
+              "end": 3
+            }
+          ]
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Station_2x1"
+    },
+    {
+      "id": "BPO_Station_02A",
+      "nameEn": "Station 2×2 A",
+      "nameZh": "空间站2×2 A",
+      "descriptionZh": "大型模块，含有工厂楼层，用于建造机器。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        2,
+        2,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -16,
+        "minY": -16,
+        "minZ": 0,
+        "maxX": 16,
+        "maxY": 16,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": 4,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": 4,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "rect",
+          "minX": -15,
+          "maxX": 15,
+          "minY": -15,
+          "maxY": 15,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "E",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "W",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "W",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "S",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "S",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "N",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "N",
+              "start": 5,
+              "end": 11
+            }
+          ]
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Station_02A"
+    },
+    {
+      "id": "BPO_Station_02",
+      "nameEn": "Station 2×2 B",
+      "nameZh": "空间站2×2 B",
+      "descriptionZh": "大型模块，含有工厂楼层，用于建造机器。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        2,
+        2,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -16,
+        "minY": -16,
+        "minZ": 0,
+        "maxX": 16,
+        "maxY": 16,
+        "maxZ": 16
+      },
+      "heightSpanM": 16,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": 4,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": 4,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "Large",
+          "gx": 4,
+          "gy": 2,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": 4,
+          "gy": -2,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": 2,
+          "floorOffset": 1,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": -2,
+          "floorOffset": 1,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": 4,
+          "floorOffset": 1,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 4,
+          "floorOffset": 1,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": -4,
+          "floorOffset": 1,
+          "rotation": 3
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": -4,
+          "floorOffset": 1,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "rect",
+          "minX": -15,
+          "maxX": 15,
+          "minY": -15,
+          "maxY": 15,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "E",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "W",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "W",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "S",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "S",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "N",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "N",
+              "start": 5,
+              "end": 11
+            }
+          ]
+        },
+        {
+          "floorOffset": 1,
+          "shape": "ring",
+          "minX": -15,
+          "maxX": 15,
+          "minY": -15,
+          "maxY": 15,
+          "holeMinX": -12,
+          "holeMaxX": 12,
+          "holeMinY": -12,
+          "holeMaxY": 12,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "E",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "W",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "W",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "S",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "S",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "N",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "N",
+              "start": 5,
+              "end": 11
+            }
+          ],
+          "note": "二层回字形挑台（宽3格，中央24×24挑空中空，二进制核验可建）"
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Station_02"
+    },
+    {
+      "id": "BPO_StationAdapter_01",
+      "nameEn": "Station Adapter",
+      "nameZh": "空间站适配器",
+      "descriptionZh": "同时具备中型和大型连接端口的空间站模块。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        2,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -15.99,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 15.99,
+        "maxZ": 7.99
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "XLarge",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": 0,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": 0,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "rect",
+          "minX": -7,
+          "maxX": 7,
+          "minY": -15,
+          "maxY": 15,
+          "doorways": [
+            {
+              "side": "W",
+              "start": -11,
+              "end": 11
+            },
+            {
+              "side": "E",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "E",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "S",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "N",
+              "start": -3,
+              "end": 3
+            }
+          ]
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationAdapter_01"
+    },
+    {
+      "id": "BPO_Station_03",
+      "nameEn": "Station 2×2 C",
+      "nameZh": "空间站2×2 C",
+      "descriptionZh": "大型模块，含有工厂楼层，用于建造机器。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        2,
+        2,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -16,
+        "minY": -16,
+        "minZ": 0,
+        "maxX": 16,
+        "maxY": 16,
+        "maxZ": 15.99
+      },
+      "heightSpanM": 16,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "XLarge",
+          "gx": 4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "XLarge",
+          "gx": 0,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "XLarge",
+          "gx": 0,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "XLarge",
+          "gx": -4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "rect",
+          "minX": -15,
+          "maxX": 15,
+          "minY": -15,
+          "maxY": 15,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -11,
+              "end": 11
+            },
+            {
+              "side": "W",
+              "start": -11,
+              "end": 11
+            },
+            {
+              "side": "S",
+              "start": -11,
+              "end": 11
+            },
+            {
+              "side": "N",
+              "start": -11,
+              "end": 11
+            }
+          ]
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Station_03"
+    },
+    {
+      "id": "BPO_StationCorner_01",
+      "nameEn": "Corner 1×1",
+      "nameZh": "角落1×1",
+      "descriptionZh": "带大型窗户的装饰性空间站构件。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": 0,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 1
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "corner-ws",
+          "minX": -7,
+          "maxX": 7,
+          "minY": -7,
+          "maxY": 7,
+          "doorways": [
+            {
+              "side": "W",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "S",
+              "start": -3,
+              "end": 3
+            }
+          ]
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationCorner_01"
+    },
+    {
+      "id": "BPO_StationCorridor_01",
+      "nameEn": "Corridor 1×1",
+      "nameZh": "走廊1×1",
+      "descriptionZh": "玻璃通道。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "rect",
+          "minX": -8,
+          "maxX": 8,
+          "minY": -3,
+          "maxY": 3,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "W",
+              "start": -3,
+              "end": 3
+            }
+          ]
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationCorridor_01"
+    },
+    {
+      "id": "BPO_StationCorridor_02",
+      "nameEn": "Corridor 2×2",
+      "nameZh": "走廊2×2",
+      "descriptionZh": "两侧带大型窗户的工厂模块。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        2,
+        2,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -15.99,
+        "minY": -15.99,
+        "minZ": 0,
+        "maxX": 15.99,
+        "maxY": 15.99,
+        "maxZ": 15.99
+      },
+      "heightSpanM": 16,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "XLarge",
+          "gx": 4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "XLarge",
+          "gx": -4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "rect",
+          "minX": -16,
+          "maxX": 16,
+          "minY": -13,
+          "maxY": 13,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -11,
+              "end": 11
+            },
+            {
+              "side": "W",
+              "start": -11,
+              "end": 11
+            }
+          ]
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationCorridor_02"
+    },
+    {
+      "id": "BPO_ElevatorBlock_03",
+      "nameEn": "Elevator 1×1",
+      "nameZh": "电梯1×1",
+      "descriptionZh": "用于人员和物品的可堆叠电梯。",
+      "categoryEn": "Vertical",
+      "categoryZh": "垂直",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": 0,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": 0,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "Vertical1x1",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Vertical1x1",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "ring",
+          "minX": -6,
+          "maxX": 6,
+          "minY": -6,
+          "maxY": 6,
+          "holeMinX": -2,
+          "holeMaxX": 2,
+          "holeMinY": -2,
+          "holeMaxY": 2,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "W",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "S",
+              "start": -3,
+              "end": 3
+            },
+            {
+              "side": "N",
+              "start": -3,
+              "end": 3
+            }
+          ],
+          "elevatorPorts": [
+            {
+              "x": 3,
+              "y": 6
+            },
+            {
+              "x": 3,
+              "y": -7
+            },
+            {
+              "x": -4,
+              "y": 6
+            },
+            {
+              "x": -4,
+              "y": -7
+            },
+            {
+              "x": 6,
+              "y": 3
+            },
+            {
+              "x": 6,
+              "y": -4
+            },
+            {
+              "x": -7,
+              "y": 3
+            },
+            {
+              "x": -7,
+              "y": -4
+            }
+          ],
+          "note": "内置1×1垂直电梯井与8个跨层传送带接口"
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ElevatorBlock_03"
+    },
+    {
+      "id": "BPO_ElevatorBlock_02A",
+      "nameEn": "Elevator 2×2",
+      "nameZh": "电梯2×2",
+      "descriptionZh": "",
+      "categoryEn": "Vertical",
+      "categoryZh": "垂直",
+      "sizeUnits": [
+        2,
+        2,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -16,
+        "minY": -16,
+        "minZ": 0,
+        "maxX": 16,
+        "maxY": 16,
+        "maxZ": 15.99
+      },
+      "heightSpanM": 16,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "XLarge",
+          "gx": 4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "XLarge",
+          "gx": 0,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "XLarge",
+          "gx": 0,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "XLarge",
+          "gx": -4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Vertical2x2",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 2,
+          "rotation": 0
+        },
+        {
+          "type": "Vertical2x2",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "ring",
+          "minX": -15,
+          "maxX": 15,
+          "minY": -15,
+          "maxY": 15,
+          "holeMinX": -9,
+          "holeMaxX": 9,
+          "holeMinY": -9,
+          "holeMaxY": 9,
+          "doorways": [
+            {
+              "side": "E",
+              "start": -11,
+              "end": 11
+            },
+            {
+              "side": "W",
+              "start": -11,
+              "end": 11
+            },
+            {
+              "side": "S",
+              "start": -11,
+              "end": 11
+            },
+            {
+              "side": "N",
+              "start": -11,
+              "end": 11
+            }
+          ],
+          "note": "内置2×2垂直电梯井与24个跨层传送带接口（占2层高）"
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ElevatorBlock_02A"
+    },
+    {
+      "id": "BPO_StationTurretBlock_01",
+      "nameEn": "Plasma Turret",
+      "nameZh": "等离子炮塔",
+      "descriptionZh": "基础武器，可旋转并自动锁定目标。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": -8,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 16,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationTurretBlock_01"
+    },
+    {
+      "id": "BPO_StationArmour_01",
+      "nameEn": "Station Armour",
+      "nameZh": "空间站装甲",
+      "descriptionZh": "用于保护空间站模块的大型装甲部件。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 4
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationArmour_01"
+    },
+    {
+      "id": "BPO_Dock",
+      "nameEn": "Dock",
+      "nameZh": "对接口",
+      "descriptionZh": "允许飞船与空间站对接。可自动装卸物品。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Dock"
+    },
+    {
+      "id": "BPO_Dock_2",
+      "nameEn": "Industrial Dock",
+      "nameZh": "工业对接口",
+      "descriptionZh": "允许飞船与空间站对接。可自动装卸物品。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        3,
+        2,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -16,
+        "minY": -16,
+        "minZ": 0,
+        "maxX": 31.99,
+        "maxY": 16,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": true,
+      "floors": [
+        {
+          "floorOffset": 0,
+          "shape": "rect",
+          "minX": -15,
+          "maxX": 7,
+          "minY": -15,
+          "maxY": 15,
+          "doorways": [
+            {
+              "side": "W",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "W",
+              "start": 5,
+              "end": 11
+            },
+            {
+              "side": "S",
+              "start": -11,
+              "end": -5
+            },
+            {
+              "side": "N",
+              "start": -11,
+              "end": -5
+            }
+          ]
+        }
+      ],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Dock_2"
+    },
+    {
+      "id": "BPO_CommandModule",
+      "nameEn": "Command Module",
+      "nameZh": "指挥模块",
+      "descriptionZh": "空间站的中央指挥位置。可用于建造新的空间站模块。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 4
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_CommandModule"
+    },
+    {
+      "id": "BPO_ScannerModule",
+      "nameEn": "Scanner Module",
+      "nameZh": "扫描器模块",
+      "descriptionZh": "可用于收集遥远太空区域的相关信息，并发现隐藏探索点。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 4
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ScannerModule"
+    },
+    {
+      "id": "BPO_MiningDroneBayBlock",
+      "nameEn": "Mining Drone Bay Mk. 1",
+      "nameZh": "采矿无人机舱1型",
+      "descriptionZh": "可部署采矿无人机以自动收集资源。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_MiningDroneBayBlock"
+    },
+    {
+      "id": "BPO_MiningDroneBayBlock_2",
+      "nameEn": "Mining Drone Bay Mk. 2",
+      "nameZh": "采矿无人机舱2型",
+      "descriptionZh": "改进型无人机舱，可覆盖更大的范围，拥有更快速的无人机。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_MiningDroneBayBlock_2"
+    },
+    {
+      "id": "BPO_SolarPanelBlock",
+      "nameEn": "Solar Panels Mk. 1",
+      "nameZh": "太阳能板1型",
+      "descriptionZh": "一组太阳能板，可持续产生电力。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_SolarPanelBlock"
+    },
+    {
+      "id": "BPO_SolarPanelBlock_02",
+      "nameEn": "Solar Panels Mk. 2",
+      "nameZh": "太阳能板2型",
+      "descriptionZh": "一组太阳能板，可持续产生电力。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": -15,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 15
+      },
+      "heightSpanM": 30,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": 2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_SolarPanelBlock_02"
+    },
+    {
+      "id": "BPO_SolarPanelBlock_03",
+      "nameEn": "Solar Panels Mk. 3",
+      "nameZh": "太阳能板3型",
+      "descriptionZh": "一组太阳能板，可持续产生电力。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        2,
+        1,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -15.99,
+        "minY": -8,
+        "minZ": -19,
+        "maxX": 15.99,
+        "maxY": 8,
+        "maxZ": 19
+      },
+      "heightSpanM": 38,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": 4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "Large",
+          "gx": -4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_SolarPanelBlock_03"
+    },
+    {
+      "id": "BPO_DeepSpaceObservatory",
+      "nameEn": "Deep Space Observatory",
+      "nameZh": "深空天文台",
+      "descriptionZh": "高级扫描阵列，可用于收集来自恒星和行星的数据。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        2,
+        2,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -16,
+        "minY": -16,
+        "minZ": 0,
+        "maxX": 16,
+        "maxY": 16,
+        "maxZ": 16
+      },
+      "heightSpanM": 16,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "XLarge",
+          "gx": -4,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_DeepSpaceObservatory"
+    },
+    {
+      "id": "BPO_ShipyardCore",
+      "nameEn": "Shipyard Core",
+      "nameZh": "造船厂核心",
+      "descriptionZh": "可用于改装和建造新飞船。",
+      "categoryEn": "Shipyards",
+      "categoryZh": "造船厂",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": -4,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 12,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "LargeSide",
+          "gx": 0,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "LargeSide",
+          "gx": 0,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ShipyardCore"
+    },
+    {
+      "id": "BPO_ShipyardCore_02",
+      "nameEn": "Shipyard Core Mk. 2",
+      "nameZh": "造船厂核心2型",
+      "descriptionZh": "可用于改装和建造新飞船。",
+      "categoryEn": "Shipyards",
+      "categoryZh": "造船厂",
+      "sizeUnits": [
+        2,
+        2,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -16,
+        "minZ": -4,
+        "maxX": 16,
+        "maxY": 16,
+        "maxZ": 8
+      },
+      "heightSpanM": 12,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "LargeSide",
+          "gx": 0,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "LargeSide",
+          "gx": 0,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ShipyardCore_02"
+    },
+    {
+      "id": "BPO_ShipyardSide",
+      "nameEn": "Shipyard Side",
+      "nameZh": "造船厂侧模块",
+      "descriptionZh": "扩展造船厂的规模。",
+      "categoryEn": "Shipyards",
+      "categoryZh": "造船厂",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": -4,
+        "maxX": 1,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "heightSpanM": 12,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "Large",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "LargeSide",
+          "gx": 0,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "LargeSide",
+          "gx": 0,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ShipyardSide"
+    }
+  ],
+  "buildables": [
+    {
+      "id": "DAT_ReactorMachine",
+      "objectClass": "BPO_ReactorMachine",
+      "nameEn": "Reactor",
+      "nameZh": "反应堆",
+      "descriptionZh": "消耗燃料以生产电力。",
+      "categoryEn": "Power Generation",
+      "categoryZh": "发电",
+      "kind": "reactor",
+      "tier": 1,
+      "size": [
+        6,
+        6
+      ],
+      "heightM": 4.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 6,
+          "hy": 1,
+          "side": "E",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": 6,
+          "hy": -1,
+          "side": "E",
+          "role": "in"
+        },
+        {
+          "index": 2,
+          "hx": 1,
+          "hy": 6,
+          "side": "S",
+          "role": "in"
+        },
+        {
+          "index": 3,
+          "hx": -1,
+          "hy": 6,
+          "side": "S",
+          "role": "in"
+        },
+        {
+          "index": 4,
+          "hx": -6,
+          "hy": 1,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 5,
+          "hx": -6,
+          "hy": -1,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 6,
+          "hx": 1,
+          "hy": -6,
+          "side": "N",
+          "role": "in"
+        },
+        {
+          "index": 7,
+          "hx": -1,
+          "hy": -6,
+          "side": "N",
+          "role": "in"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_ReactorMachine"
+    },
+    {
+      "id": "DAT_WorkbenchMachine",
+      "objectClass": "BPO_WorkbenchMachine",
+      "nameEn": "Workstation",
+      "nameZh": "工作站",
+      "descriptionZh": "提供精炼机与装配机用于制作。无法自动化。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "workbench",
+      "tier": 1,
+      "size": [
+        2,
+        4
+      ],
+      "heightM": 1,
+      "crafterId": null,
+      "ports": [],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_WorkbenchMachine"
+    },
+    {
+      "id": "DAT_Refinery",
+      "objectClass": "BP_RefineryObject",
+      "nameEn": "Refinery",
+      "nameZh": "精炼机",
+      "descriptionZh": "用于将原始资源自动精炼为制作材料的机器。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "crafter",
+      "tier": 1,
+      "size": [
+        3,
+        3
+      ],
+      "heightM": 4.5,
+      "crafterId": "CRAFT_Refinery",
+      "ports": [
+        {
+          "index": 0,
+          "hx": 3,
+          "hy": 0,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 1,
+          "hx": 0,
+          "hy": 3,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 2,
+          "hx": -3,
+          "hy": 0,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 3,
+          "hx": 0,
+          "hy": -3,
+          "side": "N",
+          "role": "bi"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Refinery"
+    },
+    {
+      "id": "DAT_Assembler",
+      "objectClass": "BP_AssemblerObject",
+      "nameEn": "Assembler",
+      "nameZh": "装配机",
+      "descriptionZh": "用于自动生产基础物品的机器。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "crafter",
+      "tier": 1,
+      "size": [
+        5,
+        5
+      ],
+      "heightM": 4.5,
+      "crafterId": "CRAFT_Assembler",
+      "ports": [
+        {
+          "index": 0,
+          "hx": 5,
+          "hy": -2,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 1,
+          "hx": 5,
+          "hy": 2,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 2,
+          "hx": 2,
+          "hy": 5,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 3,
+          "hx": -2,
+          "hy": 5,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 4,
+          "hx": -5,
+          "hy": 2,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 5,
+          "hx": -5,
+          "hy": -2,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 6,
+          "hx": -2,
+          "hy": -5,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 7,
+          "hx": 2,
+          "hy": -5,
+          "side": "N",
+          "role": "bi"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Assembler"
+    },
+    {
+      "id": "DAT_EnrichmentChamber",
+      "objectClass": "BP_EnrichmentChamberObject",
+      "nameEn": "Enrichment Chamber",
+      "nameZh": "富集舱",
+      "descriptionZh": "用于将资源进一步精炼为更高阶形态的机器。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "crafter",
+      "tier": 1,
+      "size": [
+        9,
+        9
+      ],
+      "heightM": 1,
+      "crafterId": "CRAFT_Enrichment",
+      "ports": [
+        {
+          "index": 0,
+          "hx": 9,
+          "hy": 0,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 1,
+          "hx": 9,
+          "hy": -4,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 2,
+          "hx": 9,
+          "hy": 4,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 3,
+          "hx": 0,
+          "hy": 9,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 4,
+          "hx": -4,
+          "hy": 9,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 5,
+          "hx": 4,
+          "hy": 9,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 6,
+          "hx": -9,
+          "hy": 0,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 7,
+          "hx": -9,
+          "hy": -4,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 8,
+          "hx": -9,
+          "hy": 4,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 9,
+          "hx": 0,
+          "hy": -9,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 10,
+          "hx": -4,
+          "hy": -9,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 11,
+          "hx": 4,
+          "hy": -9,
+          "side": "N",
+          "role": "bi"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_EnrichmentChamber"
+    },
+    {
+      "id": "DAT_AdvancedAssembler",
+      "objectClass": "BPO_AdvancedAssembler",
+      "nameEn": "Advanced Assembler",
+      "nameZh": "高级装配机",
+      "descriptionZh": "可装配复杂部件的改进型生产机器。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "crafter",
+      "tier": 1,
+      "size": [
+        9,
+        9
+      ],
+      "heightM": 1,
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "ports": [
+        {
+          "index": 0,
+          "hx": 9,
+          "hy": 0,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 1,
+          "hx": 9,
+          "hy": -4,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 2,
+          "hx": 9,
+          "hy": 4,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 3,
+          "hx": 0,
+          "hy": 9,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 4,
+          "hx": -4,
+          "hy": 9,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 5,
+          "hx": 4,
+          "hy": 9,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 6,
+          "hx": -9,
+          "hy": 0,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 7,
+          "hx": -9,
+          "hy": -4,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 8,
+          "hx": -9,
+          "hy": 4,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 9,
+          "hx": 0,
+          "hy": -9,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 10,
+          "hx": -4,
+          "hy": -9,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 11,
+          "hx": 4,
+          "hy": -9,
+          "side": "N",
+          "role": "bi"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_AdvancedAssembler"
+    },
+    {
+      "id": "DAT_Supercomputer",
+      "objectClass": "BPO_Supercomputer",
+      "nameEn": "Supercomputer",
+      "nameZh": "超级计算机",
+      "descriptionZh": "可处理海量数据的计算集群。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "crafter",
+      "tier": 1,
+      "size": [
+        7,
+        7
+      ],
+      "heightM": 4.5,
+      "crafterId": "CRAFT_Supercomputer",
+      "ports": [
+        {
+          "index": 0,
+          "hx": 7,
+          "hy": -2,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 1,
+          "hx": 7,
+          "hy": 2,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 2,
+          "hx": 2,
+          "hy": 7,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 3,
+          "hx": -2,
+          "hy": 7,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 4,
+          "hx": -7,
+          "hy": 2,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 5,
+          "hx": -7,
+          "hy": -2,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 6,
+          "hx": -2,
+          "hy": -7,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 7,
+          "hx": 2,
+          "hy": -7,
+          "side": "N",
+          "role": "bi"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Supercomputer"
+    },
+    {
+      "id": "DAT_GrowthChamber",
+      "objectClass": "BPO_GrowthChamber",
+      "nameEn": "Growth Chamber",
+      "nameZh": "生长舱",
+      "descriptionZh": "用于培养微生物的温控培养舱。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "crafter",
+      "tier": 1,
+      "size": [
+        7,
+        7
+      ],
+      "heightM": 4.5,
+      "crafterId": "CRAFT_GrowthChamber",
+      "ports": [
+        {
+          "index": 0,
+          "hx": 7,
+          "hy": -2,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 1,
+          "hx": 7,
+          "hy": 2,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 2,
+          "hx": 2,
+          "hy": 7,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 3,
+          "hx": -2,
+          "hy": 7,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 4,
+          "hx": -7,
+          "hy": 2,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 5,
+          "hx": -7,
+          "hy": -2,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 6,
+          "hx": -2,
+          "hy": -7,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 7,
+          "hx": 2,
+          "hy": -7,
+          "side": "N",
+          "role": "bi"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_GrowthChamber"
+    },
+    {
+      "id": "DAT_RelicSynthesizer",
+      "objectClass": "BPO_RelicSynthesizer",
+      "nameEn": "Relic Synthesizer",
+      "nameZh": "遗迹合成器",
+      "descriptionZh": "重造的遗迹核心，可改变和合成物质。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "crafter",
+      "tier": 1,
+      "size": [
+        9,
+        9
+      ],
+      "heightM": 1,
+      "crafterId": "CRAFT_RelicSynthesizer",
+      "ports": [
+        {
+          "index": 0,
+          "hx": 9,
+          "hy": 0,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 1,
+          "hx": 9,
+          "hy": -4,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 2,
+          "hx": 9,
+          "hy": 4,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 3,
+          "hx": 0,
+          "hy": 9,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 4,
+          "hx": -4,
+          "hy": 9,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 5,
+          "hx": 4,
+          "hy": 9,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 6,
+          "hx": -9,
+          "hy": 0,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 7,
+          "hx": -9,
+          "hy": -4,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 8,
+          "hx": -9,
+          "hy": 4,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 9,
+          "hx": 0,
+          "hy": -9,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 10,
+          "hx": -4,
+          "hy": -9,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 11,
+          "hx": 4,
+          "hy": -9,
+          "side": "N",
+          "role": "bi"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_RelicSynthesizer"
+    },
+    {
+      "id": "DAT_Armoury",
+      "objectClass": "BPO_Armoury",
+      "nameEn": "Armoury",
+      "nameZh": "军械库",
+      "descriptionZh": "用于制作个人装备的工作站。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "workbench",
+      "tier": 1,
+      "size": [
+        4,
+        4
+      ],
+      "heightM": 2,
+      "crafterId": null,
+      "ports": [],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Armoury"
+    },
+    {
+      "id": "DAT_Teleporter",
+      "objectClass": "BPO_Teleporter",
+      "nameEn": "Short-Range Teleporter",
+      "nameZh": "短程传送器",
+      "descriptionZh": "允许你在同一空间站内瞬间传送至另一传送器平台。",
+      "categoryEn": "Production",
+      "categoryZh": "生产",
+      "kind": "teleporter",
+      "tier": 1,
+      "size": [
+        4,
+        4
+      ],
+      "heightM": 3,
+      "crafterId": null,
+      "ports": [],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Teleporter"
+    },
+    {
+      "id": "DAT_MatSciLab",
+      "objectClass": "BP_MatSciLabObject",
+      "nameEn": "Material Science Lab",
+      "nameZh": "材料科学实验室",
+      "descriptionZh": "用于将特定物品转换为研究的机器。",
+      "categoryEn": "Research",
+      "categoryZh": "研究",
+      "kind": "research",
+      "tier": 1,
+      "size": [
+        3,
+        3
+      ],
+      "heightM": 4.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 3,
+          "hy": 0,
+          "side": "E",
+          "role": "in"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_MatSciLab"
+    },
+    {
+      "id": "DAT_CompSciLab",
+      "objectClass": "BP_CompSciLabObject",
+      "nameEn": "Computation Science Lab",
+      "nameZh": "计算科学实验室",
+      "descriptionZh": "用于将特定物品转换为研究的机器。",
+      "categoryEn": "Research",
+      "categoryZh": "研究",
+      "kind": "research",
+      "tier": 1,
+      "size": [
+        3,
+        3
+      ],
+      "heightM": 4.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 3,
+          "hy": 0,
+          "side": "E",
+          "role": "in"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_CompSciLab"
+    },
+    {
+      "id": "DAT_ElectroSciLab",
+      "objectClass": "BPO_ElectroSciLab",
+      "nameEn": "Electromagnetic Science Lab",
+      "nameZh": "电磁科学实验室",
+      "descriptionZh": "用于将特定物品转换为研究的机器。",
+      "categoryEn": "Research",
+      "categoryZh": "研究",
+      "kind": "research",
+      "tier": 1,
+      "size": [
+        5,
+        5
+      ],
+      "heightM": 4.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 5,
+          "hy": 0,
+          "side": "E",
+          "role": "in"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_ElectroSciLab"
+    },
+    {
+      "id": "DAT_QuantumSciLab",
+      "objectClass": "BPO_QuantumSciLab",
+      "nameEn": "Quantum Science Lab",
+      "nameZh": "量子科学实验室",
+      "descriptionZh": "用于将特定物品转换为研究的机器。",
+      "categoryEn": "Research",
+      "categoryZh": "研究",
+      "kind": "research",
+      "tier": 1,
+      "size": [
+        9,
+        9
+      ],
+      "heightM": 1,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 9,
+          "hy": -6,
+          "side": "E",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": 6,
+          "hy": -9,
+          "side": "N",
+          "role": "in"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_QuantumSciLab"
+    },
+    {
+      "id": "DAT_AstroSciLab",
+      "objectClass": "BPO_AstroSciLab",
+      "nameEn": "Astronomic Science Lab",
+      "nameZh": "天文科学实验室",
+      "descriptionZh": "用于将特定物品转换为研究的机器。",
+      "categoryEn": "Research",
+      "categoryZh": "研究",
+      "kind": "research",
+      "tier": 1,
+      "size": [
+        5,
+        5
+      ],
+      "heightM": 4.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 5,
+          "hy": 0,
+          "side": "E",
+          "role": "in"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_AstroSciLab"
+    },
+    {
+      "id": "DAT_XenoSciLab",
+      "objectClass": "BPO_XenoSciLab",
+      "nameEn": "Xenobiologic Science Lab",
+      "nameZh": "异源生物科学实验室",
+      "descriptionZh": "用于将特定物品转换为研究的机器。",
+      "categoryEn": "Research",
+      "categoryZh": "研究",
+      "kind": "research",
+      "tier": 1,
+      "size": [
+        5,
+        5
+      ],
+      "heightM": 4.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 5,
+          "hy": 0,
+          "side": "E",
+          "role": "in"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_XenoSciLab"
+    },
+    {
+      "id": "DAT_RelicAnalyzer",
+      "objectClass": "BPO_RelicAnalyzer",
+      "nameEn": "Relic Analyzer",
+      "nameZh": "遗迹分析器",
+      "descriptionZh": "用于将特定物品转换为研究的机器。",
+      "categoryEn": "Research",
+      "categoryZh": "研究",
+      "kind": "research",
+      "tier": 1,
+      "size": [
+        3,
+        3
+      ],
+      "heightM": 4.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 3,
+          "hy": 0,
+          "side": "E",
+          "role": "in"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_RelicAnalyzer"
+    },
+    {
+      "id": "DAT_ConveyorBelt",
+      "objectClass": "BP_ConveyorBeltObject",
+      "nameEn": "Conveyor Belt Mk. 1",
+      "nameZh": "传送带1型",
+      "descriptionZh": "用于在机器之间运输物品。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "belt",
+      "tier": 1,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 0.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 0,
+          "hy": -1,
+          "side": "N",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": -1,
+          "hy": 0,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 2,
+          "hx": 0,
+          "hy": 1,
+          "side": "S",
+          "role": "in"
+        },
+        {
+          "index": 3,
+          "hx": 1,
+          "hy": 0,
+          "side": "E",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_ConveyorBelt"
+    },
+    {
+      "id": "DAT_ConveyorBelt2",
+      "objectClass": "BP_ConveyorBelt2Object",
+      "nameEn": "Conveyor Belt Mk. 2",
+      "nameZh": "传送带2型",
+      "descriptionZh": "用于在机器之间运输物品。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "belt",
+      "tier": 2,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 0.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 0,
+          "hy": -1,
+          "side": "N",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": -1,
+          "hy": 0,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 2,
+          "hx": 0,
+          "hy": 1,
+          "side": "S",
+          "role": "in"
+        },
+        {
+          "index": 3,
+          "hx": 1,
+          "hy": 0,
+          "side": "E",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_ConveyorBelt2"
+    },
+    {
+      "id": "DAT_ConveyorBelt3",
+      "objectClass": "BP_ConveyorBeltObject_3",
+      "nameEn": "Conveyor Belt Mk. 3",
+      "nameZh": "传送带3型",
+      "descriptionZh": "用于在机器之间运输物品。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "belt",
+      "tier": 3,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 0.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 0,
+          "hy": -1,
+          "side": "N",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": -1,
+          "hy": 0,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 2,
+          "hx": 0,
+          "hy": 1,
+          "side": "S",
+          "role": "in"
+        },
+        {
+          "index": 3,
+          "hx": 1,
+          "hy": 0,
+          "side": "E",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_ConveyorBelt3"
+    },
+    {
+      "id": "DAT_UndergroundBelt",
+      "objectClass": "BP_UndergroundBeltObject",
+      "nameEn": "Underground Belt Mk. 1",
+      "nameZh": "下层传送带1型",
+      "descriptionZh": "用于在现有机器下方运输物品。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "underground",
+      "tier": 1,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 1,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": -1,
+          "hy": 0,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": 1,
+          "hy": 0,
+          "side": "E",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "maxLength": 8,
+      "sourceAsset": "/Game/Data/Buildables/DAT_UndergroundBelt"
+    },
+    {
+      "id": "DAT_UndergroundBelt_2",
+      "objectClass": "BP_UndergroundBeltObject_2",
+      "nameEn": "Underground Belt Mk. 2",
+      "nameZh": "下层传送带2型",
+      "descriptionZh": "用于在现有机器下方运输物品。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "underground",
+      "tier": 2,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 1,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": -1,
+          "hy": 0,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": 1,
+          "hy": 0,
+          "side": "E",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "maxLength": 10,
+      "sourceAsset": "/Game/Data/Buildables/DAT_UndergroundBelt_2"
+    },
+    {
+      "id": "DAT_UndergroundBelt_3",
+      "objectClass": "BP_UndergroundBeltObject_3",
+      "nameEn": "Underground Belt Mk. 3",
+      "nameZh": "下层传送带3型",
+      "descriptionZh": "用于在现有机器下方运输物品。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "underground",
+      "tier": 3,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 1,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": -1,
+          "hy": 0,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": 1,
+          "hy": 0,
+          "side": "E",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "maxLength": 12,
+      "sourceAsset": "/Game/Data/Buildables/DAT_UndergroundBelt_3"
+    },
+    {
+      "id": "DAT_Splitter",
+      "objectClass": "BP_SplitterObject",
+      "nameEn": "Splitter Mk. 1",
+      "nameZh": "分流器1型",
+      "descriptionZh": "将输入1条传送带的物品均分并通过3条传送带输出。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "splitter",
+      "tier": 1,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 0.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": -1,
+          "hy": 0,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": 0,
+          "hy": 1,
+          "side": "S",
+          "role": "out"
+        },
+        {
+          "index": 2,
+          "hx": 1,
+          "hy": 0,
+          "side": "E",
+          "role": "out"
+        },
+        {
+          "index": 3,
+          "hx": 0,
+          "hy": -1,
+          "side": "N",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Splitter"
+    },
+    {
+      "id": "DAT_Splitter_2",
+      "objectClass": "BP_SplitterObject_2",
+      "nameEn": "Splitter Mk. 2",
+      "nameZh": "分流器2型",
+      "descriptionZh": "将输入1条传送带的物品均分并通过3条传送带输出。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "splitter",
+      "tier": 2,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 0.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": -1,
+          "hy": 0,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": 0,
+          "hy": 1,
+          "side": "S",
+          "role": "out"
+        },
+        {
+          "index": 2,
+          "hx": 1,
+          "hy": 0,
+          "side": "E",
+          "role": "out"
+        },
+        {
+          "index": 3,
+          "hx": 0,
+          "hy": -1,
+          "side": "N",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Splitter_2"
+    },
+    {
+      "id": "DAT_Splitter_3",
+      "objectClass": "BP_SplitterObject_3",
+      "nameEn": "Splitter Mk. 3",
+      "nameZh": "分流器3型",
+      "descriptionZh": "将输入1条传送带的物品均分并通过3条传送带输出。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "splitter",
+      "tier": 3,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 0.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": -1,
+          "hy": 0,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": 0,
+          "hy": 1,
+          "side": "S",
+          "role": "out"
+        },
+        {
+          "index": 2,
+          "hx": 1,
+          "hy": 0,
+          "side": "E",
+          "role": "out"
+        },
+        {
+          "index": 3,
+          "hx": 0,
+          "hy": -1,
+          "side": "N",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Splitter_3"
+    },
+    {
+      "id": "DAT_BeltBalancer_01",
+      "objectClass": "BPO_BeltBalancer_01",
+      "nameEn": "Belt Balancer Mk. 1",
+      "nameZh": "传送带平衡器1型",
+      "descriptionZh": "平衡两条传送带道之间的物品流，可优先使用输入和输出。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "balancer",
+      "tier": 1,
+      "size": [
+        1,
+        2
+      ],
+      "heightM": 0.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": -1,
+          "hy": 1,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": -1,
+          "hy": -1,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 2,
+          "hx": 1,
+          "hy": 1,
+          "side": "E",
+          "role": "out"
+        },
+        {
+          "index": 3,
+          "hx": 1,
+          "hy": -1,
+          "side": "E",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_BeltBalancer_01"
+    },
+    {
+      "id": "DAT_BeltBalancer_02",
+      "objectClass": "BPO_BeltBalancer_02",
+      "nameEn": "Belt Balancer Mk. 2",
+      "nameZh": "传送带平衡器2型",
+      "descriptionZh": "平衡两条传送带道之间的物品流，可优先使用输入和输出。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "balancer",
+      "tier": 2,
+      "size": [
+        1,
+        2
+      ],
+      "heightM": 0.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": -1,
+          "hy": 1,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": -1,
+          "hy": -1,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 2,
+          "hx": 1,
+          "hy": 1,
+          "side": "E",
+          "role": "out"
+        },
+        {
+          "index": 3,
+          "hx": 1,
+          "hy": -1,
+          "side": "E",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_BeltBalancer_02"
+    },
+    {
+      "id": "DAT_BeltBalancer_03",
+      "objectClass": "BPO_BeltBalancer_03",
+      "nameEn": "Belt Balancer Mk. 3",
+      "nameZh": "传送带平衡器3型",
+      "descriptionZh": "平衡两条传送带道之间的物品流，可优先使用输入和输出。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "balancer",
+      "tier": 3,
+      "size": [
+        1,
+        2
+      ],
+      "heightM": 0.5,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": -1,
+          "hy": 1,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 1,
+          "hx": -1,
+          "hy": -1,
+          "side": "W",
+          "role": "in"
+        },
+        {
+          "index": 2,
+          "hx": 1,
+          "hy": 1,
+          "side": "E",
+          "role": "out"
+        },
+        {
+          "index": 3,
+          "hx": 1,
+          "hy": -1,
+          "side": "E",
+          "role": "out"
+        }
+      ],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_BeltBalancer_03"
+    },
+    {
+      "id": "DAT_Container",
+      "objectClass": "BP_ContainerObject",
+      "nameEn": "Container",
+      "nameZh": "容器",
+      "descriptionZh": "小型仓库，使用传送带向其中存取物品。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "container",
+      "tier": 1,
+      "size": [
+        2,
+        2
+      ],
+      "heightM": 1,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 2,
+          "hy": -1,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 1,
+          "hx": 2,
+          "hy": 1,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 2,
+          "hx": -2,
+          "hy": -1,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 3,
+          "hx": -2,
+          "hy": 1,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 4,
+          "hx": -1,
+          "hy": 2,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 5,
+          "hx": 1,
+          "hy": 2,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 6,
+          "hx": -1,
+          "hy": -2,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 7,
+          "hx": 1,
+          "hy": -2,
+          "side": "N",
+          "role": "bi"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Container"
+    },
+    {
+      "id": "DAT_Container_2",
+      "objectClass": "BP_ContainerObject_2",
+      "nameEn": "Large Container",
+      "nameZh": "大型容器",
+      "descriptionZh": "大型仓库，使用传送带向其中存取物品。",
+      "categoryEn": "Logistics",
+      "categoryZh": "物流",
+      "kind": "container",
+      "tier": 2,
+      "size": [
+        4,
+        4
+      ],
+      "heightM": 1,
+      "crafterId": null,
+      "ports": [
+        {
+          "index": 0,
+          "hx": 4,
+          "hy": 3,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 1,
+          "hx": 4,
+          "hy": 1,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 2,
+          "hx": 4,
+          "hy": -1,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 3,
+          "hx": 4,
+          "hy": -3,
+          "side": "E",
+          "role": "bi"
+        },
+        {
+          "index": 4,
+          "hx": -4,
+          "hy": -3,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 5,
+          "hx": -4,
+          "hy": -1,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 6,
+          "hx": -4,
+          "hy": 1,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 7,
+          "hx": -4,
+          "hy": 3,
+          "side": "W",
+          "role": "bi"
+        },
+        {
+          "index": 8,
+          "hx": 3,
+          "hy": 4,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 9,
+          "hx": 1,
+          "hy": 4,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 10,
+          "hx": -1,
+          "hy": 4,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 11,
+          "hx": -3,
+          "hy": 4,
+          "side": "S",
+          "role": "bi"
+        },
+        {
+          "index": 12,
+          "hx": 3,
+          "hy": -4,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 13,
+          "hx": 1,
+          "hy": -4,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 14,
+          "hx": -1,
+          "hy": -4,
+          "side": "N",
+          "role": "bi"
+        },
+        {
+          "index": 15,
+          "hx": -3,
+          "hy": -4,
+          "side": "N",
+          "role": "bi"
+        }
+      ],
+      "configurablePorts": true,
+      "sourceAsset": "/Game/Data/Buildables/DAT_Container_2"
+    },
+    {
+      "id": "DAT_Chair",
+      "objectClass": "BP_ChairObject",
+      "nameEn": "Armchair",
+      "nameZh": "扶手椅",
+      "descriptionZh": "椅子，可以坐在上面。",
+      "categoryEn": "Decorations",
+      "categoryZh": "装饰",
+      "kind": "decoration",
+      "tier": 1,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 2,
+      "crafterId": null,
+      "ports": [],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/Decorations/DAT_Chair"
+    },
+    {
+      "id": "DAT_CoffeeTable",
+      "objectClass": "BPO_CoffeeTable",
+      "nameEn": "Coffee Table",
+      "nameZh": "咖啡桌",
+      "descriptionZh": "桌子，可以放置小物件。",
+      "categoryEn": "Decorations",
+      "categoryZh": "装饰",
+      "kind": "decoration",
+      "tier": 1,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 2,
+      "crafterId": null,
+      "ports": [],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/Decorations/DAT_CoffeeTable"
+    },
+    {
+      "id": "DAT_SignWall",
+      "objectClass": "BPO_SignWall",
+      "nameEn": "Doorway Wall",
+      "nameZh": "门墙",
+      "descriptionZh": "带门的隔墙。",
+      "categoryEn": "Decorations",
+      "categoryZh": "装饰",
+      "kind": "sign",
+      "tier": 1,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 2,
+      "crafterId": null,
+      "ports": [],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/DAT_SignWall"
+    },
+    {
+      "id": "DAT_Plant_01",
+      "objectClass": "BPO_Plant_01",
+      "nameEn": "Plant",
+      "nameZh": "植物",
+      "descriptionZh": "一株小植物。",
+      "categoryEn": "Plants",
+      "categoryZh": "植物",
+      "kind": "decoration",
+      "tier": 1,
+      "size": [
+        1,
+        1
+      ],
+      "heightM": 2,
+      "crafterId": null,
+      "ports": [],
+      "configurablePorts": false,
+      "sourceAsset": "/Game/Data/Buildables/Decorations/DAT_Plant_01"
+    }
+  ],
+  "recipes": [
+    {
+      "id": "REC_Assembler",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_Assembler",
+      "nameZh": "装配机",
+      "shortCode": "AS",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        },
+        {
+          "itemId": "ITEM_Servomotor",
+          "nameZh": "伺服电机"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_Assembler",
+          "nameZh": "装配机"
+        }
+      ]
+    },
+    {
+      "id": "REC_CompSciLab",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_CompSciLab",
+      "nameZh": "计算科学实验室",
+      "shortCode": "CS",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        },
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "nameZh": "基础电路"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_CompSciLab",
+          "nameZh": "计算科学实验室"
+        }
+      ]
+    },
+    {
+      "id": "REC_Container",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_Container",
+      "nameZh": "容器",
+      "shortCode": "CO",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_Container",
+          "nameZh": "容器"
+        }
+      ]
+    },
+    {
+      "id": "REC_ConveyorBelt",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_ConveyorBelt",
+      "nameZh": "传送带1型",
+      "shortCode": "CB",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        },
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "nameZh": "磁线圈"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_ConveyorBelt",
+          "nameZh": "传送带1型"
+        }
+      ]
+    },
+    {
+      "id": "REC_EnrichmentChamber",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_EnrichmentChamber",
+      "nameZh": "富集舱",
+      "shortCode": "EC",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        },
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        },
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "nameZh": "磁线圈"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_EnrichmentChamber",
+          "nameZh": "富集舱"
+        }
+      ]
+    },
+    {
+      "id": "REC_MatSciLab",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_MatSciLab",
+      "nameZh": "材料科学实验室",
+      "shortCode": "MS",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        },
+        {
+          "itemId": "ITEM_NickelPlates",
+          "nameZh": "镍板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_MatSciLab",
+          "nameZh": "材料科学实验室"
+        }
+      ]
+    },
+    {
+      "id": "REC_Refinery",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_Refinery",
+      "nameZh": "精炼机",
+      "shortCode": "RE",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        },
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "nameZh": "磁线圈"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_Refinery",
+          "nameZh": "精炼机"
+        }
+      ]
+    },
+    {
+      "id": "REC_Splitter",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_Splitter",
+      "nameZh": "分流器1型",
+      "shortCode": "SM",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        },
+        {
+          "itemId": "ITEM_Servomotor",
+          "nameZh": "伺服电机"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "DAT_Splitter",
+          "nameZh": "分流器1型"
+        }
+      ]
+    },
+    {
+      "id": "REC_AdvancedCircuits",
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "nameEn": "REC_AdvancedCircuits",
+      "nameZh": "高级电路",
+      "shortCode": "AC",
+      "inputs": [
+        {
+          "itemId": "ITEM_DetectorArray",
+          "nameZh": "探测器阵列"
+        },
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "nameZh": "基础电路"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "nameZh": "超级合金"
+        },
+        {
+          "itemId": "ITEM_Coolant",
+          "nameZh": "冷却剂"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_AdvancedCircuits",
+          "nameZh": "高级电路"
+        }
+      ]
+    },
+    {
+      "id": "REC_AdvancedPlates",
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "nameEn": "REC_AdvancedPlates",
+      "nameZh": "高级板材",
+      "shortCode": "AP",
+      "inputs": [
+        {
+          "itemId": "ITEM_ChromaticAlloy",
+          "nameZh": "有色合金"
+        },
+        {
+          "itemId": "ITEM_ChitinComposite",
+          "nameZh": "甲壳质复合材料"
+        },
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "nameZh": "强化板材"
+        },
+        {
+          "itemId": "ITEM_Multisensor",
+          "nameZh": "多传感器"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_AdvancedPlates",
+          "nameZh": "高级板材"
+        }
+      ]
+    },
+    {
+      "id": "REC_AlphaProtein",
+      "crafterId": "CRAFT_GrowthChamber",
+      "nameEn": "REC_AlphaProtein",
+      "nameZh": "α蛋白",
+      "shortCode": "AP2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenoeukarya",
+          "nameZh": "异源真核生物"
+        },
+        {
+          "itemId": "ITEM_Enzyme",
+          "nameZh": "酶"
+        },
+        {
+          "itemId": "ITEM_Nutrients",
+          "nameZh": "营养素"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_AlphaProtein",
+          "nameZh": "α蛋白"
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "nameZh": "生物质"
+        }
+      ]
+    },
+    {
+      "id": "REC_BackpackMk1",
+      "crafterId": "CRAFT_Armoury",
+      "nameEn": "REC_BackpackMk1",
+      "nameZh": "背包1型",
+      "shortCode": "BM",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "nameZh": "船体板"
+        },
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BackpackMk1",
+          "nameZh": "背包1型"
+        }
+      ]
+    },
+    {
+      "id": "REC_BackpackMk2",
+      "crafterId": "CRAFT_Armoury",
+      "nameEn": "REC_BackpackMk2",
+      "nameZh": "背包2型",
+      "shortCode": "BM2",
+      "inputs": [
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "nameZh": "强化板材"
+        },
+        {
+          "itemId": "ITEM_Graphene",
+          "nameZh": "石墨烯"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BackpackMk2",
+          "nameZh": "背包2型"
+        }
+      ]
+    },
+    {
+      "id": "REC_BackpackMk3",
+      "crafterId": "CRAFT_Armoury",
+      "nameEn": "REC_BackpackMk3",
+      "nameZh": "背包3型",
+      "shortCode": "BM3",
+      "inputs": [
+        {
+          "itemId": "ITEM_SuperalloyFrame",
+          "nameZh": "超级合金框架"
+        },
+        {
+          "itemId": "ITEM_Biolattice",
+          "nameZh": "生物晶格"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BackpackMk3",
+          "nameZh": "背包3型"
+        }
+      ]
+    },
+    {
+      "id": "REC_BasicCircuit",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_BasicCircuit",
+      "nameZh": "基础电路",
+      "shortCode": "BC",
+      "inputs": [
+        {
+          "itemId": "ITEM_SiliconWafers",
+          "nameZh": "硅晶圆"
+        },
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "nameZh": "磁线圈"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "nameZh": "基础电路"
+        }
+      ]
+    },
+    {
+      "id": "REC_BasicMotor",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_BasicMotor",
+      "nameZh": "基础马达",
+      "shortCode": "BM4",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BasicMotor",
+          "nameZh": "基础马达"
+        }
+      ]
+    },
+    {
+      "id": "REC_BetaProtein",
+      "crafterId": "CRAFT_GrowthChamber",
+      "nameEn": "REC_BetaProtein",
+      "nameZh": "β蛋白",
+      "shortCode": "BP",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenoarchaea",
+          "nameZh": "异源古菌"
+        },
+        {
+          "itemId": "ITEM_Enzyme",
+          "nameZh": "酶"
+        },
+        {
+          "itemId": "ITEM_Nutrients",
+          "nameZh": "营养素"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_BetaProtein",
+          "nameZh": "β蛋白"
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "nameZh": "生物质"
+        }
+      ]
+    },
+    {
+      "id": "REC_Biolattice",
+      "crafterId": "CRAFT_GrowthChamber",
+      "nameEn": "REC_Biolattice",
+      "nameZh": "生物晶格",
+      "shortCode": "BI",
+      "inputs": [
+        {
+          "itemId": "ITEM_AlphaProtein",
+          "nameZh": "α蛋白"
+        },
+        {
+          "itemId": "ITEM_BetaProtein",
+          "nameZh": "β蛋白"
+        },
+        {
+          "itemId": "ITEM_Nutrients",
+          "nameZh": "营养素"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Biolattice",
+          "nameZh": "生物晶格"
+        }
+      ]
+    },
+    {
+      "id": "REC_Capacitor",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_Capacitor",
+      "nameZh": "电容器",
+      "shortCode": "CA",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "nameZh": "镍板"
+        },
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Capacitor",
+          "nameZh": "电容器"
+        }
+      ]
+    },
+    {
+      "id": "REC_ChitinComposite",
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "nameEn": "REC_ChitinComposite",
+      "nameZh": "甲壳质复合材料",
+      "shortCode": "CC",
+      "inputs": [
+        {
+          "itemId": "ITEM_Biolattice",
+          "nameZh": "生物晶格"
+        },
+        {
+          "itemId": "ITEM_Graphene",
+          "nameZh": "石墨烯"
+        },
+        {
+          "itemId": "ITEM_ReinforcedGlass",
+          "nameZh": "强化玻璃"
+        },
+        {
+          "itemId": "ITEM_Enzyme",
+          "nameZh": "酶"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ChitinComposite",
+          "nameZh": "甲壳质复合材料"
+        }
+      ]
+    },
+    {
+      "id": "REC_ChromaticAlloy",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_ChromaticAlloy",
+      "nameZh": "有色合金",
+      "shortCode": "CA2",
+      "inputs": [
+        {
+          "itemId": "ITEM_IridiumPlates",
+          "nameZh": "铱板"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "nameZh": "超级合金"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ChromaticAlloy",
+          "nameZh": "有色合金"
+        }
+      ]
+    },
+    {
+      "id": "REC_CobaltPlates",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_CobaltPlates",
+      "nameZh": "钴板",
+      "shortCode": "CP",
+      "inputs": [
+        {
+          "itemId": "ITEM_CobaltOre",
+          "nameZh": "钴矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "nameZh": "钴板"
+        }
+      ]
+    },
+    {
+      "id": "REC_CobaltSynthesis",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_CobaltSynthesis",
+      "nameZh": "钴矿石",
+      "shortCode": "CO2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "nameZh": "原物质"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_CobaltOre",
+          "nameZh": "钴矿石"
+        }
+      ]
+    },
+    {
+      "id": "REC_ContainmentCoil",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_ContainmentCoil",
+      "nameZh": "约束线圈",
+      "shortCode": "CC2",
+      "inputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "nameZh": "磁线圈"
+        },
+        {
+          "itemId": "ITEM_Capacitor",
+          "nameZh": "电容器"
+        },
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "nameZh": "基础电路"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ContainmentCoil",
+          "nameZh": "约束线圈"
+        }
+      ]
+    },
+    {
+      "id": "REC_Coolant",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_Coolant",
+      "nameZh": "冷却剂",
+      "shortCode": "CO3",
+      "inputs": [
+        {
+          "itemId": "ITEM_NitrogenGas",
+          "nameZh": "氮气"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Coolant",
+          "nameZh": "冷却剂"
+        }
+      ]
+    },
+    {
+      "id": "REC_DetectorArray",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_DetectorArray",
+      "nameZh": "探测器阵列",
+      "shortCode": "DA",
+      "inputs": [
+        {
+          "itemId": "ITEM_Graphene",
+          "nameZh": "石墨烯"
+        },
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "nameZh": "钴板"
+        },
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "nameZh": "基础电路"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_DetectorArray",
+          "nameZh": "探测器阵列"
+        }
+      ]
+    },
+    {
+      "id": "REC_EmptySimulationMatrix",
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "nameEn": "REC_EmptySimulationMatrix",
+      "nameZh": "空模拟矩阵",
+      "shortCode": "ES",
+      "inputs": [
+        {
+          "itemId": "ITEM_AdvancedCircuits",
+          "nameZh": "高级电路"
+        },
+        {
+          "itemId": "ITEM_Lonsdaleite",
+          "nameZh": "六方金刚石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EmptySimulationMatrix",
+          "nameZh": "空模拟矩阵"
+        }
+      ]
+    },
+    {
+      "id": "REC_EncodedSimulationMatrix",
+      "crafterId": "CRAFT_Supercomputer",
+      "nameEn": "REC_EncodedSimulationMatrix",
+      "nameZh": "编码模拟矩阵",
+      "shortCode": "ES2",
+      "inputs": [
+        {
+          "itemId": "ITEM_EmptySimulationMatrix",
+          "nameZh": "空模拟矩阵"
+        },
+        {
+          "itemId": "ITEM_StellarSurveyData",
+          "nameZh": "星体勘测数据"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EncodedSimulationMatrix",
+          "nameZh": "编码模拟矩阵"
+        }
+      ]
+    },
+    {
+      "id": "REC_EnrichedCobaltOre",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_EnrichedCobaltOre",
+      "nameZh": "浓缩钴矿石",
+      "shortCode": "EC2",
+      "inputs": [
+        {
+          "itemId": "ITEM_CobaltOre",
+          "nameZh": "钴矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EnrichedCobaltOre",
+          "nameZh": "浓缩钴矿石"
+        }
+      ]
+    },
+    {
+      "id": "REC_EnrichedCobaltPlates",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_EnrichedCobaltPlates",
+      "nameZh": "钴板",
+      "shortCode": "CP",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedCobaltOre",
+          "nameZh": "浓缩钴矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "nameZh": "钴板"
+        }
+      ]
+    },
+    {
+      "id": "REC_EnrichedFuel",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_EnrichedFuel",
+      "nameZh": "氘燃料",
+      "shortCode": "DF",
+      "inputs": [
+        {
+          "itemId": "ITEM_HydrogenFuel",
+          "nameZh": "氢燃料"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EnrichedFuel",
+          "nameZh": "氘燃料"
+        }
+      ]
+    },
+    {
+      "id": "REC_EnrichedNickelOre",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_EnrichedNickelOre",
+      "nameZh": "浓缩镍矿石",
+      "shortCode": "EN",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelOre",
+          "nameZh": "镍矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EnrichedNickelOre",
+          "nameZh": "浓缩镍矿石"
+        }
+      ]
+    },
+    {
+      "id": "REC_EnrichedNickelPlates",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_EnrichedNickelPlates",
+      "nameZh": "镍板",
+      "shortCode": "NP",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedNickelOre",
+          "nameZh": "浓缩镍矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "nameZh": "镍板"
+        }
+      ]
+    },
+    {
+      "id": "REC_EnrichedTitaniumOre",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_EnrichedTitaniumOre",
+      "nameZh": "浓缩钛矿石",
+      "shortCode": "ET",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumOre",
+          "nameZh": "钛矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_EnrichedTitaniumOre",
+          "nameZh": "浓缩钛矿石"
+        }
+      ]
+    },
+    {
+      "id": "REC_EnrichedTitaniumPlates",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_EnrichedTitaniumPlates",
+      "nameZh": "钛板",
+      "shortCode": "TP",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedTitaniumOre",
+          "nameZh": "浓缩钛矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        }
+      ]
+    },
+    {
+      "id": "REC_Enzyme",
+      "crafterId": "CRAFT_GrowthChamber",
+      "nameEn": "REC_Enzyme",
+      "nameZh": "酶",
+      "shortCode": "EN2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenobacteria",
+          "nameZh": "异源细菌"
+        },
+        {
+          "itemId": "ITEM_Nutrients",
+          "nameZh": "营养素"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Enzyme",
+          "nameZh": "酶"
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "nameZh": "生物质"
+        }
+      ]
+    },
+    {
+      "id": "REC_ExoskeletonMk1",
+      "crafterId": "CRAFT_Armoury",
+      "nameEn": "REC_ExoskeletonMk1",
+      "nameZh": "外骨骼1型",
+      "shortCode": "EM",
+      "inputs": [
+        {
+          "itemId": "ITEM_Servomotor",
+          "nameZh": "伺服电机"
+        },
+        {
+          "itemId": "ITEM_Capacitor",
+          "nameZh": "电容器"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ExoskeletonMk1",
+          "nameZh": "外骨骼1型"
+        }
+      ]
+    },
+    {
+      "id": "REC_ExoskeletonMk2",
+      "crafterId": "CRAFT_Armoury",
+      "nameEn": "REC_ExoskeletonMk2",
+      "nameZh": "外骨骼2型",
+      "shortCode": "EM2",
+      "inputs": [
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "nameZh": "磁悬浮列车耦合器"
+        },
+        {
+          "itemId": "ITEM_Coolant",
+          "nameZh": "冷却剂"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ExoskeletonMk2",
+          "nameZh": "外骨骼2型"
+        }
+      ]
+    },
+    {
+      "id": "REC_ExoskeletonMk3",
+      "crafterId": "CRAFT_Armoury",
+      "nameEn": "REC_ExoskeletonMk3",
+      "nameZh": "外骨骼3型",
+      "shortCode": "EM3",
+      "inputs": [
+        {
+          "itemId": "ITEM_ChitinComposite",
+          "nameZh": "甲壳质复合材料"
+        },
+        {
+          "itemId": "ITEM_ChromaticAlloy",
+          "nameZh": "有色合金"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ExoskeletonMk3",
+          "nameZh": "外骨骼3型"
+        }
+      ]
+    },
+    {
+      "id": "REC_Exosuit",
+      "crafterId": "CRAFT_Armoury",
+      "nameEn": "REC_Exosuit",
+      "nameZh": "外骨骼套装",
+      "shortCode": "EX",
+      "inputs": [
+        {
+          "itemId": "ITEM_AdvancedPlates",
+          "nameZh": "高级板材"
+        },
+        {
+          "itemId": "ITEM_BackpackMk3",
+          "nameZh": "背包3型"
+        },
+        {
+          "itemId": "ITEM_ExoskeletonMk3",
+          "nameZh": "外骨骼3型"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Exosuit",
+          "nameZh": "外骨骼套装"
+        }
+      ]
+    },
+    {
+      "id": "REC_Graphene",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_Graphene",
+      "nameZh": "石墨烯",
+      "shortCode": "GR",
+      "inputs": [
+        {
+          "itemId": "ITEM_Graphite",
+          "nameZh": "石墨"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Graphene",
+          "nameZh": "石墨烯"
+        }
+      ]
+    },
+    {
+      "id": "REC_GraphiteSynthesis",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_GraphiteSynthesis",
+      "nameZh": "石墨",
+      "shortCode": "GR2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "nameZh": "原物质"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Graphite",
+          "nameZh": "石墨"
+        }
+      ]
+    },
+    {
+      "id": "REC_HullPlates",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_HullPlates",
+      "nameZh": "船体板",
+      "shortCode": "HP",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "nameZh": "船体板"
+        }
+      ]
+    },
+    {
+      "id": "REC_HydrogenFuel",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_HydrogenFuel",
+      "nameZh": "氢燃料",
+      "shortCode": "HF",
+      "inputs": [
+        {
+          "itemId": "ITEM_WaterIce",
+          "nameZh": "水冰"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_HydrogenFuel",
+          "nameZh": "氢燃料"
+        }
+      ]
+    },
+    {
+      "id": "REC_IridiumPlates",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_IridiumPlates",
+      "nameZh": "铱板",
+      "shortCode": "IP",
+      "inputs": [
+        {
+          "itemId": "ITEM_IridiumOre",
+          "nameZh": "铱矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_IridiumPlates",
+          "nameZh": "铱板"
+        }
+      ]
+    },
+    {
+      "id": "REC_LightweightFrame",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_LightweightFrame",
+      "nameZh": "轻型框架",
+      "shortCode": "LF",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        }
+      ]
+    },
+    {
+      "id": "REC_MageticCoils",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_MageticCoils",
+      "nameZh": "磁线圈",
+      "shortCode": "MC2",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "nameZh": "镍板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "nameZh": "磁线圈"
+        }
+      ]
+    },
+    {
+      "id": "REC_MaglevCoupling",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_MaglevCoupling",
+      "nameZh": "磁悬浮列车耦合器",
+      "shortCode": "MC",
+      "inputs": [
+        {
+          "itemId": "ITEM_Servomotor",
+          "nameZh": "伺服电机"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "nameZh": "超级合金"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "nameZh": "磁悬浮列车耦合器"
+        }
+      ]
+    },
+    {
+      "id": "REC_MaglevCouplingAlt",
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "nameEn": "REC_MaglevCouplingAlt",
+      "nameZh": "磁悬浮列车耦合器",
+      "shortCode": "MC",
+      "inputs": [
+        {
+          "itemId": "ITEM_BasicMotor",
+          "nameZh": "基础马达"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "nameZh": "超级合金"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "nameZh": "磁悬浮列车耦合器"
+        }
+      ]
+    },
+    {
+      "id": "REC_MagneticCoilsAlt1",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_MagneticCoilsAlt1",
+      "nameZh": "磁线圈",
+      "shortCode": "MC2",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "nameZh": "镍板"
+        },
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "nameZh": "钴板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "nameZh": "磁线圈"
+        }
+      ]
+    },
+    {
+      "id": "REC_Missile",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_Missile",
+      "nameZh": "导弹",
+      "shortCode": "MI",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "nameZh": "船体板"
+        },
+        {
+          "itemId": "ITEM_ContainmentCoil",
+          "nameZh": "约束线圈"
+        },
+        {
+          "itemId": "ITEM_Coolant",
+          "nameZh": "冷却剂"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Missile",
+          "nameZh": "导弹"
+        }
+      ]
+    },
+    {
+      "id": "REC_Multisensor",
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "nameEn": "REC_Multisensor",
+      "nameZh": "多传感器",
+      "shortCode": "MU",
+      "inputs": [
+        {
+          "itemId": "ITEM_ChromaticAlloy",
+          "nameZh": "有色合金"
+        },
+        {
+          "itemId": "ITEM_Lonsdaleite",
+          "nameZh": "六方金刚石"
+        },
+        {
+          "itemId": "ITEM_EncodedSimulationMatrix",
+          "nameZh": "编码模拟矩阵"
+        },
+        {
+          "itemId": "ITEM_SuperconductorCoil",
+          "nameZh": "超导线圈"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Multisensor",
+          "nameZh": "多传感器"
+        }
+      ]
+    },
+    {
+      "id": "REC_NickelPlates",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_NickelPlates",
+      "nameZh": "镍板",
+      "shortCode": "NP",
+      "inputs": [
+        {
+          "itemId": "ITEM_NickelOre",
+          "nameZh": "镍矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_NickelPlates",
+          "nameZh": "镍板"
+        }
+      ]
+    },
+    {
+      "id": "REC_NickelSynthesis",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_NickelSynthesis",
+      "nameZh": "镍矿石",
+      "shortCode": "NO",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "nameZh": "原物质"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_NickelOre",
+          "nameZh": "镍矿石"
+        }
+      ]
+    },
+    {
+      "id": "REC_Nutrients",
+      "crafterId": "CRAFT_GrowthChamber",
+      "nameEn": "REC_Nutrients",
+      "nameZh": "营养素",
+      "shortCode": "NU",
+      "inputs": [
+        {
+          "itemId": "ITEM_Graphite",
+          "nameZh": "石墨"
+        },
+        {
+          "itemId": "ITEM_Silica",
+          "nameZh": "二氧化硅"
+        },
+        {
+          "itemId": "ITEM_WaterIce",
+          "nameZh": "水冰"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Nutrients",
+          "nameZh": "营养素"
+        }
+      ]
+    },
+    {
+      "id": "REC_ObservedStellarSurveyData",
+      "crafterId": "CRAFT_DeepSpaceObservatory",
+      "nameEn": "REC_ObservedStellarSurveyData",
+      "nameZh": "星体勘测数据",
+      "shortCode": "SS",
+      "inputs": [
+        {
+          "itemId": "ITEM_AdvancedCircuits",
+          "nameZh": "高级电路"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_StellarSurveyData",
+          "nameZh": "星体勘测数据"
+        }
+      ]
+    },
+    {
+      "id": "REC_Protomatter",
+      "crafterId": "CRAFT_RelicSynthesizer",
+      "nameEn": "REC_Protomatter",
+      "nameZh": "原物质",
+      "shortCode": "PR",
+      "inputs": [],
+      "outputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "nameZh": "原物质"
+        }
+      ]
+    },
+    {
+      "id": "REC_ReinforcedGlass",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_ReinforcedGlass",
+      "nameZh": "强化玻璃",
+      "shortCode": "RG",
+      "inputs": [
+        {
+          "itemId": "ITEM_Silica",
+          "nameZh": "二氧化硅"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ReinforcedGlass",
+          "nameZh": "强化玻璃"
+        }
+      ]
+    },
+    {
+      "id": "REC_ReinforcedPlates",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_ReinforcedPlates",
+      "nameZh": "强化板材",
+      "shortCode": "RP",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "nameZh": "船体板"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "nameZh": "超级合金"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "nameZh": "强化板材"
+        }
+      ]
+    },
+    {
+      "id": "REC_ReinforcedPlatesAlt",
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "nameEn": "REC_ReinforcedPlatesAlt",
+      "nameZh": "强化板材",
+      "shortCode": "RP",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "nameZh": "船体板"
+        },
+        {
+          "itemId": "ITEM_Superalloy",
+          "nameZh": "超级合金"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "nameZh": "强化板材"
+        }
+      ]
+    },
+    {
+      "id": "REC_RelicCapacitor",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_RelicCapacitor",
+      "nameZh": "遗迹电容器",
+      "shortCode": "RC",
+      "inputs": [
+        {
+          "itemId": "ITEM_Capacitor",
+          "nameZh": "电容器"
+        },
+        {
+          "itemId": "ITEM_RelicShard",
+          "nameZh": "遗迹碎片"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RelicCapacitor",
+          "nameZh": "遗迹电容器"
+        }
+      ]
+    },
+    {
+      "id": "REC_RelicShardSynthesis",
+      "crafterId": "CRAFT_RelicSynthesizer",
+      "nameEn": "REC_RelicShardSynthesis",
+      "nameZh": "遗迹碎片",
+      "shortCode": "RS",
+      "inputs": [
+        {
+          "itemId": "ITEM_Superalloy",
+          "nameZh": "超级合金"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RelicShard",
+          "nameZh": "遗迹碎片"
+        }
+      ]
+    },
+    {
+      "id": "REC_RepairKit",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_RepairKit",
+      "nameZh": "修理包",
+      "shortCode": "RK",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        },
+        {
+          "itemId": "ITEM_NickelPlates",
+          "nameZh": "镍板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RepairKit",
+          "nameZh": "修理包"
+        }
+      ]
+    },
+    {
+      "id": "REC_RepairKitElectric",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_RepairKitElectric",
+      "nameZh": "电力修理包",
+      "shortCode": "ER",
+      "inputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "nameZh": "磁线圈"
+        },
+        {
+          "itemId": "ITEM_Capacitor",
+          "nameZh": "电容器"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RepairKitElectric",
+          "nameZh": "电力修理包"
+        }
+      ]
+    },
+    {
+      "id": "REC_RepairKitHull",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_RepairKitHull",
+      "nameZh": "船体修理包",
+      "shortCode": "HR",
+      "inputs": [
+        {
+          "itemId": "ITEM_HullPlates",
+          "nameZh": "船体板"
+        },
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_RepairKitHull",
+          "nameZh": "船体修理包"
+        }
+      ]
+    },
+    {
+      "id": "REC_ServoPlates",
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "nameEn": "REC_ServoPlates",
+      "nameZh": "伺服板",
+      "shortCode": "SP",
+      "inputs": [
+        {
+          "itemId": "ITEM_ReinforcedPlates",
+          "nameZh": "强化板材"
+        },
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "nameZh": "磁悬浮列车耦合器"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_ServoPlates",
+          "nameZh": "伺服板"
+        }
+      ]
+    },
+    {
+      "id": "REC_Servomotor",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_Servomotor",
+      "nameZh": "伺服电机",
+      "shortCode": "SE",
+      "inputs": [
+        {
+          "itemId": "ITEM_LightweightFrame",
+          "nameZh": "轻型框架"
+        },
+        {
+          "itemId": "ITEM_BasicMotor",
+          "nameZh": "基础马达"
+        },
+        {
+          "itemId": "ITEM_Capacitor",
+          "nameZh": "电容器"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Servomotor",
+          "nameZh": "伺服电机"
+        }
+      ]
+    },
+    {
+      "id": "REC_SilicaSynthesis",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_SilicaSynthesis",
+      "nameZh": "二氧化硅",
+      "shortCode": "SI",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "nameZh": "原物质"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Silica",
+          "nameZh": "二氧化硅"
+        }
+      ]
+    },
+    {
+      "id": "REC_SiliconWafers",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_SiliconWafers",
+      "nameZh": "硅晶圆",
+      "shortCode": "SW",
+      "inputs": [
+        {
+          "itemId": "ITEM_Silica",
+          "nameZh": "二氧化硅"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_SiliconWafers",
+          "nameZh": "硅晶圆"
+        }
+      ]
+    },
+    {
+      "id": "REC_StrangeWarpFuel",
+      "crafterId": "CRAFT_DeepSpaceObservatory",
+      "nameEn": "REC_StrangeWarpFuel",
+      "nameZh": "曲速燃料",
+      "shortCode": "WF",
+      "inputs": [
+        {
+          "itemId": "ITEM_StrangeMatterCrystal",
+          "nameZh": "奇异物质晶体"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_WarpFuel",
+          "nameZh": "曲速燃料"
+        }
+      ]
+    },
+    {
+      "id": "REC_Superalloy",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_Superalloy",
+      "nameZh": "超级合金",
+      "shortCode": "SU",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedTitaniumOre",
+          "nameZh": "浓缩钛矿石"
+        },
+        {
+          "itemId": "ITEM_EnrichedNickelOre",
+          "nameZh": "浓缩镍矿石"
+        },
+        {
+          "itemId": "ITEM_EnrichedCobaltOre",
+          "nameZh": "浓缩钴矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Superalloy",
+          "nameZh": "超级合金"
+        }
+      ]
+    },
+    {
+      "id": "REC_SuperalloyFrame",
+      "crafterId": "CRAFT_AdvancedAssembler",
+      "nameEn": "REC_SuperalloyFrame",
+      "nameZh": "超级合金框架",
+      "shortCode": "SF",
+      "inputs": [
+        {
+          "itemId": "ITEM_Superalloy",
+          "nameZh": "超级合金"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_SuperalloyFrame",
+          "nameZh": "超级合金框架"
+        }
+      ]
+    },
+    {
+      "id": "REC_SuperconductorCoil",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_SuperconductorCoil",
+      "nameZh": "超导线圈",
+      "shortCode": "SC",
+      "inputs": [
+        {
+          "itemId": "ITEM_MaglevCoupling",
+          "nameZh": "磁悬浮列车耦合器"
+        },
+        {
+          "itemId": "ITEM_ContainmentCoil",
+          "nameZh": "约束线圈"
+        },
+        {
+          "itemId": "ITEM_Coolant",
+          "nameZh": "冷却剂"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_SuperconductorCoil",
+          "nameZh": "超导线圈"
+        }
+      ]
+    },
+    {
+      "id": "REC_Thruster",
+      "crafterId": "CRAFT_Assembler",
+      "nameEn": "REC_Thruster",
+      "nameZh": "ITEM_Thruster",
+      "shortCode": "IT",
+      "inputs": [
+        {
+          "itemId": "ITEM_MagneticCoils",
+          "nameZh": "磁线圈"
+        },
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        },
+        {
+          "itemId": "ITEM_Servomotor",
+          "nameZh": "伺服电机"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Thruster",
+          "nameZh": "ITEM_Thruster"
+        }
+      ]
+    },
+    {
+      "id": "REC_TitaniumPlates",
+      "crafterId": "CRAFT_Refinery",
+      "nameEn": "REC_TitaniumPlates",
+      "nameZh": "钛板",
+      "shortCode": "TP",
+      "inputs": [
+        {
+          "itemId": "ITEM_TitaniumOre",
+          "nameZh": "钛矿石"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_TitaniumPlates",
+          "nameZh": "钛板"
+        }
+      ]
+    },
+    {
+      "id": "REC_TitaniumSynthesis",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_TitaniumSynthesis",
+      "nameZh": "钛矿石",
+      "shortCode": "TO",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "nameZh": "原物质"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_TitaniumOre",
+          "nameZh": "钛矿石"
+        }
+      ]
+    },
+    {
+      "id": "REC_UpgradesShipSpeed_1",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_UpgradesShipSpeed_1",
+      "nameZh": "ITEM_UpgradeShipSpeed_1",
+      "shortCode": "IT2",
+      "inputs": [
+        {
+          "itemId": "ITEM_BasicCircuit",
+          "nameZh": "基础电路"
+        },
+        {
+          "itemId": "ITEM_HydrogenFuel",
+          "nameZh": "氢燃料"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_UpgradeShipSpeed_1",
+          "nameZh": "ITEM_UpgradeShipSpeed_1"
+        }
+      ]
+    },
+    {
+      "id": "REC_UpgradesShipSpeed_2",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_UpgradesShipSpeed_2",
+      "nameZh": "ITEM_UpgradeShipSpeed_2",
+      "shortCode": "IT3",
+      "inputs": [
+        {
+          "itemId": "ITEM_UpgradeShipSpeed_1",
+          "nameZh": "ITEM_UpgradeShipSpeed_1"
+        },
+        {
+          "itemId": "ITEM_CobaltPlates",
+          "nameZh": "钴板"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_UpgradeShipSpeed_2",
+          "nameZh": "ITEM_UpgradeShipSpeed_2"
+        }
+      ]
+    },
+    {
+      "id": "REC_WarpFuel",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_WarpFuel",
+      "nameZh": "曲速燃料",
+      "shortCode": "WF",
+      "inputs": [
+        {
+          "itemId": "ITEM_EnrichedFuel",
+          "nameZh": "氘燃料"
+        },
+        {
+          "itemId": "ITEM_ContainmentCoil",
+          "nameZh": "约束线圈"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_WarpFuel",
+          "nameZh": "曲速燃料"
+        }
+      ]
+    },
+    {
+      "id": "REC_WaterIceSynthesis",
+      "crafterId": "CRAFT_Enrichment",
+      "nameEn": "REC_WaterIceSynthesis",
+      "nameZh": "水冰",
+      "shortCode": "WI",
+      "inputs": [
+        {
+          "itemId": "ITEM_Protomatter",
+          "nameZh": "原物质"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_WaterIce",
+          "nameZh": "水冰"
+        }
+      ]
+    },
+    {
+      "id": "REC_XenoEukaryaRecycling",
+      "crafterId": "CRAFT_GrowthChamber",
+      "nameEn": "REC_XenoEukaryaRecycling",
+      "nameZh": "异源真核生物",
+      "shortCode": "XE3",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenoeukarya",
+          "nameZh": "异源真核生物"
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "nameZh": "生物质"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Xenoeukarya",
+          "nameZh": "异源真核生物"
+        }
+      ]
+    },
+    {
+      "id": "REC_XenoarchaeaRecycling",
+      "crafterId": "CRAFT_GrowthChamber",
+      "nameEn": "REC_XenoarchaeaRecycling",
+      "nameZh": "异源古菌",
+      "shortCode": "XE",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenoarchaea",
+          "nameZh": "异源古菌"
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "nameZh": "生物质"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Xenoarchaea",
+          "nameZh": "异源古菌"
+        }
+      ]
+    },
+    {
+      "id": "REC_XenobacteriaRecycling",
+      "crafterId": "CRAFT_GrowthChamber",
+      "nameEn": "REC_XenobacteriaRecycling",
+      "nameZh": "异源细菌",
+      "shortCode": "XE2",
+      "inputs": [
+        {
+          "itemId": "ITEM_Xenobacteria",
+          "nameZh": "异源细菌"
+        },
+        {
+          "itemId": "ITEM_Biomass",
+          "nameZh": "生物质"
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "ITEM_Xenobacteria",
+          "nameZh": "异源细菌"
+        }
+      ]
+    }
+  ]
+}
