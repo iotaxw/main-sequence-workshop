@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildPlannedBeltPath, cellsToBeltSpecs, extendBeltStroke, selectConnectedBeltChain } from './core/belt-router';
-import { getBuildableDef, getModuleDef, HOTBAR_BUILDINGS, HOTBAR_MODULES } from './core/catalog';
+import { getBuildableDef, getModuleDef } from './core/catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './core/codec';
+import { cycleVariantInGroup, findGroupForEntity, getGroupsForView, getShortLabel } from './core/groups';
 import {
   boxSelectEntities,
   commitHistory,
@@ -98,6 +99,7 @@ export const App: React.FC = () => {
   const [selectionLayerMode, setSelectionLayerMode] = useState<SelectionLayerMode>('focus');
   const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
   const [activeTool, setActiveTool] = useState<ActiveTool>({ kind: 'select' });
+  const [lastGroupMember, setLastGroupMember] = useState<Record<string, string>>({});
   const [stampingLibPath, setStampingLibPath] = useState<string | null>(null);
   const [clipboardBp, setClipboardBp] = useState<BlueprintDocument | null>(null);
 
@@ -137,6 +139,7 @@ export const App: React.FC = () => {
     selection,
     selectionLayerMode,
     activeTool,
+    lastGroupMember,
     clipboardBp,
   });
   stateRef.current = {
@@ -147,6 +150,7 @@ export const App: React.FC = () => {
     selection,
     selectionLayerMode,
     activeTool,
+    lastGroupMember,
     clipboardBp,
   };
 
@@ -454,6 +458,39 @@ export const App: React.FC = () => {
     }
   }, [saveDialog, driver, refreshLibrary, showToast]);
 
+  const selectEntityTool = useCallback(
+    (entityId: string, opts?: { rotation?: Rotation; undergroundMode?: 'in' | 'out' }) => {
+      setStampingLibPath(null);
+      setBeltPreview([]);
+      const modDef = getModuleDef(entityId);
+      if (modDef) {
+        const grp = findGroupForEntity('station', entityId);
+        if (grp) setLastGroupMember((prev) => ({ ...prev, [grp.id]: entityId }));
+        setActiveTool((prev) => ({
+          kind: 'place-module',
+          moduleType: entityId,
+          rotation: opts?.rotation ?? (prev.kind === 'place-module' ? prev.rotation : 0),
+        }));
+        return;
+      }
+      const bldDef = getBuildableDef(entityId);
+      if (bldDef) {
+        const grp = findGroupForEntity('building', entityId);
+        if (grp) setLastGroupMember((prev) => ({ ...prev, [grp.id]: entityId }));
+        setActiveTool((prev) => ({
+          kind: 'place-building',
+          buildingType: entityId,
+          rotation: opts?.rotation ?? (prev.kind === 'place-building' ? prev.rotation : 0),
+          undergroundMode:
+            bldDef.kind === 'underground'
+              ? opts?.undergroundMode ?? (prev.kind === 'place-building' ? prev.undergroundMode : undefined) ?? 'in'
+              : undefined,
+        }));
+      }
+    },
+    []
+  );
+
   const handleCancelAction = useCallback(() => {
     const { activeTool: tool, selection: sel } = stateRef.current;
     if (tool.kind !== 'select') {
@@ -532,9 +569,26 @@ export const App: React.FC = () => {
         handleCancelAction();
         return;
       }
-      if (e.key === 'Tab') {
+      if (e.code === 'Backquote') {
         e.preventDefault();
         switchViewMode(stateRef.current.viewMode === 'station' ? 'building' : 'station');
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const { activeTool: tool, viewMode: vm } = stateRef.current;
+        const delta: 1 | -1 = e.shiftKey ? -1 : 1;
+        if (tool.kind === 'place-module' && vm === 'station') {
+          const next = cycleVariantInGroup('station', tool.moduleType, delta);
+          if (next) selectEntityTool(next);
+          return;
+        }
+        if (tool.kind === 'place-building' && vm === 'building') {
+          const next = cycleVariantInGroup('building', tool.buildingType, delta);
+          if (next) selectEntityTool(next);
+          return;
+        }
+        switchViewMode(vm === 'station' ? 'building' : 'station');
         return;
       }
       if (e.key === 'F1' || e.key === '?') {
@@ -667,40 +721,36 @@ export const App: React.FC = () => {
         if (vm === 'station') {
           const m = findModuleAtWorldPoint(curDoc, cursorWorld.x, cursorWorld.y, fl);
           if (m) {
-            setActiveTool({ kind: 'place-module', moduleType: m.type, rotation: m.rotation });
-            showToast(`吸管：${getModuleDef(m.type)?.nameZh ?? m.type}`);
+            selectEntityTool(m.type, { rotation: m.rotation });
+            showToast(`吸管：${getShortLabel(m.type, getModuleDef(m.type)?.nameZh)}`);
           }
         } else {
           const b = findBuildingAtCell(curDoc, Math.floor(cursorWorld.x), Math.floor(cursorWorld.y), fl);
           if (b) {
-            setActiveTool({
-              kind: 'place-building',
-              buildingType: b.type,
-              rotation: b.rotation,
-              undergroundMode: b.undergroundMode,
-            });
-            showToast(`吸管：${getBuildableDef(b.type)?.nameZh ?? b.type}`);
+            selectEntityTool(b.type, { rotation: b.rotation, undergroundMode: b.undergroundMode });
+            showToast(`吸管：${getShortLabel(b.type, getBuildableDef(b.type)?.nameZh)}`);
           }
         }
         return;
       }
 
       if (/^[1-9]$/.test(e.key)) {
-        const idx = Number(e.key) - 1;
-        if (stateRef.current.viewMode === 'station') {
-          const id = HOTBAR_MODULES[idx];
-          if (id) setActiveTool({ kind: 'place-module', moduleType: id, rotation: 0 });
+        const slot = Number(e.key);
+        const { viewMode: vm, activeTool: tool, lastGroupMember: mem } = stateRef.current;
+        const group = getGroupsForView(vm).find((g) => g.slot === slot);
+        if (!group) return;
+        const curId =
+          vm === 'station' && tool.kind === 'place-module'
+            ? tool.moduleType
+            : vm === 'building' && tool.kind === 'place-building'
+              ? tool.buildingType
+              : null;
+        if (curId && group.members.includes(curId) && group.members.length > 1) {
+          const next = cycleVariantInGroup(vm, curId, e.shiftKey ? -1 : 1);
+          if (next) selectEntityTool(next);
         } else {
-          const id = HOTBAR_BUILDINGS[idx];
-          if (id) {
-            const def = getBuildableDef(id);
-            setActiveTool({
-              kind: 'place-building',
-              buildingType: id,
-              rotation: 0,
-              undergroundMode: def?.kind === 'underground' ? 'in' : undefined,
-            });
-          }
+          const target = mem[group.id] ?? group.members[0];
+          if (target) selectEntityTool(target);
         }
       }
     };
@@ -737,6 +787,7 @@ export const App: React.FC = () => {
     openSaveDialog,
     requestDeleteSelection,
     saveDialog,
+    selectEntityTool,
     showToast,
     switchViewMode,
   ]);
@@ -989,14 +1040,14 @@ export const App: React.FC = () => {
       if (vm === 'building') {
         const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), fl);
         if (b) {
-          setActiveTool({ kind: 'place-building', buildingType: b.type, rotation: b.rotation, undergroundMode: b.undergroundMode });
-          showToast(`吸管：${getBuildableDef(b.type)?.nameZh ?? b.type}`);
+          selectEntityTool(b.type, { rotation: b.rotation, undergroundMode: b.undergroundMode });
+          showToast(`吸管：${getShortLabel(b.type, getBuildableDef(b.type)?.nameZh)}`);
         }
       } else {
         const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
         if (m) {
-          setActiveTool({ kind: 'place-module', moduleType: m.type, rotation: m.rotation });
-          showToast(`吸管：${getModuleDef(m.type)?.nameZh ?? m.type}`);
+          selectEntityTool(m.type, { rotation: m.rotation });
+          showToast(`吸管：${getShortLabel(m.type, getModuleDef(m.type)?.nameZh)}`);
         }
       }
     } else if (d.kind === 'box-select') {
@@ -1263,17 +1314,17 @@ export const App: React.FC = () => {
             type="button"
             className={`seg-btn ${viewMode === 'station' ? 'active' : ''}`}
             onClick={() => switchViewMode('station')}
-            title="空间站视野 (Tab)"
+            title="空间站视野 (` 或选择态 Tab)"
           >
-            空间站视野
+            空间站
           </button>
           <button
             type="button"
             className={`seg-btn ${viewMode === 'building' ? 'active' : ''}`}
             onClick={() => switchViewMode('building')}
-            title="建筑视野 (Tab)"
+            title="建筑视野 (` 或选择态 Tab)"
           >
-            建筑视野
+            建筑
           </button>
         </div>
 
@@ -1289,18 +1340,18 @@ export const App: React.FC = () => {
           </div>
           <button
             type="button"
-            className={`cad-btn ${hideAbove ? 'accent' : ''}`}
+            className="cad-btn"
             onClick={() => setHideAbove((v) => !v)}
             title="切换是否隐藏焦点楼层以上所有层 (V)"
           >
-            {hideAbove ? '已隐藏上层 (V)' : '透视上层 (V)'}
+            {hideAbove ? '上层 · 隐藏' : '上层 · 透视'}
           </button>
         </div>
 
         <div className="topbar-group">
           <button
             type="button"
-            className={`cad-btn ${snapEnabled ? 'accent' : ''}`}
+            className="cad-btn"
             onClick={() => {
               const next = !snapEnabled;
               setSnapEnabled(next);
@@ -1308,7 +1359,7 @@ export const App: React.FC = () => {
             }}
             title="切换四向与固定俯角吸附 (G)"
           >
-            {snapEnabled ? '视角吸附:开' : '视角吸附:关'}
+            {snapEnabled ? '吸附 · 开' : '吸附 · 关'}
           </button>
           <button
             type="button"
@@ -1342,7 +1393,7 @@ export const App: React.FC = () => {
             }
             title="切换框选跨层范围 (B)"
           >
-            框选:{selectionLayerMode === 'focus' ? '当前层' : selectionLayerMode === 'visible' ? '可见层' : '全部层'}
+            框选 · {selectionLayerMode === 'focus' ? '当前层' : selectionLayerMode === 'visible' ? '可见层' : '全部层'}
           </button>
           <button
             type="button"
@@ -1362,16 +1413,16 @@ export const App: React.FC = () => {
           >
             重做
           </button>
-          <button type="button" className="cad-btn accent" onClick={() => openSaveDialog(false)} title="保存蓝图 (Ctrl+S)">
+          <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="保存蓝图 (Ctrl+S)">
             保存
           </button>
           <button
             type="button"
-            className={`cad-btn ${helpOpen ? 'accent' : ''}`}
+            className="cad-btn"
             onClick={() => setHelpOpen((o) => !o)}
             title="操作快捷键与帮助 (F1 / ?)"
           >
-            Help / 快捷键
+            {helpOpen ? '关闭帮助' : '快捷键'}
           </button>
         </div>
       </header>
@@ -1410,6 +1461,8 @@ export const App: React.FC = () => {
           onDoubleClick={handleDoubleClick}
         />
 
+        <div className="cad-focal-vignette" aria-hidden="true" />
+
         <InspectorPanel
           doc={doc}
           selection={selection}
@@ -1433,39 +1486,41 @@ export const App: React.FC = () => {
 
         {activeTool.kind !== 'select' && (
           <div className="cad-tool-banner">
-            {activeTool.kind === 'demolish' && '拆除刷：左键点击或扫过拆除 · 右键/Esc 退出'}
+            {activeTool.kind === 'demolish' && '拆除刷 · 左键扫过拆除 · 右键 / Esc 退出'}
             {activeTool.kind === 'place-module' &&
-              `放置模块：${getModuleDef(activeTool.moduleType)?.nameZh} · R旋转 · Q/E切层 · 右键取消`}
+              `${getShortLabel(activeTool.moduleType, getModuleDef(activeTool.moduleType)?.nameZh)} · Tab 组内轮换 · R 旋转 · Q/E 切层 · 右键取消`}
             {activeTool.kind === 'place-building' &&
-              `放置建筑：${getBuildableDef(activeTool.buildingType)?.nameZh}${
+              `${getShortLabel(activeTool.buildingType, getBuildableDef(activeTool.buildingType)?.nameZh)}${
                 getBuildableDef(activeTool.buildingType)?.kind === 'belt'
-                  ? ' · 左键拖拉带 · Shift+拖 自动L形规划(R切拐/Alt反向)'
+                  ? ' · 左键拖拉 · Shift+拖 L形规划 · Tab 换级'
                   : getBuildableDef(activeTool.buildingType)?.kind === 'underground'
-                    ? ` (${activeTool.undergroundMode === 'out' ? '出口 OUT' : '入口 IN'})`
-                    : ' · R旋转 · Shift+左键覆盖'
+                    ? ` (${activeTool.undergroundMode === 'out' ? '出口 OUT' : '入口 IN'}) · Tab 换级`
+                    : ' · Tab 组内轮换 · R 旋转 · Shift+左键覆盖'
               } · 右键取消`}
             {activeTool.kind === 'stamp-blueprint' &&
-              `幽灵蓝图：「${activeTool.name}」 · 左键盖章 · Shift+左键强制覆盖 · R旋转 · M镜像 · Q/E切层 · 右键放下`}
+              `幽灵蓝图「${activeTool.name}」 · 左键盖章 · Shift 覆盖 · R 旋转 · M 镜像 · 右键放下`}
           </div>
         )}
 
         <div className="cad-telemetry">
-          <span>{viewMode === 'station' ? '空间站视野（继续放大进入建筑）' : '建筑视野（继续缩小返回空间站）'}</span>
+          <span>{viewMode === 'station' ? '空间站' : '建筑'}</span>
           <span>
-            坐标 {cursorWorld ? `${Math.floor(cursorWorld.x)}, ${Math.floor(cursorWorld.y)}` : '--'} · L{focusFloor}
+            {cursorWorld ? `${Math.floor(cursorWorld.x)}, ${Math.floor(cursorWorld.y)}` : '--'} · L{focusFloor}
           </span>
           <span>
-            朝向 {telemetry.yawDeg}° · 俯角 {telemetry.pitchDeg}° · 距 {telemetry.distance}m
+            {telemetry.yawDeg}° / {telemetry.pitchDeg}° · {telemetry.distance}m
           </span>
           <span>
-            {doc.modules.length} 模 / {doc.buildings.length} 建
-            {lastAutosaveAt ? ` · 自动保存 ${new Date(lastAutosaveAt).toLocaleTimeString()}` : ''}
+            {doc.modules.length}模 · {doc.buildings.length}建
+            {lastAutosaveAt ? ` · ${new Date(lastAutosaveAt).toLocaleTimeString()}` : ''}
           </span>
         </div>
 
         <PaletteDock
           viewMode={viewMode}
           activeTool={activeTool}
+          lastGroupMember={lastGroupMember}
+          onSelectEntity={(id) => selectEntityTool(id)}
           onSelectTool={(t) => {
             setActiveTool(t);
             setStampingLibPath(null);

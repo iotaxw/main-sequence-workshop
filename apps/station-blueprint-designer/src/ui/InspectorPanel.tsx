@@ -33,19 +33,17 @@ const PortDiagram: React.FC<{
   return (
     <div className="port-diagram-wrap">
       <svg viewBox={`${-pad} ${-pad} ${viewW} ${viewW}`} className="port-diagram-svg">
-        {/* Machine CAD box */}
         <rect
           x={-w / 2}
           y={-d / 2}
           width={w}
           height={d}
-          rx={0.18}
-          fill="#152030"
-          stroke="#475569"
-          strokeWidth={0.1}
+          rx={0.22}
+          fill="#0d131c"
+          stroke="#35465c"
+          strokeWidth={0.09}
         />
-        {/* Orientation north/east axis marker */}
-        <text x={0} y={0.22} textAnchor="middle" fill="#64748b" fontSize={0.62} fontFamily="monospace">
+        <text x={0} y={0.22} textAnchor="middle" fill="#52657d" fontSize={0.58} fontFamily="monospace">
           {w}×{d}
         </text>
 
@@ -53,7 +51,7 @@ const PortDiagram: React.FC<{
           const [rx, ry] = rotateVec2(port.hx * 0.5, port.hy * 0.5, building.rotation);
           const side = rotateSide(port.side, building.rotation);
           const enabled = !disabledSet.has(port.index);
-          const r = Math.min(0.42, Math.max(0.28, viewW * 0.042));
+          const r = Math.min(0.4, Math.max(0.26, viewW * 0.04));
           return (
             <g
               key={port.index}
@@ -66,12 +64,14 @@ const PortDiagram: React.FC<{
                 cx={rx}
                 cy={ry}
                 r={r}
-                fill={enabled ? '#22c55e' : '#7f1d1d'}
-                stroke={enabled ? '#86efac' : '#ef4444'}
-                strokeWidth={0.09}
+                fill="#0b1017"
+                stroke={enabled ? '#4ea377' : '#803a3e'}
+                strokeWidth={0.11}
               />
-              {!enabled && (
-                <g stroke="#fca5a5" strokeWidth={0.08}>
+              {enabled ? (
+                <circle cx={rx} cy={ry} r={r * 0.24} fill="#4ea377" />
+              ) : (
+                <g stroke="#8c4247" strokeWidth={0.09}>
                   <line x1={rx - r * 0.45} y1={ry - r * 0.45} x2={rx + r * 0.45} y2={ry + r * 0.45} />
                   <line x1={rx + r * 0.45} y1={ry - r * 0.45} x2={rx - r * 0.45} y2={ry + r * 0.45} />
                 </g>

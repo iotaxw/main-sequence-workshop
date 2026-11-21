@@ -20,6 +20,7 @@ import {
   updateBuildingConfigCmd,
 } from './commands';
 import { computeUndergroundLinks, isCellBuildable, validateBuildingPlacement } from './geometry';
+import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
 
 describe('Build 26639889 catalog verification', () => {
   it('includes all extracted station modules, buildables, and recipes with binary-verified dimensions', () => {
@@ -42,6 +43,25 @@ describe('Build 26639889 catalog verification', () => {
 
     // Recipes linked to crafter types
     expect(getRecipesForCrafter('CRAFT_Assembler').length).toBeGreaterThan(5);
+  });
+
+  it('maps 100% of buildables and station modules into shapez-2 style hotkey groups with clean Tab cycling', () => {
+    const allGroupedBuildings = BUILDING_GROUPS.flatMap((g) => g.members);
+    const catalogBuildingIds = CATALOG.buildables.map((b) => b.id);
+    expect(new Set(allGroupedBuildings)).toEqual(new Set(catalogBuildingIds));
+    expect(allGroupedBuildings.length).toBe(catalogBuildingIds.length);
+
+    const allGroupedModules = STATION_GROUPS.flatMap((g) => g.members);
+    const catalogModuleIds = CATALOG.stationModules.map((m) => m.id);
+    expect(new Set(allGroupedModules)).toEqual(new Set(catalogModuleIds));
+    expect(allGroupedModules.length).toBe(catalogModuleIds.length);
+
+    // Tab forward & Shift+Tab backward wrap cleanly inside Balancers & Labs
+    expect(cycleVariantInGroup('building', 'DAT_BeltBalancer_01', 1)).toBe('DAT_BeltBalancer_02');
+    expect(cycleVariantInGroup('building', 'DAT_BeltBalancer_03', 1)).toBe('DAT_BeltBalancer_01');
+    expect(cycleVariantInGroup('building', 'DAT_BeltBalancer_01', -1)).toBe('DAT_BeltBalancer_03');
+    expect(getShortLabel('DAT_BeltBalancer_03')).toBe('平衡器 III');
+    expect(getShortLabel('DAT_QuantumSciLab')).toBe('实验室 IV');
   });
 });
 

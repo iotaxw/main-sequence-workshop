@@ -1,154 +1,157 @@
-import React, { useMemo, useState } from 'react';
-import {
-  BUILDABLE_CATEGORIES,
-  CATALOG,
-  HOTBAR_BUILDINGS,
-  HOTBAR_MODULES,
-  STATION_CATEGORIES,
-} from '../core/catalog';
+import React, { useState } from 'react';
+import { getBuildableDef, getModuleDef } from '../core/catalog';
+import { findGroupForEntity, getGroupsForView, getShortLabel, PaletteGroupDef } from '../core/groups';
 import type { ActiveTool, ViewMode } from '../core/types';
+import { EntityGlyph } from './Schematics';
 
 interface PaletteDockProps {
   viewMode: ViewMode;
   activeTool: ActiveTool;
+  lastGroupMember: Record<string, string>;
+  onSelectEntity: (entityId: string) => void;
   onSelectTool: (tool: ActiveTool) => void;
 }
 
-export const PaletteDock: React.FC<PaletteDockProps> = ({ viewMode, activeTool, onSelectTool }) => {
-  const [category, setCategory] = useState<string>('ALL');
-  const [query, setQuery] = useState('');
+interface HoverMeta {
+  title: string;
+  en: string;
+  spec: string;
+  hint?: string;
+}
 
-  const categories = viewMode === 'station' ? STATION_CATEGORIES : BUILDABLE_CATEGORIES;
-  const hotbar = viewMode === 'station' ? HOTBAR_MODULES : HOTBAR_BUILDINGS;
+export const PaletteDock: React.FC<PaletteDockProps> = ({
+  viewMode,
+  activeTool,
+  lastGroupMember,
+  onSelectEntity,
+  onSelectTool,
+}) => {
+  const [hoverMeta, setHoverMeta] = useState<HoverMeta | null>(null);
+  const groups = getGroupsForView(viewMode);
 
-  const items = useMemo(() => {
-    const q = query.trim().toLowerCase();
+  const activeEntityId =
+    viewMode === 'station' && activeTool.kind === 'place-module'
+      ? activeTool.moduleType
+      : viewMode === 'building' && activeTool.kind === 'place-building'
+        ? activeTool.buildingType
+        : null;
+
+  const activeGroup: PaletteGroupDef | undefined = activeEntityId
+    ? findGroupForEntity(viewMode, activeEntityId)
+    : undefined;
+
+  const buildMeta = (id: string, showTabHint: boolean): HoverMeta => {
     if (viewMode === 'station') {
-      return CATALOG.stationModules.filter((m) => {
-        if (category !== 'ALL' && m.categoryEn !== category) return false;
-        if (q && !m.nameZh.toLowerCase().includes(q) && !m.nameEn.toLowerCase().includes(q)) return false;
-        return true;
-      });
+      const m = getModuleDef(id);
+      return {
+        title: m?.nameZh ?? id,
+        en: m?.nameEn ?? id,
+        spec: m ? `${m.sizeUnits[0]}×${m.sizeUnits[1]} · ${m.sizeUnits[2]}层 · ${m.connectors.length}口` : '',
+        hint: showTabHint ? 'Tab 组内轮换 · R 旋转' : undefined,
+      };
     }
-    return CATALOG.buildables.filter((b) => {
-      if (category !== 'ALL' && b.categoryEn !== category) return false;
-      if (q && !b.nameZh.toLowerCase().includes(q) && !b.nameEn.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [viewMode, category, query]);
-
-  // Reset category filter if switching viewMode makes current category irrelevant
-  const validCat = category === 'ALL' || categories.some((c) => c.en === category) ? category : 'ALL';
+    const b = getBuildableDef(id);
+    return {
+      title: b?.nameZh ?? id,
+      en: b?.nameEn ?? id,
+      spec: b ? `${b.size[0]}×${b.size[1]}格 · ${b.ports.length}口` : '',
+      hint: showTabHint ? 'Tab 组内轮换 · R 旋转' : undefined,
+    };
+  };
 
   return (
-    <div className="cad-palette-dock">
-      <div className="palette-top-row">
-        <div className="palette-mode-tools">
-          <button
-            type="button"
-            className={`cad-btn ${activeTool.kind === 'select' ? 'accent' : ''}`}
-            onClick={() => onSelectTool({ kind: 'select' })}
-            title="选择 / 框选 (Esc / 右键)"
-          >
-            选择
-          </button>
-          <button
-            type="button"
-            className={`cad-btn ${activeTool.kind === 'demolish' ? 'danger-active' : ''}`}
-            onClick={() => onSelectTool({ kind: 'demolish' })}
-            title="快捷拆除刷 (X)：按住左键扫过即拆"
-          >
-            拆除刷 (X)
-          </button>
+    <div className="s2-dock-anchor" onMouseLeave={() => setHoverMeta(null)}>
+      {/* Subtle Hover Detail Card (only visible on hover!) */}
+      {hoverMeta && (
+        <div className="s2-hover-card">
+          <div className="s2-hover-row">
+            <span className="s2-hover-title">{hoverMeta.title}</span>
+            <span className="s2-hover-spec">{hoverMeta.spec}</span>
+          </div>
+          <div className="s2-hover-en">{hoverMeta.en}</div>
+          {hoverMeta.hint && <div className="s2-hover-hint">{hoverMeta.hint}</div>}
         </div>
+      )}
 
-        <div className="palette-cats">
-          <button
-            type="button"
-            className={`cat-tab ${validCat === 'ALL' ? 'active' : ''}`}
-            onClick={() => setCategory('ALL')}
-          >
-            全部 ({viewMode === 'station' ? CATALOG.stationModules.length : CATALOG.buildables.length})
-          </button>
-          {categories.map((c) => (
-            <button
-              key={c.en}
-              type="button"
-              className={`cat-tab ${validCat === c.en ? 'active' : ''}`}
-              onClick={() => setCategory(c.en)}
-            >
-              {c.zh}
-            </button>
-          ))}
-        </div>
-
-        <input
-          type="text"
-          className="cad-input palette-search"
-          placeholder={viewMode === 'station' ? '筛选模块...' : '筛选建筑/物流...'}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-
-      <div className="palette-items">
-        {viewMode === 'station'
-          ? items.map((m) => {
-              const mod = m as (typeof CATALOG.stationModules)[number];
-              const isSelected = activeTool.kind === 'place-module' && activeTool.moduleType === mod.id;
-              const hotIdx = hotbar.indexOf(mod.id);
+      {/* Shapez-2-style Sub-Tray floating directly above the dock when a group is active */}
+      {activeGroup && activeGroup.members.length > 1 && (
+        <div className="s2-subtray" role="toolbar" aria-label={`${activeGroup.name} 变体选择`}>
+          <span className="s2-subtray-label">{activeGroup.name}</span>
+          <div className="s2-subtray-items">
+            {activeGroup.members.map((memberId) => {
+              const isCur = activeEntityId === memberId;
               return (
                 <button
-                  key={mod.id}
+                  key={memberId}
                   type="button"
-                  className={`palette-card ${isSelected ? 'active' : ''} ${mod.hasFactoryFloor ? '' : 'non-floor'}`}
-                  onClick={() =>
-                    onSelectTool({
-                      kind: 'place-module',
-                      moduleType: mod.id,
-                      rotation: activeTool.kind === 'place-module' ? activeTool.rotation : 0,
-                    })
-                  }
-                  title={`${mod.nameZh} (${mod.nameEn}) · ${mod.sizeUnits[0]}×${mod.sizeUnits[1]}×${mod.sizeUnits[2]}层 · ${mod.connectors.length}接口`}
+                  className={`s2-tile sub ${isCur ? 'active' : ''}`}
+                  onClick={() => onSelectEntity(memberId)}
+                  onMouseEnter={() => setHoverMeta(buildMeta(memberId, true))}
                 >
-                  {hotIdx >= 0 && <span className="hot-badge">{hotIdx + 1}</span>}
-                  <div className="card-glyph">
-                    <span className="size-tag">
-                      {mod.sizeUnits[0]}×{mod.sizeUnits[1]}
-                      {mod.sizeUnits[2] > 1 ? `·${mod.sizeUnits[2]}F` : ''}
-                    </span>
-                  </div>
-                  <div className="card-name">{mod.nameZh}</div>
-                </button>
-              );
-            })
-          : items.map((b) => {
-              const bld = b as (typeof CATALOG.buildables)[number];
-              const isSelected = activeTool.kind === 'place-building' && activeTool.buildingType === bld.id;
-              const hotIdx = hotbar.indexOf(bld.id);
-              return (
-                <button
-                  key={bld.id}
-                  type="button"
-                  className={`palette-card kind-${bld.kind} ${isSelected ? 'active' : ''}`}
-                  onClick={() =>
-                    onSelectTool({
-                      kind: 'place-building',
-                      buildingType: bld.id,
-                      rotation: activeTool.kind === 'place-building' ? activeTool.rotation : 0,
-                      undergroundMode: bld.kind === 'underground' ? 'in' : undefined,
-                    })
-                  }
-                  title={`${bld.nameZh} (${bld.nameEn}) · ${bld.size[0]}×${bld.size[1]} 格 · ${bld.ports.length} 接口`}
-                >
-                  {hotIdx >= 0 && <span className="hot-badge">{hotIdx + 1}</span>}
-                  <div className="card-glyph">
-                    <span className="size-tag">{bld.size[0]}×{bld.size[1]}</span>
-                  </div>
-                  <div className="card-name">{bld.nameZh}</div>
+                  <EntityGlyph id={memberId} size={20} />
+                  <span className="s2-tile-label">{getShortLabel(memberId)}</span>
                 </button>
               );
             })}
+          </div>
+          <span className="s2-subtray-kbd">Tab</span>
+        </div>
+      )}
+
+      {/* Main Compact Shapez-2 Grouped Grid Bar */}
+      <div className="s2-dock-bar">
+        <button
+          type="button"
+          className={`s2-tile util ${activeTool.kind === 'select' ? 'active' : ''}`}
+          onClick={() => onSelectTool({ kind: 'select' })}
+          onMouseEnter={() =>
+            setHoverMeta({ title: '选择与框选', en: 'Select', spec: 'Esc / 右键', hint: '左键点选 · 拖拽框选' })
+          }
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+            <polygon points="5,4 18,12 12,13.5 10.5,19.5" />
+          </svg>
+          <span className="s2-tile-label">选择</span>
+        </button>
+
+        <button
+          type="button"
+          className={`s2-tile util ${activeTool.kind === 'demolish' ? 'active-warn' : ''}`}
+          onClick={() => onSelectTool({ kind: 'demolish' })}
+          onMouseEnter={() =>
+            setHoverMeta({ title: '拆除刷', en: 'Demolish', spec: 'X', hint: '按住左键扫过拆除' })
+          }
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+            <line x1="6" y1="6" x2="18" y2="18" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+          </svg>
+          <span className="s2-tile-label">拆除</span>
+        </button>
+
+        <div className="s2-divider" />
+
+        {groups.map((group) => {
+          const isGroupActive = activeGroup?.id === group.id;
+          const displayId =
+            isGroupActive && activeEntityId
+              ? activeEntityId
+              : lastGroupMember[group.id] ?? group.members[0];
+          return (
+            <button
+              key={group.id}
+              type="button"
+              className={`s2-tile ${isGroupActive ? 'active' : ''}`}
+              onClick={() => onSelectEntity(displayId)}
+              onMouseEnter={() => setHoverMeta(buildMeta(displayId, group.members.length > 1))}
+            >
+              <span className="s2-slot-num">{group.slot}</span>
+              <EntityGlyph id={displayId} size={22} />
+              <span className="s2-tile-label">{getShortLabel(displayId)}</span>
+              {group.members.length > 1 && <span className="s2-group-dots" aria-hidden="true" />}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
