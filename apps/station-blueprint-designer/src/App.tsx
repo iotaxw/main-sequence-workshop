@@ -1294,6 +1294,8 @@ export const App: React.FC = () => {
         <div className="topbar-group">
           <span className="brand-mark">MS · CAD</span>
           <input
+            id="doc-title"
+            name="docTitle"
             type="text"
             className="doc-title-input"
             value={doc.name}

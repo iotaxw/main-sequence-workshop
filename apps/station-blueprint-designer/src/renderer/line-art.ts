@@ -162,7 +162,10 @@ export function buildBeltLineArt(
   }
 
   // Ultra-subtle recessed belt bed (nearly invisible, gives gentle figure-ground separation)
-  const bedGeo = new THREE.PlaneGeometry(0.98, 0.54);
+  const bedGeo =
+    localTurn === 'straight'
+      ? new THREE.PlaneGeometry(0.98, 0.54)
+      : new THREE.PlaneGeometry(0.76, 0.76);
   bedGeo.rotateX(-Math.PI / 2);
   const bedMat = new THREE.MeshBasicMaterial({
     color: isSelected ? LINE_ART_PALETTE.baseFillSelected : LINE_ART_PALETTE.beltTrackFill,
@@ -183,23 +186,23 @@ export function buildBeltLineArt(
     pushSeg(railPts, -0.5, -r, 0.5, -r, 0);
     pushSeg(railPts, -0.5, r, 0.5, r, 0);
   } else if (localTurn === 'right') {
-    // Incoming from -Z (top in local), turning to +X
-    // Outer rail: (-r, -0.5) -> (-r, r) -> (0.5, r)
-    pushSeg(railPts, -r, -0.5, -r, r * 0.45, 0);
-    pushSeg(railPts, -r, r * 0.45, -r * 0.45, r, 0);
-    pushSeg(railPts, -r * 0.45, r, 0.5, r, 0);
-    // Inner rail: (r, -0.5) -> (r, -r) -> (0.5, -r)
-    pushSeg(railPts, r, -0.5, r, -r, 0);
-    pushSeg(railPts, r, -r, 0.5, -r, 0);
-  } else {
-    // Incoming from +Z (bottom in local), turning to +X
-    // Outer rail: (-r, 0.5) -> (-r, -r) -> (0.5, -r)
+    // Clockwise turn (cross > 0): incoming from +Z (South in local) -> exiting +X (East)
+    // Outer rail: (-r, 0.5) -> chamfered corner -> (0.5, -r)
     pushSeg(railPts, -r, 0.5, -r, -r * 0.45, 0);
     pushSeg(railPts, -r, -r * 0.45, -r * 0.45, -r, 0);
     pushSeg(railPts, -r * 0.45, -r, 0.5, -r, 0);
     // Inner rail: (r, 0.5) -> (r, r) -> (0.5, r)
     pushSeg(railPts, r, 0.5, r, r, 0);
     pushSeg(railPts, r, r, 0.5, r, 0);
+  } else {
+    // Counter-clockwise turn (cross < 0): incoming from -Z (North in local) -> exiting +X (East)
+    // Outer rail: (-r, -0.5) -> chamfered corner -> (0.5, r)
+    pushSeg(railPts, -r, -0.5, -r, r * 0.45, 0);
+    pushSeg(railPts, -r, r * 0.45, -r * 0.45, r, 0);
+    pushSeg(railPts, -r * 0.45, r, 0.5, r, 0);
+    // Inner rail: (r, -0.5) -> (r, -r) -> (0.5, -r)
+    pushSeg(railPts, r, -0.5, r, -r, 0);
+    pushSeg(railPts, r, -r, 0.5, -r, 0);
   }
 
   const railColor = isSelected
@@ -248,7 +251,8 @@ export function buildMachineLineArt(
   def: BuildableDef,
   baseY: number,
   opacity: number,
-  isSelected: boolean
+  isSelected: boolean,
+  ghostTint?: number
 ): THREE.Group {
   const group = new THREE.Group();
   const [cx, cz] = getBuildingCenterM(b, def);
@@ -267,9 +271,9 @@ export function buildMachineLineArt(
   const plateGeo = new THREE.PlaneGeometry(w - inset * 2, d - inset * 2);
   plateGeo.rotateX(-Math.PI / 2);
   const plateMat = new THREE.MeshBasicMaterial({
-    color: isSelected ? LINE_ART_PALETTE.baseFillSelected : LINE_ART_PALETTE.baseFill,
+    color: ghostTint !== undefined ? ghostTint : isSelected ? LINE_ART_PALETTE.baseFillSelected : LINE_ART_PALETTE.baseFill,
     transparent: true,
-    opacity: opacity * 0.94,
+    opacity: ghostTint !== undefined ? opacity * 0.08 : opacity * 0.94,
     depthWrite: false,
   });
   const plate = new THREE.Mesh(plateGeo, plateMat);
@@ -280,13 +284,16 @@ export function buildMachineLineArt(
   const primaryPts: number[] = [];
   const detailPts: number[] = [];
 
-  const primaryColor = isSelected
-    ? LINE_ART_PALETTE.lineSelected
-    : def.kind === 'research'
-      ? LINE_ART_PALETTE.researchTint
-      : def.kind === 'reactor'
-        ? LINE_ART_PALETTE.powerTint
-        : LINE_ART_PALETTE.linePrimary;
+  const primaryColor =
+    ghostTint !== undefined
+      ? ghostTint
+      : isSelected
+        ? LINE_ART_PALETTE.lineSelected
+        : def.kind === 'research'
+          ? LINE_ART_PALETTE.researchTint
+          : def.kind === 'reactor'
+            ? LINE_ART_PALETTE.powerTint
+            : LINE_ART_PALETTE.linePrimary;
 
   switch (def.id) {
     case 'DAT_Refinery': {
@@ -487,14 +494,16 @@ export function buildMachineLineArt(
   artHolder.rotation.y = -b.rotation * (Math.PI / 2);
 
   if (primaryPts.length > 0) {
-    artHolder.add(buildLineSegments(primaryPts, primaryColor, opacity * (isSelected ? 1.0 : 0.88)));
+    artHolder.add(
+      buildLineSegments(primaryPts, primaryColor, opacity * (ghostTint !== undefined ? 0.96 : isSelected ? 1.0 : 0.88))
+    );
   }
   if (detailPts.length > 0) {
     artHolder.add(
       buildLineSegments(
         detailPts,
-        isSelected ? LINE_ART_PALETTE.linePrimary : LINE_ART_PALETTE.lineDetail,
-        opacity * (isSelected ? 0.85 : 0.58)
+        ghostTint !== undefined ? ghostTint : isSelected ? LINE_ART_PALETTE.linePrimary : LINE_ART_PALETTE.lineDetail,
+        opacity * (ghostTint !== undefined ? 0.65 : isSelected ? 0.85 : 0.58)
       )
     );
   }
@@ -504,7 +513,7 @@ export function buildMachineLineArt(
   if (def.configurablePorts) {
     const worldPorts = getBuildingWorldPorts(b, def);
     for (const wp of worldPorts) {
-      group.add(buildHollowPortMarker(wp.worldX, y + 0.03, wp.worldY, wp.enabled, opacity));
+      group.add(buildHollowPortMarker(wp.worldX, y + 0.03, wp.worldY, wp.enabled, opacity * (ghostTint !== undefined ? 0.72 : 1)));
     }
   }
 

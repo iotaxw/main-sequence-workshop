@@ -43,8 +43,8 @@ const COLORS = {
   connLarge: 0x4b637c,
   connXLarge: 0x4e7378,
   connVertical: 0x675f85,
-  validGhost: 0x7ea4c2,
-  invalidGhost: 0xb44c50,
+  validGhost: 0x9ec0de,
+  invalidGhost: 0xc95b61,
   selectOutline: 0x9ab8d4,
   heightFrame: 0x222e3e,
   refAxis: 0x182332,
@@ -716,7 +716,7 @@ export class CadSceneController {
       return;
     }
 
-    // 3. Single Building placement ghost (renders actual planar line-art!)
+    // 3. Single Building placement ghost (renders actual planar line-art silhouette + ports!)
     if (state.activeTool.kind === 'place-building') {
       const def = getBuildableDef(state.activeTool.buildingType);
       if (!def) return;
@@ -729,11 +729,25 @@ export class CadSceneController {
         { allowBeltReplace: def.kind === 'belt', allowForceReplace: state.forceReplaceHeld }
       );
       const col = issue ? COLORS.invalidGhost : COLORS.validGhost;
-      this.addFlatRectGhost(bx + 0.08, by + 0.08, bx + w - 0.08, by + d - 0.08, baseY + 0.09, col, 0.9);
-      const chev = createDirectionalChevron(Math.min(w, d) * 0.32, col, 0.9);
-      chev.position.set(bx + w / 2, baseY + 0.1, by + d / 2);
-      chev.rotation.y = -state.activeTool.rotation * (Math.PI / 2);
-      this.previewGroup.add(chev);
+      if (def.kind === 'belt') {
+        this.addFlatRectGhost(bx + 0.14, by + 0.14, bx + 0.86, by + 0.86, baseY + 0.09, col, 0.85);
+        const chev = createDirectionalChevron(0.32, col, 0.96);
+        chev.position.set(bx + 0.5, baseY + 0.1, by + 0.5);
+        chev.rotation.y = -state.activeTool.rotation * (Math.PI / 2);
+        this.previewGroup.add(chev);
+      } else {
+        const ghostBld = {
+          id: '__ghost',
+          type: def.id,
+          x: bx,
+          y: by,
+          floor: state.focusFloor,
+          rotation: state.activeTool.rotation,
+          undergroundMode: state.activeTool.undergroundMode,
+        };
+        this.previewGroup.add(buildMachineLineArt(ghostBld, def, baseY + 0.05, 0.96, false, col));
+        this.addFlatRectGhost(bx + 0.04, by + 0.04, bx + w - 0.04, by + d - 0.04, baseY + 0.11, col, 0.72);
+      }
 
       if (def.kind === 'underground') {
         const maxLen = def.maxLength ?? 8;

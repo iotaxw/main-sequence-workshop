@@ -243,6 +243,8 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
 
       <div className="lib-search-wrap">
         <input
+          id="library-search"
+          name="librarySearch"
           type="text"
           className="cad-input"
           placeholder="搜索文件夹或蓝图..."

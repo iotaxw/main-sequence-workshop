@@ -34,36 +34,45 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
       );
     }
 
-    // Underground belts
+    // Underground belts (tier ticks 1/2/3)
     if (id.startsWith('DAT_UndergroundBelt')) {
+      const tier = id.endsWith('3') ? 3 : id.endsWith('2') ? 2 : 1;
       return (
         <>
           <polyline points="8,6 19,6 19,18 8,18" {...s} />
-          <line x1="15" y1="8" x2="15" y2="16" {...dim} />
+          <line x1="15" y1="8.5" x2="15" y2="15.5" {...dim} />
           <polyline points="5,9.5 9.5,12 5,14.5" {...s} />
+          {tier >= 2 && <line x1="11.5" y1="9.5" x2="11.5" y2="14.5" {...dim} />}
+          {tier === 3 && <line x1="17" y1="9.5" x2="17" y2="14.5" {...dim} />}
         </>
       );
     }
 
-    // Splitters
+    // Splitters (tier ticks 1/2/3)
     if (id.startsWith('DAT_Splitter')) {
+      const tier = id.endsWith('3') ? 3 : id.endsWith('2') ? 2 : 1;
       return (
         <>
           <rect x="4" y="4" width="16" height="16" rx="2" {...dim} />
           <line x1="4" y1="12" x2="19" y2="12" {...s} />
           <line x1="12" y1="5" x2="12" y2="19" {...s} />
           <polyline points="15.5,9.5 18.5,12 15.5,14.5" {...s} />
+          {tier >= 2 && <circle cx="7.5" cy="7.5" r="0.9" {...s} />}
+          {tier === 3 && <circle cx="7.5" cy="16.5" r="0.9" {...s} />}
         </>
       );
     }
 
-    // Belt Balancers
+    // Belt Balancers (tier bar lines 1/2/3)
     if (id.startsWith('DAT_BeltBalancer')) {
+      const tier = id.endsWith('03') ? 3 : id.endsWith('02') ? 2 : 1;
       return (
         <>
           <rect x="5" y="3" width="14" height="18" rx="2" {...dim} />
           <line x1="5" y1="7.5" x2="19" y2="16.5" {...s} />
           <line x1="5" y1="16.5" x2="19" y2="7.5" {...s} />
+          {tier >= 2 && <line x1="7.5" y1="5.2" x2="16.5" y2="5.2" {...dim} />}
+          {tier === 3 && <line x1="7.5" y1="18.8" x2="16.5" y2="18.8" {...dim} />}
         </>
       );
     }
@@ -174,13 +183,76 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
         </>
       );
     }
-    if (id.includes('SciLab') || id === 'DAT_RelicAnalyzer') {
+    if (id === 'DAT_MatSciLab') {
+      // Lab I: Material Science (single crystal ring + crosshair)
       return (
         <>
           <rect x="4" y="4" width="16" height="16" rx="2.5" {...dim} />
-          <circle cx="12" cy="12" r="5.2" {...s} />
-          <line x1="6" y1="12" x2="18" y2="12" {...dim} />
-          <line x1="12" y1="6" x2="12" y2="18" {...dim} />
+          <circle cx="12" cy="12" r="4.8" {...s} />
+          <line x1="6.5" y1="12" x2="17.5" y2="12" {...dim} />
+          <line x1="12" y1="6.5" x2="12" y2="17.5" {...dim} />
+        </>
+      );
+    }
+    if (id === 'DAT_CompSciLab') {
+      // Lab II: Computer Science (concentric square core + bus ticks)
+      return (
+        <>
+          <rect x="4" y="4" width="16" height="16" rx="2.5" {...dim} />
+          <rect x="8" y="8" width="8" height="8" rx="1" {...s} />
+          <line x1="12" y1="4.5" x2="12" y2="8" {...dim} />
+          <line x1="12" y1="16" x2="12" y2="19.5" {...dim} />
+          <line x1="4.5" y1="12" x2="8" y2="12" {...dim} />
+          <line x1="16" y1="12" x2="19.5" y2="12" {...dim} />
+        </>
+      );
+    }
+    if (id === 'DAT_ElectroSciLab') {
+      // Lab III: Electro Science (diamond coil inside ring)
+      return (
+        <>
+          <circle cx="12" cy="12" r="7.2" {...dim} />
+          <polygon points="12,6.5 17.5,12 12,17.5 6.5,12" {...s} />
+          <circle cx="12" cy="12" r="1.5" {...s} />
+        </>
+      );
+    }
+    if (id === 'DAT_QuantumSciLab') {
+      // Lab IV: Quantum Science (dual orbital ellipses + nucleus)
+      return (
+        <>
+          <ellipse cx="12" cy="12" rx="7.6" ry="3.4" transform="rotate(40 12 12)" {...s} />
+          <ellipse cx="12" cy="12" rx="7.6" ry="3.4" transform="rotate(-40 12 12)" {...dim} />
+          <circle cx="12" cy="12" r="1.6" {...s} />
+        </>
+      );
+    }
+    if (id === 'DAT_AstroSciLab') {
+      // Lab V: Astro Science (celestial ring + 4-point star)
+      return (
+        <>
+          <circle cx="12" cy="12" r="7.4" {...dim} />
+          <polygon points="12,5 13.7,10.3 19,12 13.7,13.7 12,19 10.3,13.7 5,12 10.3,10.3" {...s} />
+        </>
+      );
+    }
+    if (id === 'DAT_XenoSciLab') {
+      // Lab VI: Xeno Science (outer hex + inner tri-core)
+      return (
+        <>
+          <polygon points="12,4 19,8 19,16 12,20 5,16 5,8" {...s} />
+          <polygon points="12,7.5 16,14.5 8,14.5" {...dim} />
+          <circle cx="12" cy="12.2" r="1.2" {...s} />
+        </>
+      );
+    }
+    if (id === 'DAT_RelicAnalyzer') {
+      // Relic Analyzer (octagonal chamber + scan axis)
+      return (
+        <>
+          <polygon points="8,4 16,4 20,8 20,16 16,20 8,20 4,16 4,8" {...dim} />
+          <polygon points="12,7 16.5,12 12,17 7.5,12" {...s} />
+          <line x1="4.5" y1="12" x2="19.5" y2="12" {...dim} />
         </>
       );
     }

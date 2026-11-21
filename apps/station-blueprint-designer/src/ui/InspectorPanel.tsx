@@ -207,6 +207,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 </div>
               )}
               <input
+                id="recipe-filter"
+                name="recipeFilter"
                 type="text"
                 className="cad-input"
                 placeholder={`筛选 ${recipes.length} 个配方...`}
@@ -269,6 +271,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <div className="inspector-section">
             <div className="section-label">自定义规划标注</div>
             <input
+              id="building-label"
+              name="buildingLabel"
               type="text"
               className="cad-input"
               placeholder="输入简短标注（显示在 3D 顶面）"
@@ -276,12 +280,12 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               onChange={(e) => onUpdateBuilding([singleBuilding.id], { label: e.target.value })}
             />
           </div>
+        </div>
 
-          <div className="inspector-footer">
-            <button type="button" className="cad-btn" onClick={onRotateSelection}>旋转 (R)</button>
-            <button type="button" className="cad-btn" onClick={onCopySelection}>复制 (Ctrl+C)</button>
-            <button type="button" className="cad-btn danger" onClick={onDeleteSelection}>删除 (Del)</button>
-          </div>
+        <div className="inspector-footer">
+          <button type="button" className="cad-btn" onClick={onRotateSelection}>旋转 (R)</button>
+          <button type="button" className="cad-btn" onClick={onCopySelection}>复制 (Ctrl+C)</button>
+          <button type="button" className="cad-btn danger" onClick={onDeleteSelection}>删除 (Del)</button>
         </div>
       </aside>
     );
@@ -318,6 +322,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <div className="inspector-section">
             <div className="section-label">模块规划标注</div>
             <input
+              id="module-label"
+              name="moduleLabel"
               type="text"
               className="cad-input"
               placeholder="例如：电路板装配区"
@@ -325,12 +331,12 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               onChange={(e) => onUpdateModuleLabel(singleModule.id, e.target.value)}
             />
           </div>
-          <div className="inspector-footer">
-            <button type="button" className="cad-btn" onClick={onRotateSelection}>旋转 (R)</button>
-            <button type="button" className="cad-btn" onClick={onCopySelection}>复制蓝图</button>
-            <button type="button" className="cad-btn accent" onClick={onSaveSelectionAsBlueprint}>存为蓝图</button>
-            <button type="button" className="cad-btn danger" onClick={onDeleteSelection}>删除</button>
-          </div>
+        </div>
+        <div className="inspector-footer">
+          <button type="button" className="cad-btn" onClick={onRotateSelection}>旋转 (R)</button>
+          <button type="button" className="cad-btn" onClick={onCopySelection}>复制蓝图</button>
+          <button type="button" className="cad-btn accent" onClick={onSaveSelectionAsBlueprint}>存为蓝图</button>
+          <button type="button" className="cad-btn danger" onClick={onDeleteSelection}>删除</button>
         </div>
       </aside>
     );

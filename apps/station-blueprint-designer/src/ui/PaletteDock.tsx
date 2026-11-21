@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getBuildableDef, getModuleDef } from '../core/catalog';
 import { findGroupForEntity, getGroupsForView, getShortLabel, PaletteGroupDef } from '../core/groups';
 import type { ActiveTool, ViewMode } from '../core/types';
@@ -39,6 +39,10 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
   const activeGroup: PaletteGroupDef | undefined = activeEntityId
     ? findGroupForEntity(viewMode, activeEntityId)
     : undefined;
+
+  useEffect(() => {
+    setHoverMeta(null);
+  }, [viewMode, activeGroup?.id]);
 
   const buildMeta = (id: string, showTabHint: boolean): HoverMeta => {
     if (viewMode === 'station') {
