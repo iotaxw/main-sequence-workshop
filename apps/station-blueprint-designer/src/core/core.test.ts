@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildPlannedBeltPath, extendBeltStroke, selectConnectedBeltChain } from './belt-router';
-import { CATALOG, getBuildableDef, getModuleDef, getRecipesForCrafter } from './catalog';
+import { CATALOG, getBuildableDef, getModuleDef, getRecipeDef, getRecipesForCrafter } from './catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './codec';
 import {
   boxSelectEntities,
@@ -178,9 +178,29 @@ describe('Multi-layer selection, blueprint extraction/transform/stamping, port c
     expect(after.label).toBe('电路核心');
 
     hist = undoHistory(hist);
-    expect(hist.present.buildings.find((b) => b.id === asm.id)?.recipeId).toBe('REC_HullPlate');
+    expect(hist.present.buildings.find((b) => b.id === asm.id)?.recipeId).toBe('REC_HullPlates');
     hist = redoHistory(hist);
     expect(hist.present.buildings.find((b) => b.id === asm.id)?.recipeId).toBe('REC_BasicCircuit');
+
+    // Pipette full-attribute copy placement preserves recipe, label, disabledPorts, and rotation independently
+    const sampled = hist.present.buildings.find((b) => b.id === asm.id)!;
+    const cloned = placeBuildingCmd(hist.present, {
+      type: sampled.type,
+      x: 20,
+      y: 16,
+      floor: sampled.floor,
+      rotation: sampled.rotation,
+      recipeId: sampled.recipeId,
+      label: sampled.label,
+      disabledPorts: sampled.disabledPorts ? [...sampled.disabledPorts] : undefined,
+      undergroundMode: sampled.undergroundMode,
+    });
+    expect(cloned.changed).toBe(true);
+    const placedCopy = cloned.doc.buildings.find((b) => b.id === cloned.addedBuildingIds![0])!;
+    expect(placedCopy.recipeId).toBe('REC_BasicCircuit');
+    expect(placedCopy.label).toBe('电路核心');
+    expect(placedCopy.disabledPorts).toEqual([0, 2, 5]);
+    expect(placedCopy.rotation).toBe(sampled.rotation);
   });
 
   it('box-selects across layers according to SelectionLayerMode and stamps rotated/mirrored sub-blueprints', () => {
@@ -227,6 +247,9 @@ describe('Versioned JSON codec safety', () => {
     for (const b of starter.buildings) {
       const issue = validateBuildingPlacement(starter, b, { ignoreBuildingIds: new Set([b.id]) });
       expect(issue, `building ${b.id} (${b.type}) at (${b.x},${b.y},L${b.floor})`).toBeNull();
+      if (b.recipeId) {
+        expect(getRecipeDef(b.recipeId), `recipeId ${b.recipeId} on ${b.id} must exist in catalog`).toBeDefined();
+      }
     }
   });
 

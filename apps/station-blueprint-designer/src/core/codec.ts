@@ -199,8 +199,8 @@ export function createStarterBlueprint(): BlueprintDocument {
     ],
     buildings: [
       // Refineries on 2x2 A (cells 1..30 x 1..30)
-      { id: 'bld_ref1', type: 'DAT_Refinery', x: 5, y: 6, floor: 0, rotation: 0, recipeId: 'REC_TitaniumBar', disabledPorts: [1, 3] },
-      { id: 'bld_ref2', type: 'DAT_Refinery', x: 5, y: 12, floor: 0, rotation: 0, recipeId: 'REC_NickelBar', disabledPorts: [1, 3] },
+      { id: 'bld_ref1', type: 'DAT_Refinery', x: 5, y: 6, floor: 0, rotation: 0, recipeId: 'REC_TitaniumPlates', disabledPorts: [1, 3] },
+      { id: 'bld_ref2', type: 'DAT_Refinery', x: 5, y: 12, floor: 0, rotation: 0, recipeId: 'REC_NickelPlates', disabledPorts: [1, 3] },
       // Belts from refineries to assembler
       { id: 'bld_b1', type: 'DAT_ConveyorBelt', x: 8, y: 7, floor: 0, rotation: 0 },
       { id: 'bld_b2', type: 'DAT_ConveyorBelt', x: 9, y: 7, floor: 0, rotation: 0 },
@@ -218,7 +218,7 @@ export function createStarterBlueprint(): BlueprintDocument {
       { id: 'bld_b14', type: 'DAT_ConveyorBelt', x: 13, y: 11, floor: 0, rotation: 3 },
       { id: 'bld_b15', type: 'DAT_ConveyorBelt', x: 13, y: 10, floor: 0, rotation: 0 },
       // Assembler (5x5)
-      { id: 'bld_asm1', type: 'DAT_Assembler', x: 14, y: 6, floor: 0, rotation: 0, recipeId: 'REC_HullPlate', disabledPorts: [2, 3, 6, 7] },
+      { id: 'bld_asm1', type: 'DAT_Assembler', x: 14, y: 6, floor: 0, rotation: 0, recipeId: 'REC_HullPlates', disabledPorts: [2, 3, 6, 7] },
       // Belt crossing doorway from 2x2 A (x=31) into 2x2 B (x=32) at doorway y=7 (local y=-9 in [-11,-5])
       { id: 'bld_c1', type: 'DAT_ConveyorBelt2', x: 19, y: 7, floor: 0, rotation: 0 },
       { id: 'bld_c2', type: 'DAT_ConveyorBelt2', x: 20, y: 7, floor: 0, rotation: 0 },
@@ -239,7 +239,7 @@ export function createStarterBlueprint(): BlueprintDocument {
       // Container inside 2x2 B
       { id: 'bld_cnt1', type: 'DAT_Container_2', x: 35, y: 6, floor: 0, rotation: 0, label: '成品缓冲仓' },
       // L+1 ring balcony belt + 3x3 Refinery on 2x2 B upper floor! (gx=2 -> center 48,16 -> ring x in [33..35])
-      { id: 'bld_bal_ref', type: 'DAT_Refinery', x: 33, y: 6, floor: 1, rotation: 0, recipeId: 'REC_SiliconWafer', label: '挑台精炼' },
+      { id: 'bld_bal_ref', type: 'DAT_Refinery', x: 33, y: 6, floor: 1, rotation: 0, recipeId: 'REC_SiliconWafers', label: '挑台精炼' },
       { id: 'bld_bal_b1', type: 'DAT_ConveyorBelt', x: 31, y: 7, floor: 1, rotation: 0 },
       { id: 'bld_bal_b2', type: 'DAT_ConveyorBelt', x: 32, y: 7, floor: 1, rotation: 0 },
     ],

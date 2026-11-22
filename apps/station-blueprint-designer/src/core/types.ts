@@ -174,8 +174,16 @@ export interface SelectionState {
 export type ActiveTool =
   | { kind: 'select' }
   | { kind: 'demolish' }
-  | { kind: 'place-module'; moduleType: string; rotation: Rotation }
-  | { kind: 'place-building'; buildingType: string; rotation: Rotation; undergroundMode?: 'in' | 'out' }
+  | { kind: 'place-module'; moduleType: string; rotation: Rotation; label?: string }
+  | {
+      kind: 'place-building';
+      buildingType: string;
+      rotation: Rotation;
+      undergroundMode?: 'in' | 'out';
+      recipeId?: string;
+      label?: string;
+      disabledPorts?: number[];
+    }
   | { kind: 'stamp-blueprint'; blueprint: BlueprintDocument; name: string; rotation: Rotation; floorOffset: number };
 
 export interface LibraryFileEntry {

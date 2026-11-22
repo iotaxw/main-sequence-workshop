@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildPlannedBeltPath, cellsToBeltSpecs, extendBeltStroke, selectConnectedBeltChain } from './core/belt-router';
-import { getBuildableDef, getModuleDef } from './core/catalog';
+import { getBuildableDef, getModuleDef, getRecipeDef } from './core/catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './core/codec';
 import { cycleVariantInGroup, findGroupForEntity, getGroupsForView, getShortLabel } from './core/groups';
 import {
@@ -459,7 +459,16 @@ export const App: React.FC = () => {
   }, [saveDialog, driver, refreshLibrary, showToast]);
 
   const selectEntityTool = useCallback(
-    (entityId: string, opts?: { rotation?: Rotation; undergroundMode?: 'in' | 'out' }) => {
+    (
+      entityId: string,
+      opts?: {
+        rotation?: Rotation;
+        undergroundMode?: 'in' | 'out';
+        recipeId?: string;
+        label?: string;
+        disabledPorts?: number[];
+      }
+    ) => {
       setStampingLibPath(null);
       setBeltPreview([]);
       const modDef = getModuleDef(entityId);
@@ -470,6 +479,7 @@ export const App: React.FC = () => {
           kind: 'place-module',
           moduleType: entityId,
           rotation: opts?.rotation ?? (prev.kind === 'place-module' ? prev.rotation : 0),
+          ...(opts?.label ? { label: opts.label } : {}),
         }));
         return;
       }
@@ -485,10 +495,50 @@ export const App: React.FC = () => {
             bldDef.kind === 'underground'
               ? opts?.undergroundMode ?? (prev.kind === 'place-building' ? prev.undergroundMode : undefined) ?? 'in'
               : undefined,
+          ...(opts?.recipeId ? { recipeId: opts.recipeId } : {}),
+          ...(opts?.label ? { label: opts.label } : {}),
+          ...(opts?.disabledPorts && opts.disabledPorts.length > 0
+            ? { disabledPorts: [...opts.disabledPorts] }
+            : {}),
         }));
       }
     },
     []
+  );
+
+  const pipetteAtWorld = useCallback(
+    (world: { x: number; y: number }) => {
+      const { doc: curDoc, viewMode: vm, focusFloor: fl } = stateRef.current;
+      if (vm === 'station') {
+        const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
+        if (!m) return;
+        selectEntityTool(m.type, { rotation: m.rotation, label: m.label });
+        const title = getShortLabel(m.type, getModuleDef(m.type)?.nameZh);
+        showToast(m.label ? `吸管复制：${title} · ${m.label}` : `吸管复制：${title}`);
+      } else {
+        const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), fl);
+        if (!b) return;
+        selectEntityTool(b.type, {
+          rotation: b.rotation,
+          undergroundMode: b.undergroundMode,
+          recipeId: b.recipeId,
+          label: b.label,
+          disabledPorts: b.disabledPorts ? [...b.disabledPorts] : undefined,
+        });
+        const def = getBuildableDef(b.type);
+        const parts: string[] = [getShortLabel(b.type, def?.nameZh)];
+        if (b.recipeId) {
+          const rec = getRecipeDef(b.recipeId);
+          if (rec) parts.push(rec.nameZh);
+        }
+        if (b.label) parts.push(b.label);
+        if (def?.configurablePorts && b.disabledPorts && b.disabledPorts.length > 0) {
+          parts.push(`${def.ports.length - b.disabledPorts.length}/${def.ports.length}口`);
+        }
+        showToast(`吸管复制：${parts.join(' · ')}`);
+      }
+    },
+    [selectEntityTool, showToast]
   );
 
   const handleCancelAction = useCallback(() => {
@@ -716,21 +766,7 @@ export const App: React.FC = () => {
       }
       if (lower === 'c') {
         e.preventDefault();
-        if (!cursorWorld) return;
-        const { doc: curDoc, viewMode: vm, focusFloor: fl } = stateRef.current;
-        if (vm === 'station') {
-          const m = findModuleAtWorldPoint(curDoc, cursorWorld.x, cursorWorld.y, fl);
-          if (m) {
-            selectEntityTool(m.type, { rotation: m.rotation });
-            showToast(`吸管：${getShortLabel(m.type, getModuleDef(m.type)?.nameZh)}`);
-          }
-        } else {
-          const b = findBuildingAtCell(curDoc, Math.floor(cursorWorld.x), Math.floor(cursorWorld.y), fl);
-          if (b) {
-            selectEntityTool(b.type, { rotation: b.rotation, undergroundMode: b.undergroundMode });
-            showToast(`吸管：${getShortLabel(b.type, getBuildableDef(b.type)?.nameZh)}`);
-          }
-        }
+        if (cursorWorld) pipetteAtWorld(cursorWorld);
         return;
       }
 
@@ -785,6 +821,7 @@ export const App: React.FC = () => {
     handleCancelAction,
     helpOpen,
     openSaveDialog,
+    pipetteAtWorld,
     requestDeleteSelection,
     saveDialog,
     selectEntityTool,
@@ -870,6 +907,7 @@ export const App: React.FC = () => {
         gy,
         floor: fl,
         rotation: tool.rotation,
+        ...(tool.label ? { label: tool.label } : {}),
       });
       if (res.changed) commitDoc(res.doc);
       else if (res.message) showToast(res.message, 'warn');
@@ -911,6 +949,9 @@ export const App: React.FC = () => {
           floor: fl,
           rotation: tool.rotation,
           undergroundMode: def.kind === 'underground' ? (tool.undergroundMode ?? 'in') : undefined,
+          ...(tool.recipeId ? { recipeId: tool.recipeId } : {}),
+          ...(tool.label ? { label: tool.label } : {}),
+          ...(tool.disabledPorts && tool.disabledPorts.length > 0 ? { disabledPorts: [...tool.disabledPorts] } : {}),
         },
         { allowForceReplace: e.shiftKey }
       );
@@ -1036,20 +1077,7 @@ export const App: React.FC = () => {
         sceneRef.current?.rig.snapAngles();
       }
     } else if (d.kind === 'pan' && !d.moved && e.button === 1 && world) {
-      const { doc: curDoc, viewMode: vm, focusFloor: fl } = stateRef.current;
-      if (vm === 'building') {
-        const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), fl);
-        if (b) {
-          selectEntityTool(b.type, { rotation: b.rotation, undergroundMode: b.undergroundMode });
-          showToast(`吸管：${getShortLabel(b.type, getBuildableDef(b.type)?.nameZh)}`);
-        }
-      } else {
-        const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
-        if (m) {
-          selectEntityTool(m.type, { rotation: m.rotation });
-          showToast(`吸管：${getShortLabel(m.type, getModuleDef(m.type)?.nameZh)}`);
-        }
-      }
+      pipetteAtWorld(world);
     } else if (d.kind === 'box-select') {
       const { doc: curDoc, viewMode: vm, focusFloor: fl, selection: prevSel, hideAbove: ha, selectionLayerMode: slm } =
         stateRef.current;
@@ -1490,9 +1518,17 @@ export const App: React.FC = () => {
           <div className="cad-tool-banner">
             {activeTool.kind === 'demolish' && '拆除刷 · 左键扫过拆除 · 右键 / Esc 退出'}
             {activeTool.kind === 'place-module' &&
-              `${getShortLabel(activeTool.moduleType, getModuleDef(activeTool.moduleType)?.nameZh)} · Tab 组内轮换 · R 旋转 · Q/E 切层 · 右键取消`}
+              `${getShortLabel(activeTool.moduleType, getModuleDef(activeTool.moduleType)?.nameZh)}${
+                activeTool.label ? ` [${activeTool.label}]` : ''
+              } · Tab 组内轮换 · R 旋转 · Q/E 切层 · 右键取消`}
             {activeTool.kind === 'place-building' &&
               `${getShortLabel(activeTool.buildingType, getBuildableDef(activeTool.buildingType)?.nameZh)}${
+                activeTool.recipeId ? ` [${getRecipeDef(activeTool.recipeId)?.nameZh ?? activeTool.recipeId}]` : ''
+              }${activeTool.label ? ` · ${activeTool.label}` : ''}${
+                activeTool.disabledPorts && activeTool.disabledPorts.length > 0
+                  ? ` · 禁${activeTool.disabledPorts.length}口`
+                  : ''
+              }${
                 getBuildableDef(activeTool.buildingType)?.kind === 'belt'
                   ? ' · 左键拖拉 · Shift+拖 L形规划 · Tab 换级'
                   : getBuildableDef(activeTool.buildingType)?.kind === 'underground'

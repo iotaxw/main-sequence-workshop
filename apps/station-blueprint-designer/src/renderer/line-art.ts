@@ -8,6 +8,7 @@ import {
   rotationToDelta,
 } from './../core/geometry';
 import type { BlueprintDocument, BuildableDef, PlacedBuilding } from './../core/types';
+import { createCrispLineSegments } from './crisp-lines';
 
 /**
  * Restrained dark-CAD architectural line-art geometry builders.
@@ -102,15 +103,14 @@ function pushChevron(out: number[], cx: number, cz: number, size: number, y = 0)
   pushSeg(out, cx + size * 0.48, cz, cx - size * 0.45, cz + size * 0.48, y, y);
 }
 
-function buildLineSegments(pts: number[], color: number, opacity: number): THREE.LineSegments {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  const mat = new THREE.LineBasicMaterial({
-    color,
-    transparent: opacity < 0.99,
-    opacity,
-  });
-  return new THREE.LineSegments(geo, mat);
+function buildLineSegments(
+  pts: number[],
+  color: number,
+  opacity: number,
+  widthPx = 1.15,
+  lodTier: 'primary' | 'detail' = 'primary'
+): THREE.Object3D {
+  return createCrispLineSegments(pts, { color, opacity, widthPx, lodTier });
 }
 
 function createOcclusionMat(color: number, opacity: number, isGhost: boolean): THREE.MeshBasicMaterial {
@@ -243,7 +243,7 @@ function buildFlushPortMarker(
   side: 'N' | 'E' | 'S' | 'W',
   enabled: boolean,
   opacity: number
-): THREE.LineSegments {
+): THREE.Object3D {
   const pts: number[] = [];
   // Oriented flush along the wall edge
   const along = 0.27; // half-length along wall (0.54m total)
@@ -291,7 +291,9 @@ function buildFlushPortMarker(
   const segs = buildLineSegments(
     pts,
     enabled ? LINE_ART_PALETTE.portActiveLine : LINE_ART_PALETTE.portDisabledLine,
-    opacity * (enabled ? 0.94 : 0.72)
+    opacity * (enabled ? 0.94 : 0.72),
+    1.1,
+    'detail'
   );
   segs.position.set(wx + offX, y, wz + offZ);
   return segs;
@@ -381,7 +383,7 @@ export function buildBeltLineArt(
         ? LINE_ART_PALETTE.beltRailMk2
         : LINE_ART_PALETTE.beltRailMk1;
 
-  const railLines = buildLineSegments(railPts, railColor, opacity * (isSelected ? 1.0 : 0.82));
+  const railLines = buildLineSegments(railPts, railColor, opacity * (isSelected ? 1.0 : 0.84), 1.05, 'primary');
   railLines.position.set(cx, y + 0.01, cz);
   railLines.rotation.y = -b.rotation * (Math.PI / 2);
   group.add(railLines);
@@ -400,7 +402,9 @@ export function buildBeltLineArt(
   const chevLines = buildLineSegments(
     chevPts,
     isSelected ? 0xdbeafe : LINE_ART_PALETTE.beltArrow,
-    opacity * (isSelected ? 1.0 : 0.76)
+    opacity * (isSelected ? 1.0 : 0.76),
+    0.9,
+    'detail'
   );
   chevLines.position.set(cx, y + 0.015, cz);
   chevLines.rotation.y = -b.rotation * (Math.PI / 2);
@@ -762,7 +766,13 @@ export function buildMachineLineArt(
 
   if (primaryPts.length > 0) {
     extrudeGroup.add(
-      buildLineSegments(primaryPts, primaryColor, opacity * (isGhost ? 0.96 : isSelected ? 1.0 : 0.9))
+      buildLineSegments(
+        primaryPts,
+        primaryColor,
+        opacity * (isGhost ? 0.96 : isSelected ? 1.0 : 0.9),
+        isSelected ? 1.45 : 1.18,
+        'primary'
+      )
     );
   }
   if (detailPts.length > 0) {
@@ -770,7 +780,9 @@ export function buildMachineLineArt(
       buildLineSegments(
         detailPts,
         isGhost ? ghostTint : isSelected ? LINE_ART_PALETTE.linePrimary : LINE_ART_PALETTE.lineDetail,
-        opacity * (isGhost ? 0.62 : isSelected ? 0.86 : 0.6)
+        opacity * (isGhost ? 0.62 : isSelected ? 0.86 : 0.6),
+        0.85,
+        'detail'
       )
     );
   }

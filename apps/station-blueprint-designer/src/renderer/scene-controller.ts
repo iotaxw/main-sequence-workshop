@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { getBuildableDef, getModuleDef, getRecipeDef } from '../core/catalog';
 import { computeStampCandidates, getBlueprintBoundsM } from '../core/commands';
 import {
@@ -27,6 +28,7 @@ import type {
   ViewMode,
 } from '../core/types';
 import { CadCameraRig } from './camera-rig';
+import { createCrispLineSegments, setLineViewportResolution } from './crisp-lines';
 import { buildBeltLineArt, buildMachineLineArt } from './line-art';
 import { createRoundedGridOverlay } from './rounded-grid-shader';
 
@@ -140,19 +142,26 @@ function createFloorShapeGeometry(surf: StationFloorSurfaceDef): THREE.ShapeGeom
   return geo;
 }
 
-function createDirectionalChevron(size: number, color: number, opacity: number): THREE.Line {
-  const pts = [
-    new THREE.Vector3(-size * 0.45, 0, -size * 0.45),
-    new THREE.Vector3(size * 0.5, 0, 0),
-    new THREE.Vector3(-size * 0.45, 0, size * 0.45),
-  ];
-  const geo = new THREE.BufferGeometry().setFromPoints(pts);
-  const mat = new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity });
-  return new THREE.Line(geo, mat);
+function edgesToPositions(edgeGeo: THREE.EdgesGeometry): number[] {
+  const pos = edgeGeo.attributes.position;
+  const out: number[] = [];
+  for (let i = 0; i < pos.count; i++) {
+    out.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+  }
+  edgeGeo.dispose();
+  return out;
 }
 
-/** Hollow technical bracket for station connector (line-art only, no solid bar!) */
-function createHollowConnectorBracket(span: number, color: number, opacity: number): THREE.LineSegments {
+function createDirectionalChevron(size: number, color: number, opacity: number): THREE.Object3D {
+  const pts = [
+    -size * 0.45, 0, -size * 0.45, size * 0.5, 0, 0,
+    size * 0.5, 0, 0, -size * 0.45, 0, size * 0.45,
+  ];
+  return createCrispLineSegments(pts, { color, opacity, widthPx: 1.2 });
+}
+
+/** Hollow technical bracket for station connector (analytical crisp SDF lines!) */
+function createHollowConnectorBracket(span: number, color: number, opacity: number): THREE.Object3D {
   const hs = span / 2;
   const d = 0.28;
   const pts = [
@@ -160,13 +169,9 @@ function createHollowConnectorBracket(span: number, color: number, opacity: numb
      d, 0, -hs,  d, 0,  hs,
      d, 0,  hs, -d, 0,  hs,
     -d, 0,  hs, -d, 0, -hs,
-    // Center hairline tick
     -d * 1.4, 0, 0, d * 1.4, 0, 0,
   ];
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-  return new THREE.LineSegments(geo, mat);
+  return createCrispLineSegments(pts, { color, opacity, widthPx: 1.05 });
 }
 
 export class CadSceneController {
@@ -197,6 +202,7 @@ export class CadSceneController {
     labelMesh?: THREE.Object3D;
   }> = [];
   private ghostExtrudeTargets: THREE.Group[] = [];
+  private detailLineMaterials: LineMaterial[] = [];
 
   constructor(
     container: HTMLElement,
@@ -207,10 +213,13 @@ export class CadSceneController {
   ) {
     this.container = container;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setClearColor(COLORS.bg, 1);
-    this.renderer.setSize(container.clientWidth || 800, container.clientHeight || 600);
+    const initW = container.clientWidth || 800;
+    const initH = container.clientHeight || 600;
+    this.renderer.setSize(initW, initH);
+    setLineViewportResolution(initW, initH);
     this.maxAniso = this.renderer.capabilities.getMaxAnisotropy();
     container.appendChild(this.renderer.domElement);
 
@@ -255,20 +264,20 @@ export class CadSceneController {
         pts.push(x, 0, z - 0.5, x, 0, z + 0.5);
       }
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    const mat = new THREE.LineBasicMaterial({
-      color: COLORS.refAxis,
-      transparent: true,
-      opacity: 0.4,
-    });
-    this.referenceGroup.add(new THREE.LineSegments(geo, mat));
+    this.referenceGroup.add(
+      createCrispLineSegments(pts, {
+        color: COLORS.refAxis,
+        opacity: 0.42,
+        widthPx: 0.9,
+      })
+    );
   }
 
   resize(): void {
     const w = this.container.clientWidth || 800;
     const h = this.container.clientHeight || 600;
     this.renderer.setSize(w, h);
+    setLineViewportResolution(w, h);
     this.rig.setAspect(w / Math.max(1, h));
   }
 
@@ -299,6 +308,7 @@ export class CadSceneController {
     if (rebuildWorld) {
       this.rebuildModules(state);
       this.rebuildBuildings(state);
+      this.collectDetailLineMaterials();
     }
 
     this.updateRoundedGrid(state);
@@ -365,8 +375,10 @@ export class CadSceneController {
     const slabThickness = 0.28;
     const isTransparent = opacity < 0.99;
 
-    // 1. Sleek ultra-flat platform slab (dark matte obsidian-slate + quiet architectural rim)
-    const slabGeo = new THREE.BoxGeometry(wM - 0.18, slabThickness, dM - 0.18);
+    // 1. Sleek ultra-flat platform slab (single crisp top perimeter -> eliminates stacked parallel edge moiré!)
+    const slabW = wM - 0.1;
+    const slabD = dM - 0.1;
+    const slabGeo = new THREE.BoxGeometry(slabW, slabThickness, slabD);
     const slabMat = new THREE.MeshBasicMaterial({
       color: def.hasFactoryFloor ? COLORS.slabFill : 0x0a0f16,
       transparent: isTransparent,
@@ -376,15 +388,22 @@ export class CadSceneController {
     slab.position.set(cx, baseY - slabThickness / 2 - 0.02, cy);
     group.add(slab);
 
-    const edges = new THREE.EdgesGeometry(slabGeo);
-    const edgeMat = new THREE.LineBasicMaterial({
-      color: isSelected ? COLORS.slabEdgeSelected : COLORS.slabEdge,
-      transparent: true,
-      opacity: opacity * (isSelected ? 1.0 : 0.85),
-    });
-    const edgeLines = new THREE.LineSegments(edges, edgeMat);
-    edgeLines.position.copy(slab.position);
-    group.add(edgeLines);
+    const shw = slabW / 2;
+    const shd = slabD / 2;
+    const topRimY = baseY - 0.015;
+    const slabTopPts = [
+      cx - shw, topRimY, cy - shd, cx + shw, topRimY, cy - shd,
+      cx + shw, topRimY, cy - shd, cx + shw, topRimY, cy + shd,
+      cx + shw, topRimY, cy + shd, cx - shw, topRimY, cy + shd,
+      cx - shw, topRimY, cy + shd, cx - shw, topRimY, cy - shd,
+    ];
+    group.add(
+      createCrispLineSegments(slabTopPts, {
+        color: isSelected ? COLORS.slabEdgeSelected : COLORS.slabEdge,
+        opacity: opacity * (isSelected ? 1.0 : 0.85),
+        widthPx: isSelected ? 1.45 : 1.05,
+      })
+    );
 
     // 2. Buildable floor surface(s)
     for (const surf of def.floors) {
@@ -405,13 +424,13 @@ export class CadSceneController {
       floorMesh.rotation.y = -mod.rotation * (Math.PI / 2);
       group.add(floorMesh);
 
-      const borderGeo = new THREE.EdgesGeometry(floorGeo);
-      const borderMat = new THREE.LineBasicMaterial({
+      const borderPts = edgesToPositions(new THREE.EdgesGeometry(floorGeo));
+      const borderLine = createCrispLineSegments(borderPts, {
         color: surf.floorOffset > 0 ? COLORS.floorBalconyEdge : COLORS.floorEdge,
-        transparent: true,
-        opacity: surfOpacity * 0.85,
+        opacity: surfOpacity * (surf.floorOffset > 0 ? 0.8 : 0.48),
+        widthPx: 0.9,
+        lodTier: surf.floorOffset > 0 ? 'primary' : 'detail',
       });
-      const borderLine = new THREE.LineSegments(borderGeo, borderMat);
       borderLine.position.copy(floorMesh.position);
       borderLine.rotation.copy(floorMesh.rotation);
       group.add(borderLine);
@@ -419,7 +438,6 @@ export class CadSceneController {
       // Subtle hairline doorway threshold indicators (unfilled lines!)
       for (const dw of surf.doorways) {
         const span = dw.end - dw.start;
-        const mid = (dw.start + dw.end) / 2;
         const halfW = (def.sizeUnits[0] * STATION_UNIT_M) / 2;
         const halfD = (def.sizeUnits[1] * STATION_UNIT_M) / 2;
         const pts: number[] = [];
@@ -428,22 +446,16 @@ export class CadSceneController {
         else if (dw.side === 'S') pts.push(dw.start, 0, halfD - 0.12, dw.end, 0, halfD - 0.12);
         else pts.push(dw.start, 0, -halfD + 0.12, dw.end, 0, -halfD + 0.12);
 
-        const dwGeo = new THREE.BufferGeometry();
-        dwGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-        const dwLine = new THREE.LineSegments(
-          dwGeo,
-          new THREE.LineBasicMaterial({
-            color: span > 10 ? COLORS.connXLarge : COLORS.connLarge,
-            transparent: true,
-            opacity: surfOpacity * 0.65,
-          })
-        );
+        const dwLine = createCrispLineSegments(pts, {
+          color: span > 10 ? COLORS.connXLarge : COLORS.connLarge,
+          opacity: surfOpacity * 0.62,
+          widthPx: 1.0,
+        });
         const holder = new THREE.Group();
         holder.position.set(cx, surfY + 0.02, cy);
         holder.rotation.y = -mod.rotation * (Math.PI / 2);
         holder.add(dwLine);
         group.add(holder);
-        void mid;
       }
     }
 
@@ -465,17 +477,12 @@ export class CadSceneController {
           cx + hw, topY, cy + hd, cx - hw, topY, cy + hd,
           cx - hw, topY, cy + hd, cx - hw, topY, cy - hd,
         ];
-        const gGeo = new THREE.BufferGeometry();
-        gGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
         group.add(
-          new THREE.LineSegments(
-            gGeo,
-            new THREE.LineBasicMaterial({
-              color: isSelected ? COLORS.slabEdgeSelected : COLORS.heightFrame,
-              transparent: true,
-              opacity: guideOpacity,
-            })
-          )
+          createCrispLineSegments(pts, {
+            color: isSelected ? COLORS.slabEdgeSelected : COLORS.heightFrame,
+            opacity: guideOpacity,
+            widthPx: 0.9,
+          })
         );
       }
     }
@@ -490,18 +497,17 @@ export class CadSceneController {
       if (c.type.startsWith('Vertical')) {
         const r = c.type === 'Vertical2x2' ? 3.2 : 1.7;
         const pts = [
-          new THREE.Vector3(c.x, cyWorld, c.y - r),
-          new THREE.Vector3(c.x + r, cyWorld, c.y),
-          new THREE.Vector3(c.x, cyWorld, c.y + r),
-          new THREE.Vector3(c.x - r, cyWorld, c.y),
-          new THREE.Vector3(c.x, cyWorld, c.y - r),
+          c.x, cyWorld, c.y - r, c.x + r, cyWorld, c.y,
+          c.x + r, cyWorld, c.y, c.x, cyWorld, c.y + r,
+          c.x, cyWorld, c.y + r, c.x - r, cyWorld, c.y,
+          c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r,
         ];
-        const vGeo = new THREE.BufferGeometry().setFromPoints(pts);
         group.add(
-          new THREE.Line(
-            vGeo,
-            new THREE.LineBasicMaterial({ color: COLORS.connVertical, transparent: true, opacity: cOpacity * 0.72 })
-          )
+          createCrispLineSegments(pts, {
+            color: COLORS.connVertical,
+            opacity: cOpacity * 0.72,
+            widthPx: 1.05,
+          })
         );
       } else {
         const isXL = c.type === 'XLarge';
@@ -612,18 +618,42 @@ export class CadSceneController {
       const opacity = this.layerOpacityFor(link.floor, state.focusFloor, state.hideAbove);
       if (opacity <= 0.01) continue;
       const y = link.floor * FLOOR_VISUAL_SPACING + 0.05;
-      const pts = [new THREE.Vector3(link.x1, y, link.y1), new THREE.Vector3(link.x2, y, link.y2)];
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      const mat = new THREE.LineDashedMaterial({
-        color: COLORS.undergroundLink,
-        dashSize: 0.32,
-        gapSize: 0.28,
-        transparent: true,
-        opacity: opacity * 0.65,
+      this.undergroundGroup.add(
+        createCrispLineSegments([link.x1, y, link.y1, link.x2, y, link.y2], {
+          color: COLORS.undergroundLink,
+          opacity: opacity * 0.68,
+          widthPx: 1.0,
+          dashed: true,
+          dashSize: 0.32,
+          gapSize: 0.28,
+        })
+      );
+    }
+  }
+
+  private collectDetailLineMaterials(): void {
+    const mats: LineMaterial[] = [];
+    const scan = (grp: THREE.Group) => {
+      grp.traverse((obj) => {
+        const m = (obj as THREE.Mesh).material as LineMaterial | undefined;
+        if (m && m.userData?.lodTier === 'detail') {
+          mats.push(m);
+        }
       });
-      const line = new THREE.Line(geo, mat);
-      line.computeLineDistances();
-      this.undergroundGroup.add(line);
+    };
+    scan(this.modulesGroup);
+    scan(this.buildingsGroup);
+    this.detailLineMaterials = mats;
+    this.applyDistanceLod();
+  }
+
+  /** Smoothly attenuates dense fine secondary linework when zoomed far out to prevent sub-pixel moiré */
+  private applyDistanceLod(): void {
+    const dist = this.rig.currentDistance;
+    const lod = THREE.MathUtils.clamp(1.0 - (dist - 42) / 52, 0.22, 1.0);
+    for (const mat of this.detailLineMaterials) {
+      const base = (mat.userData.baseOpacity as number) ?? 0.6;
+      mat.opacity = base * lod;
     }
   }
 
@@ -701,11 +731,7 @@ export class CadSceneController {
       x1, y, z1, x0, y, z1,
       x0, y, z1, x0, y, z0,
     ];
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    this.previewGroup.add(
-      new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity }))
-    );
+    this.previewGroup.add(createCrispLineSegments(pts, { color, opacity, widthPx: 1.25 }));
   }
 
   private rebuildPreview(state: SceneRenderState): void {
@@ -790,6 +816,9 @@ export class CadSceneController {
           floor: state.focusFloor,
           rotation: state.activeTool.rotation,
           undergroundMode: state.activeTool.undergroundMode,
+          recipeId: state.activeTool.recipeId,
+          label: state.activeTool.label,
+          disabledPorts: state.activeTool.disabledPorts,
         };
         const ghostArt = buildMachineLineArt(ghostBld, def, baseY + 0.05, 0.96, false, col);
         ghostArt.extrudeGroup.scale.y = yScale;
@@ -803,17 +832,12 @@ export class CadSceneController {
         const dirSign = state.activeTool.undergroundMode === 'out' ? -1 : 1;
         const dx = state.activeTool.rotation === 0 ? 1 : state.activeTool.rotation === 2 ? -1 : 0;
         const dy = state.activeTool.rotation === 1 ? 1 : state.activeTool.rotation === 3 ? -1 : 0;
-        const pts = [
-          new THREE.Vector3(bx + 0.5, baseY + 0.1, by + 0.5),
-          new THREE.Vector3(bx + 0.5 + dx * dirSign * maxLen, baseY + 0.1, by + 0.5 + dy * dirSign * maxLen),
-        ];
-        const lGeo = new THREE.BufferGeometry().setFromPoints(pts);
-        const guide = new THREE.Line(
-          lGeo,
-          new THREE.LineDashedMaterial({ color: col, dashSize: 0.35, gapSize: 0.25, transparent: true, opacity: 0.75 })
+        this.previewGroup.add(
+          createCrispLineSegments(
+            [bx + 0.5, baseY + 0.1, by + 0.5, bx + 0.5 + dx * dirSign * maxLen, baseY + 0.1, by + 0.5 + dy * dirSign * maxLen],
+            { color: col, opacity: 0.78, widthPx: 1.1, dashed: true, dashSize: 0.35, gapSize: 0.25 }
+          )
         );
-        guide.computeLineDistances();
-        this.previewGroup.add(guide);
       }
       return;
     }
@@ -888,10 +912,11 @@ export class CadSceneController {
     fill.position.set(cx, (y0 + y1) / 2, cy);
     this.boxSelectGroup.add(fill);
 
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(geo),
-      new THREE.LineBasicMaterial({ color: COLORS.selectOutline, transparent: true, opacity: 0.72 })
-    );
+    const edges = createCrispLineSegments(edgesToPositions(new THREE.EdgesGeometry(geo)), {
+      color: COLORS.selectOutline,
+      opacity: 0.78,
+      widthPx: 1.2,
+    });
     edges.position.copy(fill.position);
     this.boxSelectGroup.add(edges);
   }
@@ -914,6 +939,7 @@ export class CadSceneController {
 
     this.rig.update(dt, now);
     this.applyExtrusionScale(this.getCurrentExtrusionScale());
+    this.applyDistanceLod();
     this.renderer.render(this.scene, this.rig.camera);
   };
 
