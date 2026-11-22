@@ -305,7 +305,7 @@ describe('Versioned JSON codec safety', () => {
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
       (p) => p.path.includes('标准生产细胞/') || p.path.includes('8x8对称井字立交')
     );
-    expect(targets.length).toBe(7);
+    expect(targets.length).toBe(11);
     for (const { doc, path } of targets) {
       const cellMap = new Map<string, (typeof doc.buildings)[number]>();
       for (const b of doc.buildings) {
