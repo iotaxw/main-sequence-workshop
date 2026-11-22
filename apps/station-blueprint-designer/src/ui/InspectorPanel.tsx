@@ -51,7 +51,16 @@ const PortDiagram: React.FC<{
           const [rx, ry] = rotateVec2(port.hx * 0.5, port.hy * 0.5, building.rotation);
           const side = rotateSide(port.side, building.rotation);
           const enabled = !disabledSet.has(port.index);
-          const r = Math.min(0.4, Math.max(0.26, viewW * 0.04));
+          const isHoriz = side === 'N' || side === 'S';
+          const along = Math.min(0.66, Math.max(0.46, viewW * 0.082));
+          const thick = Math.min(0.24, Math.max(0.16, viewW * 0.03));
+          const rw = isHoriz ? along : thick;
+          const rh = isHoriz ? thick : along;
+          // Flush tightly against building wall
+          const ox = side === 'E' ? -thick * 0.28 : side === 'W' ? thick * 0.28 : 0;
+          const oy = side === 'N' ? thick * 0.28 : side === 'S' ? -thick * 0.28 : 0;
+          const cx = rx + ox;
+          const cy = ry + oy;
           return (
             <g
               key={port.index}
@@ -60,20 +69,40 @@ const PortDiagram: React.FC<{
               style={{ cursor: 'pointer' }}
             >
               <title>{`接口 #${port.index + 1} (${side}) · ${enabled ? '活跃（点击禁用）' : '已禁用（点击启用）'}`}</title>
-              <circle
-                cx={rx}
-                cy={ry}
-                r={r}
+              <rect
+                x={cx - rw / 2}
+                y={cy - rh / 2}
+                width={rw}
+                height={rh}
+                rx={0.04}
                 fill="#0b1017"
-                stroke={enabled ? '#4ea377' : '#803a3e'}
-                strokeWidth={0.11}
+                stroke={enabled ? '#50a87b' : '#873d42'}
+                strokeWidth={0.1}
               />
               {enabled ? (
-                <circle cx={rx} cy={ry} r={r * 0.24} fill="#4ea377" />
+                isHoriz ? (
+                  <line
+                    x1={cx - rw * 0.3}
+                    y1={cy}
+                    x2={cx + rw * 0.3}
+                    y2={cy}
+                    stroke="#50a87b"
+                    strokeWidth={0.08}
+                  />
+                ) : (
+                  <line
+                    x1={cx}
+                    y1={cy - rh * 0.3}
+                    x2={cx}
+                    y2={cy + rh * 0.3}
+                    stroke="#50a87b"
+                    strokeWidth={0.08}
+                  />
+                )
               ) : (
-                <g stroke="#8c4247" strokeWidth={0.09}>
-                  <line x1={rx - r * 0.45} y1={ry - r * 0.45} x2={rx + r * 0.45} y2={ry + r * 0.45} />
-                  <line x1={rx + r * 0.45} y1={ry - r * 0.45} x2={rx - r * 0.45} y2={ry + r * 0.45} />
+                <g stroke="#8c4247" strokeWidth={0.08}>
+                  <line x1={cx - rw * 0.38} y1={cy - rh * 0.38} x2={cx + rw * 0.38} y2={cy + rh * 0.38} />
+                  <line x1={cx + rw * 0.38} y1={cy - rh * 0.38} x2={cx - rw * 0.38} y2={cy + rh * 0.38} />
                 </g>
               )}
             </g>

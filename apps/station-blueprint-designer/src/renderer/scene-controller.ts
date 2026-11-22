@@ -67,32 +67,37 @@ export interface SceneRenderState {
 
 const labelTextureCache = new Map<string, THREE.CanvasTexture>();
 
-function getLabelTexture(title: string, subtitle: string | null): THREE.CanvasTexture {
+function getLabelTexture(title: string, subtitle: string | null, maxAniso = 16): THREE.CanvasTexture {
   const key = `${title}||${subtitle ?? ''}`;
   const cached = labelTextureCache.get(key);
   if (cached) return cached;
 
+  // High-resolution 1024x384 oversampled canvas so text stays razor-sharp at maximum zoom!
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 96;
+  canvas.width = 1024;
+  canvas.height = 384;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#8fa4ba';
-  ctx.font = '500 22px "Segoe UI", "Microsoft YaHei", sans-serif';
-  const yTitle = subtitle ? 32 : 48;
-  ctx.fillText(title.slice(0, 10), 128, yTitle, 236);
+  ctx.fillStyle = '#b4c9dd';
+  ctx.font = '500 84px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+  const yTitle = subtitle ? 132 : 192;
+  ctx.fillText(title.slice(0, 10), 512, yTitle, 940);
 
   if (subtitle) {
-    ctx.fillStyle = '#637a94';
-    ctx.font = '400 18px "JetBrains Mono", Consolas, "Microsoft YaHei", monospace';
-    ctx.fillText(subtitle.slice(0, 12), 128, 66, 236);
+    ctx.fillStyle = '#7e97b2';
+    ctx.font = '400 66px "JetBrains Mono", Consolas, "Microsoft YaHei", monospace';
+    ctx.fillText(subtitle.slice(0, 14), 512, 266, 940);
   }
 
   const tex = new THREE.CanvasTexture(canvas);
-  tex.anisotropy = 4;
+  tex.anisotropy = Math.min(16, Math.max(4, maxAniso));
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   labelTextureCache.set(key, tex);
   return tex;
@@ -184,6 +189,14 @@ export class CadSceneController {
 
   private keysDown = new Set<string>();
   private lastState: SceneRenderState | null = null;
+  private maxAniso = 16;
+  private extrudeTargets: Array<{
+    group: THREE.Group;
+    baseY: number;
+    roofHeight: number;
+    labelMesh?: THREE.Object3D;
+  }> = [];
+  private ghostExtrudeTargets: THREE.Group[] = [];
 
   constructor(
     container: HTMLElement,
@@ -194,14 +207,16 @@ export class CadSceneController {
   ) {
     this.container = container;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setClearColor(COLORS.bg, 1);
     this.renderer.setSize(container.clientWidth || 800, container.clientHeight || 600);
+    this.maxAniso = this.renderer.capabilities.getMaxAnisotropy();
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    // Subtle dark depth attenuation so peripheral areas stay calm while focus stays crisp
-    this.scene.fog = new THREE.FogExp2(COLORS.bg, 0.0021);
+    // Subtle dark depth attenuation so peripheral areas stay calm while focal lines stay razor-sharp
+    this.scene.fog = new THREE.FogExp2(COLORS.bg, 0.00135);
 
     const hemi = new THREE.HemisphereLight(0x9fb3c8, 0x080b10, 0.9);
     this.scene.add(hemi);
@@ -506,13 +521,13 @@ export class CadSceneController {
     // 5. Minimal Station Overview caption
     if (state.viewMode === 'station' && opacity >= 0.5) {
       const shortName = getShortLabel(def.id, def.nameZh);
-      const tex = getLabelTexture(shortName, mod.label || null);
+      const tex = getLabelTexture(shortName, mod.label || null, this.maxAniso);
       const labelW = Math.min(wM * 0.58, 12);
       const labelGeo = new THREE.PlaneGeometry(labelW, labelW * 0.375);
       labelGeo.rotateX(-Math.PI / 2);
       const labelMesh = new THREE.Mesh(
         labelGeo,
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opacity * 0.78, depthWrite: false })
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opacity * 0.82, depthWrite: false })
       );
       labelMesh.position.set(cx, baseY + 0.06, cy);
       group.add(labelMesh);
@@ -521,10 +536,36 @@ export class CadSceneController {
     return group;
   }
 
+  /**
+   * Computes smooth 3D architectural extrusion factor from current camera pitch:
+   * - Vertical top-down (正俯 ~89 deg, > 86.5 deg) -> 0.008 (pure flat 2D architectural plan)
+   * - Tilted 3D views (工作 64 deg / 轴测 42 deg / 低角 22 deg, <= 77 deg) -> 1.0 (full 3D sculpted massing)
+   */
+  private getCurrentExtrusionScale(): number {
+    const pitchDeg = THREE.MathUtils.radToDeg(this.rig.currentPitchRad);
+    const t = THREE.MathUtils.clamp((86.5 - pitchDeg) / (86.5 - 77.0), 0, 1);
+    const smooth = t * t * (3 - 2 * t);
+    return 0.008 + smooth * 0.992;
+  }
+
+  private applyExtrusionScale(yScale: number): void {
+    for (const item of this.extrudeTargets) {
+      item.group.scale.y = yScale;
+      if (item.labelMesh) {
+        item.labelMesh.position.y = item.baseY + 0.04 + item.roofHeight * yScale + 0.05;
+      }
+    }
+    for (const g of this.ghostExtrudeTargets) {
+      g.scale.y = yScale;
+    }
+  }
+
   private rebuildBuildings(state: SceneRenderState): void {
     this.clearGroup(this.buildingsGroup);
     this.clearGroup(this.undergroundGroup);
+    this.extrudeTargets = [];
     const selectedBlds = new Set(state.selection.buildingIds);
+    const yScale = this.getCurrentExtrusionScale();
 
     for (const b of state.doc.buildings) {
       const def = getBuildableDef(b.type);
@@ -539,27 +580,30 @@ export class CadSceneController {
         continue;
       }
 
-      const artGroup = buildMachineLineArt(b, def, baseY, opacity, isSelected);
+      const { root, extrudeGroup, roofHeight } = buildMachineLineArt(b, def, baseY, opacity, isSelected);
+      extrudeGroup.scale.y = yScale;
 
-      // Subtle flat top caption ONLY when a recipe or custom label is configured (keeps unconfigured line-art pure!)
+      // Subtle flat top caption ONLY when a recipe or custom label is configured (rides atop roof smoothly!)
+      let labelMesh: THREE.Object3D | undefined;
       const recipe = b.recipeId ? getRecipeDef(b.recipeId) : null;
       const caption = b.label || recipe?.nameZh || null;
       const [w, d] = getBuildingSizeCells(def, b.rotation);
       if (state.viewMode === 'building' && caption && Math.min(w, d) >= 2 && opacity >= 0.45) {
         const [cx, cz] = getBuildingCenterM(b, def);
-        const tex = getLabelTexture(caption, null);
-        const labelW = Math.min(w - 0.4, 3.8);
+        const tex = getLabelTexture(caption, null, this.maxAniso);
+        const labelW = Math.min(w - 0.35, 3.8);
         const labelGeo = new THREE.PlaneGeometry(labelW, labelW * 0.375);
         labelGeo.rotateX(-Math.PI / 2);
-        const labelMesh = new THREE.Mesh(
+        labelMesh = new THREE.Mesh(
           labelGeo,
-          new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opacity * 0.85, depthWrite: false })
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opacity * 0.9, depthWrite: false })
         );
-        labelMesh.position.set(cx, baseY + 0.085, cz);
-        artGroup.add(labelMesh);
+        labelMesh.position.set(cx, baseY + 0.04 + roofHeight * yScale + 0.05, cz);
+        root.add(labelMesh);
       }
 
-      this.buildingsGroup.add(artGroup);
+      this.extrudeTargets.push({ group: extrudeGroup, baseY, roofHeight, labelMesh });
+      this.buildingsGroup.add(root);
     }
 
     // Fine dashed subterranean links for paired underground belts
@@ -666,6 +710,8 @@ export class CadSceneController {
 
   private rebuildPreview(state: SceneRenderState): void {
     this.clearGroup(this.previewGroup);
+    this.ghostExtrudeTargets = [];
+    const yScale = this.getCurrentExtrusionScale();
 
     // 1. Active belt drag / Belt Planner preview (minimal hairline rails + chevrons)
     if (state.beltPreview.length > 0 && state.activeTool.kind === 'place-building') {
@@ -745,8 +791,11 @@ export class CadSceneController {
           rotation: state.activeTool.rotation,
           undergroundMode: state.activeTool.undergroundMode,
         };
-        this.previewGroup.add(buildMachineLineArt(ghostBld, def, baseY + 0.05, 0.96, false, col));
-        this.addFlatRectGhost(bx + 0.04, by + 0.04, bx + w - 0.04, by + d - 0.04, baseY + 0.11, col, 0.72);
+        const ghostArt = buildMachineLineArt(ghostBld, def, baseY + 0.05, 0.96, false, col);
+        ghostArt.extrudeGroup.scale.y = yScale;
+        this.ghostExtrudeTargets.push(ghostArt.extrudeGroup);
+        this.previewGroup.add(ghostArt.root);
+        this.addFlatRectGhost(bx + 0.04, by + 0.04, bx + w - 0.04, by + d - 0.04, baseY + 0.09, col, 0.72);
       }
 
       if (def.kind === 'underground') {
@@ -864,6 +913,7 @@ export class CadSceneController {
     }
 
     this.rig.update(dt, now);
+    this.applyExtrusionScale(this.getCurrentExtrusionScale());
     this.renderer.render(this.scene, this.rig.camera);
   };
 

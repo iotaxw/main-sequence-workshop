@@ -39,32 +39,22 @@ export const BUILDING_GROUPS: PaletteGroupDef[] = [
     members: ['DAT_Container', 'DAT_Container_2'],
   },
   {
-    id: 'prod-basic',
+    id: 'production',
     slot: 6,
-    name: '制造 I',
+    name: '生产制造',
     members: [
       'DAT_Refinery',
       'DAT_Assembler',
       'DAT_EnrichmentChamber',
       'DAT_AdvancedAssembler',
-      'DAT_WorkbenchMachine',
-    ],
-  },
-  {
-    id: 'prod-adv',
-    slot: 7,
-    name: '制造 II',
-    members: [
       'DAT_Supercomputer',
       'DAT_GrowthChamber',
       'DAT_RelicSynthesizer',
-      'DAT_Armoury',
-      'DAT_Teleporter',
     ],
   },
   {
     id: 'research',
-    slot: 8,
+    slot: 7,
     name: '实验室',
     members: [
       'DAT_MatSciLab',
@@ -77,11 +67,21 @@ export const BUILDING_GROUPS: PaletteGroupDef[] = [
     ],
   },
   {
-    id: 'power-misc',
-    slot: 9,
-    name: '能源/杂项',
+    id: 'facilities',
+    slot: 8,
+    name: '功能设施',
     members: [
+      'DAT_WorkbenchMachine',
       'DAT_ReactorMachine',
+      'DAT_Armoury',
+      'DAT_Teleporter',
+    ],
+  },
+  {
+    id: 'decor',
+    slot: 9,
+    name: '装饰',
+    members: [
       'DAT_SignWall',
       'DAT_Chair',
       'DAT_CoffeeTable',
@@ -92,68 +92,67 @@ export const BUILDING_GROUPS: PaletteGroupDef[] = [
 
 export const STATION_GROUPS: PaletteGroupDef[] = [
   {
-    id: 'st-halls',
+    id: 'st-factory',
     slot: 1,
-    name: '工厂舱',
+    name: '工厂模块',
     members: [
+      'BPO_Station_01',
+      'BPO_Station_2x1',
       'BPO_Station_02A',
       'BPO_Station_02',
       'BPO_Station_03',
-      'BPO_Station_01',
-      'BPO_Station_2x1',
     ],
   },
   {
-    id: 'st-corridors',
+    id: 'st-function',
     slot: 2,
-    name: '连接廊',
+    name: '功能模块',
     members: [
-      'BPO_StationAdapter_01',
-      'BPO_StationCorridor_01',
-      'BPO_StationCorridor_02',
-      'BPO_StationCorner_01',
-    ],
-  },
-  {
-    id: 'st-vertical',
-    slot: 3,
-    name: '电梯井',
-    members: ['BPO_ElevatorBlock_03', 'BPO_ElevatorBlock_02A'],
-  },
-  {
-    id: 'st-ops',
-    slot: 4,
-    name: '指挥/对接',
-    members: ['BPO_CommandModule', 'BPO_Dock', 'BPO_Dock_2', 'BPO_ScannerModule'],
-  },
-  {
-    id: 'st-energy',
-    slot: 5,
-    name: '光伏/采矿',
-    members: [
+      // 指挥与对接（低→高）
+      'BPO_CommandModule',
+      'BPO_Dock',
+      'BPO_Dock_2',
+      // 采矿（低→高）
+      'BPO_MiningDroneBayBlock',
+      'BPO_MiningDroneBayBlock_2',
+      // 光伏能源（低→高）
       'BPO_SolarPanelBlock',
       'BPO_SolarPanelBlock_02',
       'BPO_SolarPanelBlock_03',
-      'BPO_MiningDroneBayBlock',
-      'BPO_MiningDroneBayBlock_2',
+      // 探测扫描
+      'BPO_ScannerModule',
     ],
   },
   {
-    id: 'st-shipyard',
-    slot: 6,
-    name: '船坞/深空',
+    id: 'st-other',
+    slot: 3,
+    name: '其它模块',
     members: [
+      // 船坞（低→高）
       'BPO_ShipyardCore',
-      'BPO_ShipyardCore_02',
       'BPO_ShipyardSide',
+      'BPO_ShipyardCore_02',
+      // 深空设施
       'BPO_DeepSpaceObservatory',
+      // 防御与装甲（低→高）
+      'BPO_StationArmour_01',
+      'BPO_StationTurretBlock_01',
     ],
   },
   {
-    id: 'st-defense',
-    slot: 7,
-    name: '防御',
-    members: ['BPO_StationTurretBlock_01', 'BPO_StationArmour_01'],
+    id: 'st-connect',
+    slot: 4,
+    name: '连接模块',
+    members: [
+      // 电梯在前（1×1 → 2×2）
+      'BPO_ElevatorBlock_03',
+      'BPO_ElevatorBlock_02A',
+      // 走廊与转角适配在后（低→高）
+      'BPO_StationCorridor_01',
+      'BPO_StationCorner_01',
+      'BPO_StationAdapter_01',
+      'BPO_StationCorridor_02',
+    ],
   },
 ];
 

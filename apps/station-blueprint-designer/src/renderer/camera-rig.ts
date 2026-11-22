@@ -76,6 +76,10 @@ export class CadCameraRig {
     this.applyImmediate();
   }
 
+  get currentPitchRad(): number {
+    return this.curPitch;
+  }
+
   setAspect(aspect: number): void {
     this.camera.aspect = Math.max(0.1, aspect);
     this.camera.updateProjectionMatrix();

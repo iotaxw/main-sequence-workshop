@@ -747,8 +747,8 @@ body,
   height: 132px;
 }
 
-.port-node:hover circle {
-  filter: brightness(1.22);
+.port-node:hover rect {
+  filter: brightness(1.25);
 }
 
 .port-legend {
@@ -760,20 +760,20 @@ body,
 
 .port-legend .dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-right: 4px;
-  vertical-align: -1px;
+  width: 12px;
+  height: 5px;
+  border-radius: 1.5px;
+  margin-right: 5px;
+  vertical-align: 0px;
   background: transparent;
 }
 
 .port-legend .dot.green {
-  border: 1.5px solid #4ea377;
+  border: 1.3px solid #50a87b;
 }
 
 .port-legend .dot.red {
-  border: 1.5px solid #803a3e;
+  border: 1.3px solid #873d42;
 }
 
 .inspector-note {

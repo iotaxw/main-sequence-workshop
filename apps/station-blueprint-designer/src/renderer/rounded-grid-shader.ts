@@ -75,11 +75,11 @@ const FRAGMENT_SHADER = /* glsl */ `
     vec2 halfTile = vec2(0.425);
     float d = sdRoundedBox(cellLocal, halfTile, uCornerRadius);
 
-    // Crisp anti-aliased stroke using screen-space derivatives
-    float aa = max(fwidth(d), 0.008);
-    float strokeWidth = clamp(aa * 1.35, 0.014, 0.045);
-    float border = 1.0 - smoothstep(0.0, strokeWidth, abs(d));
-    float interior = 1.0 - smoothstep(-aa, aa, d);
+    // Razor-sharp resolution-independent anti-aliased stroke at ALL zoom levels
+    float aa = max(fwidth(d), 0.0005);
+    float halfStroke = clamp(aa * 0.72, 0.0045, 0.022);
+    float border = 1.0 - smoothstep(max(0.0, halfStroke - aa * 0.6), halfStroke + aa * 0.6, abs(d));
+    float interior = 1.0 - smoothstep(-aa * 0.7, aa * 0.7, d);
 
     float alpha = (border * 0.72 + interior * 0.09) * mask * uOpacity;
     if (alpha <= 0.004) discard;

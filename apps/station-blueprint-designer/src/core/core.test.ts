@@ -56,6 +56,12 @@ describe('Build 26639889 catalog verification', () => {
     expect(new Set(allGroupedModules)).toEqual(new Set(catalogModuleIds));
     expect(allGroupedModules.length).toBe(catalogModuleIds.length);
 
+    // Station groups: Factory -> Function -> Other -> Connect (Elevators first inside Connect)
+    expect(STATION_GROUPS.map((g) => g.name)).toEqual(['工厂模块', '功能模块', '其它模块', '连接模块']);
+    expect(STATION_GROUPS[3].members.slice(0, 2)).toEqual(['BPO_ElevatorBlock_03', 'BPO_ElevatorBlock_02A']);
+    // Buildings: Logistics -> Production -> Labs -> Facilities -> Decor last
+    expect(BUILDING_GROUPS[BUILDING_GROUPS.length - 1].name).toBe('装饰');
+
     // Tab forward & Shift+Tab backward wrap cleanly inside Balancers & Labs
     expect(cycleVariantInGroup('building', 'DAT_BeltBalancer_01', 1)).toBe('DAT_BeltBalancer_02');
     expect(cycleVariantInGroup('building', 'DAT_BeltBalancer_03', 1)).toBe('DAT_BeltBalancer_01');
