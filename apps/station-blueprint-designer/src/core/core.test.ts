@@ -300,12 +300,12 @@ describe('Versioned JSON codec safety', () => {
     }
   });
 
-  it('enforces zero splitter leakage, clean belt connectivity, and strict vertical mirror symmetry on standard cells and 8x8 interchange', () => {
+  it('enforces zero splitter leakage, zero orphan belts, clean belt connectivity, and strict vertical mirror symmetry on standard cells and B1 hubs', () => {
     const delta = (r: number): [number, number] => (r === 0 ? [1, 0] : r === 1 ? [0, 1] : r === 2 ? [-1, 0] : [0, -1]);
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
-      (p) => p.path.includes('标准生产细胞/') || p.path.includes('8x8对称井字立交')
+      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-')
     );
-    expect(targets.length).toBe(11);
+    expect(targets.length).toBe(14);
     for (const { doc, path } of targets) {
       const cellMap = new Map<string, (typeof doc.buildings)[number]>();
       for (const b of doc.buildings) {
@@ -317,6 +317,60 @@ describe('Versioned JSON codec safety', () => {
           }
         }
       }
+      // Track valid upstream feeders for every belt cell so ZERO floating/orphan belts can ever slip through!
+      const fedBy = new Map<string, number>();
+      const markFed = (x: number, y: number) => {
+        const k = `${x},${y}`;
+        fedBy.set(k, (fedBy.get(k) ?? 0) + 1);
+      };
+      for (const b of doc.buildings) {
+        const def = getBuildableDef(b.type)!;
+        if (b.type === 'DAT_ConveyorBelt3') {
+          const [dx, dy] = delta(b.rotation);
+          // Doorway edge entries (x=0/31 or y=0/31 entering inward) are valid external sources
+          if ((b.x === 0 && b.rotation === 0) || (b.x === 31 && b.rotation === 2) || (b.y === 0 && b.rotation === 1) || (b.y === 31 && b.rotation === 3)) {
+            markFed(b.x, b.y);
+          }
+          markFed(b.x + dx, b.y + dy);
+        } else if (b.type === 'DAT_Splitter_3') {
+          const dis = new Set(b.disabledPorts ?? []);
+          for (const [pIdx, dir] of [
+            [1, (1 + b.rotation) % 4],
+            [2, b.rotation % 4],
+            [3, (3 + b.rotation) % 4],
+          ]) {
+            if (dis.has(pIdx)) continue;
+            const [dx, dy] = delta(dir);
+            markFed(b.x + dx, b.y + dy);
+          }
+        } else if (b.type === 'DAT_UndergroundBelt_3' && b.undergroundMode === 'out') {
+          const [dx, dy] = delta(b.rotation);
+          markFed(b.x + dx, b.y + dy);
+        } else if (b.type === 'DAT_BeltBalancer_03') {
+          const [dx, dy] = delta(b.rotation);
+          const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
+          for (let ox = 0; ox < w; ox++) {
+            for (let oy = 0; oy < d; oy++) {
+              markFed(b.x + ox + dx, b.y + oy + dy);
+            }
+          }
+        } else if (def.kind === 'crafter' || def.kind === 'container') {
+          const dis = new Set(b.disabledPorts ?? []);
+          const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
+          const cx = b.x + w / 2;
+          const cy = b.y + d / 2;
+          const rotVec = (vx: number, vy: number, r: number): [number, number] =>
+            r === 0 ? [vx, vy] : r === 1 ? [-vy, vx] : r === 2 ? [-vx, -vy] : [vy, -vx];
+          for (const p of def.ports) {
+            if (dis.has(p.index)) continue;
+            const [rx, ry] = rotVec(p.hx / 2, p.hy / 2, b.rotation);
+            const sideDir = (['E', 'S', 'W', 'N'].indexOf(p.side) + b.rotation) % 4;
+            const [sdx, sdy] = delta(sideDir);
+            markFed(Math.floor(cx + rx + sdx * 0.5), Math.floor(cy + ry + sdy * 0.5));
+          }
+        }
+      }
+
       for (const b of doc.buildings) {
         if (b.type === 'DAT_Splitter_3') {
           const dis = new Set(b.disabledPorts ?? []);
@@ -335,6 +389,7 @@ describe('Versioned JSON codec safety', () => {
           }
         }
         if (b.type === 'DAT_ConveyorBelt3') {
+          expect(fedBy.get(`${b.x},${b.y}`) ?? 0, `${path} orphan/unfed belt at (${b.x},${b.y},r${b.rotation})`).toBeGreaterThan(0);
           const [dx, dy] = delta(b.rotation);
           const nx = b.x + dx;
           const ny = b.y + dy;
@@ -346,7 +401,7 @@ describe('Versioned JSON codec safety', () => {
           }
         }
       }
-      if (!path.includes('Cell-9P')) {
+      if (!path.includes('Cell-9P') && !path.includes('角落稳压母库') && !path.includes('矿石母箱')) {
         const keys = new Set(
           doc.buildings.map((b) => {
             const def = getBuildableDef(b.type)!;
