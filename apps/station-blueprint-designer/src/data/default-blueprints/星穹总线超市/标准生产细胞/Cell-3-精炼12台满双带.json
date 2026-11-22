@@ -3,7 +3,7 @@
   "formatVersion": 2,
   "id": "bp_star_cell3_refinery12",
   "name": "Cell-3 · 精炼12台满双带标准舱",
-  "description": "3×3 精炼机 2×6=12 台对称密铺（8+3+8+3+8=30），西口进料、经 Mk.3 平衡器输出整整 2.00 条满载 Mk.3 带（6.0/s）。",
+  "description": "3×3 精炼机 2×6=12 台严格镜像对称（上 rot=0 / 下 rot=2，8+3+8+3+8=30）；标准西口 y=7/24 进料、y=15/16 平衡双带满产（6.0/s），全分流器精确禁用多余侧口。",
   "gameData": {
     "buildId": "26639889",
     "catalogVersion": 2
@@ -39,7 +39,7 @@
       "x": 4,
       "y": 20,
       "floor": 0,
-      "rotation": 0,
+      "rotation": 2,
       "recipeId": "REC_EnrichedTitaniumPlates",
       "disabledPorts": [
         0,
@@ -65,7 +65,7 @@
       "x": 8,
       "y": 20,
       "floor": 0,
-      "rotation": 0,
+      "rotation": 2,
       "recipeId": "REC_EnrichedTitaniumPlates",
       "disabledPorts": [
         0,
@@ -91,7 +91,7 @@
       "x": 12,
       "y": 20,
       "floor": 0,
-      "rotation": 0,
+      "rotation": 2,
       "recipeId": "REC_EnrichedTitaniumPlates",
       "disabledPorts": [
         0,
@@ -117,7 +117,7 @@
       "x": 17,
       "y": 20,
       "floor": 0,
-      "rotation": 0,
+      "rotation": 2,
       "recipeId": "REC_EnrichedTitaniumPlates",
       "disabledPorts": [
         0,
@@ -143,7 +143,7 @@
       "x": 21,
       "y": 20,
       "floor": 0,
-      "rotation": 0,
+      "rotation": 2,
       "recipeId": "REC_EnrichedTitaniumPlates",
       "disabledPorts": [
         0,
@@ -169,7 +169,7 @@
       "x": 25,
       "y": 20,
       "floor": 0,
-      "rotation": 0,
+      "rotation": 2,
       "recipeId": "REC_EnrichedTitaniumPlates",
       "disabledPorts": [
         0,
@@ -182,23 +182,29 @@
       "x": 5,
       "y": 7,
       "floor": 0,
-      "rotation": 0
+      "rotation": 0,
+      "disabledPorts": [
+        3
+      ]
     },
     {
       "id": "b_14",
+      "type": "DAT_Splitter_3",
+      "x": 5,
+      "y": 24,
+      "floor": 0,
+      "rotation": 0,
+      "disabledPorts": [
+        1
+      ]
+    },
+    {
+      "id": "b_15",
       "type": "DAT_ConveyorBelt3",
       "x": 5,
       "y": 8,
       "floor": 0,
       "rotation": 1
-    },
-    {
-      "id": "b_15",
-      "type": "DAT_Splitter_3",
-      "x": 5,
-      "y": 24,
-      "floor": 0,
-      "rotation": 0
     },
     {
       "id": "b_16",
@@ -214,23 +220,29 @@
       "x": 9,
       "y": 7,
       "floor": 0,
-      "rotation": 0
+      "rotation": 0,
+      "disabledPorts": [
+        3
+      ]
     },
     {
       "id": "b_18",
+      "type": "DAT_Splitter_3",
+      "x": 9,
+      "y": 24,
+      "floor": 0,
+      "rotation": 0,
+      "disabledPorts": [
+        1
+      ]
+    },
+    {
+      "id": "b_19",
       "type": "DAT_ConveyorBelt3",
       "x": 9,
       "y": 8,
       "floor": 0,
       "rotation": 1
-    },
-    {
-      "id": "b_19",
-      "type": "DAT_Splitter_3",
-      "x": 9,
-      "y": 24,
-      "floor": 0,
-      "rotation": 0
     },
     {
       "id": "b_20",
@@ -246,23 +258,29 @@
       "x": 13,
       "y": 7,
       "floor": 0,
-      "rotation": 0
+      "rotation": 0,
+      "disabledPorts": [
+        3
+      ]
     },
     {
       "id": "b_22",
+      "type": "DAT_Splitter_3",
+      "x": 13,
+      "y": 24,
+      "floor": 0,
+      "rotation": 0,
+      "disabledPorts": [
+        1
+      ]
+    },
+    {
+      "id": "b_23",
       "type": "DAT_ConveyorBelt3",
       "x": 13,
       "y": 8,
       "floor": 0,
       "rotation": 1
-    },
-    {
-      "id": "b_23",
-      "type": "DAT_Splitter_3",
-      "x": 13,
-      "y": 24,
-      "floor": 0,
-      "rotation": 0
     },
     {
       "id": "b_24",
@@ -278,23 +296,29 @@
       "x": 18,
       "y": 7,
       "floor": 0,
-      "rotation": 0
+      "rotation": 0,
+      "disabledPorts": [
+        3
+      ]
     },
     {
       "id": "b_26",
+      "type": "DAT_Splitter_3",
+      "x": 18,
+      "y": 24,
+      "floor": 0,
+      "rotation": 0,
+      "disabledPorts": [
+        1
+      ]
+    },
+    {
+      "id": "b_27",
       "type": "DAT_ConveyorBelt3",
       "x": 18,
       "y": 8,
       "floor": 0,
       "rotation": 1
-    },
-    {
-      "id": "b_27",
-      "type": "DAT_Splitter_3",
-      "x": 18,
-      "y": 24,
-      "floor": 0,
-      "rotation": 0
     },
     {
       "id": "b_28",
@@ -310,23 +334,29 @@
       "x": 22,
       "y": 7,
       "floor": 0,
-      "rotation": 0
+      "rotation": 0,
+      "disabledPorts": [
+        3
+      ]
     },
     {
       "id": "b_30",
+      "type": "DAT_Splitter_3",
+      "x": 22,
+      "y": 24,
+      "floor": 0,
+      "rotation": 0,
+      "disabledPorts": [
+        1
+      ]
+    },
+    {
+      "id": "b_31",
       "type": "DAT_ConveyorBelt3",
       "x": 22,
       "y": 8,
       "floor": 0,
       "rotation": 1
-    },
-    {
-      "id": "b_31",
-      "type": "DAT_Splitter_3",
-      "x": 22,
-      "y": 24,
-      "floor": 0,
-      "rotation": 0
     },
     {
       "id": "b_32",
@@ -338,27 +368,27 @@
     },
     {
       "id": "b_33",
-      "type": "DAT_Splitter_3",
+      "type": "DAT_ConveyorBelt3",
       "x": 26,
       "y": 7,
       "floor": 0,
-      "rotation": 0
+      "rotation": 1
     },
     {
       "id": "b_34",
       "type": "DAT_ConveyorBelt3",
       "x": 26,
-      "y": 8,
+      "y": 24,
       "floor": 0,
-      "rotation": 1
+      "rotation": 3
     },
     {
       "id": "b_35",
-      "type": "DAT_Splitter_3",
+      "type": "DAT_ConveyorBelt3",
       "x": 26,
-      "y": 24,
+      "y": 8,
       "floor": 0,
-      "rotation": 0
+      "rotation": 1
     },
     {
       "id": "b_36",
@@ -1383,7 +1413,7 @@
       "y": 15,
       "floor": 0,
       "rotation": 2,
-      "label": "满双带平衡器"
+      "label": "双轨平衡器"
     },
     {
       "id": "b_164",

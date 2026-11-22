@@ -206,9 +206,15 @@ interface VirtualStoreData {
   folders: string[];
   files: Record<string, { raw: string; updatedAt: number }>;
   seededPresetPaths?: string[];
+  presetRevision?: number;
 }
 
 const VIRTUAL_LIB_KEY = 'ms-sbd:virtual-library:v2';
+const CURRENT_PRESET_REVISION = 2;
+const SUPERSEDED_PRESET_PATHS = [
+  '星穹总线超市/标准生产细胞/Cell-7S-超算9台满铺舱.json',
+  '星穹总线超市/标准枢纽/B1-中央7x8井字立交.json',
+];
 
 function ensureParentFolders(folders: string[], relPath: string): void {
   const parts = normalizeRelPath(relPath).split('/');
@@ -230,19 +236,30 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
 
   private syncNewPresets(store: VirtualStoreData): boolean {
     const seeded = new Set(store.seededPresetPaths ?? []);
-    let changed = !Array.isArray(store.seededPresetPaths);
+    const needsRevisionRefresh = (store.presetRevision ?? 0) < CURRENT_PRESET_REVISION;
+    let changed = !Array.isArray(store.seededPresetPaths) || needsRevisionRefresh;
     const now = Date.now();
+    if (needsRevisionRefresh) {
+      for (const obsolete of SUPERSEDED_PRESET_PATHS) {
+        const normOld = normalizeRelPath(obsolete);
+        if (store.files[normOld]) {
+          delete store.files[normOld];
+          changed = true;
+        }
+      }
+    }
     for (const preset of DEFAULT_LIBRARY_PRESETS) {
       const norm = normalizeRelPath(preset.path);
-      if (seeded.has(norm)) continue;
+      if (!needsRevisionRefresh && seeded.has(norm)) continue;
       seeded.add(norm);
-      if (!store.files[norm]) {
+      if (needsRevisionRefresh || !store.files[norm]) {
         ensureParentFolders(store.folders, norm);
         store.files[norm] = { raw: serializeBlueprint(preset.doc), updatedAt: now };
       }
       changed = true;
     }
     store.seededPresetPaths = [...seeded];
+    store.presetRevision = CURRENT_PRESET_REVISION;
     return changed;
   }
 

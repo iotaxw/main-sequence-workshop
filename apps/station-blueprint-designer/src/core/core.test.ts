@@ -299,6 +299,73 @@ describe('Versioned JSON codec safety', () => {
       }
     }
   });
+
+  it('enforces zero splitter leakage, clean belt connectivity, and strict vertical mirror symmetry on standard cells and 8x8 interchange', () => {
+    const delta = (r: number): [number, number] => (r === 0 ? [1, 0] : r === 1 ? [0, 1] : r === 2 ? [-1, 0] : [0, -1]);
+    const targets = DEFAULT_LIBRARY_PRESETS.filter(
+      (p) => p.path.includes('标准生产细胞/') || p.path.includes('8x8对称井字立交')
+    );
+    expect(targets.length).toBe(7);
+    for (const { doc, path } of targets) {
+      const cellMap = new Map<string, (typeof doc.buildings)[number]>();
+      for (const b of doc.buildings) {
+        const def = getBuildableDef(b.type)!;
+        const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
+        for (let dx = 0; dx < w; dx++) {
+          for (let dy = 0; dy < d; dy++) {
+            cellMap.set(`${b.x + dx},${b.y + dy}`, b);
+          }
+        }
+      }
+      for (const b of doc.buildings) {
+        if (b.type === 'DAT_Splitter_3') {
+          const dis = new Set(b.disabledPorts ?? []);
+          for (const [pIdx, dir] of [
+            [1, (1 + b.rotation) % 4],
+            [2, b.rotation % 4],
+            [3, (3 + b.rotation) % 4],
+          ]) {
+            if (dis.has(pIdx)) continue;
+            const [dx, dy] = delta(dir);
+            const nb = cellMap.get(`${b.x + dx},${b.y + dy}`);
+            expect(nb, `${path} splitter (${b.x},${b.y}) port [${pIdx}] must not point to empty`).toBeDefined();
+            if (nb?.type === 'DAT_ConveyorBelt3') {
+              expect(nb.rotation, `${path} splitter (${b.x},${b.y}) port [${pIdx}] must match belt dir`).toBe(dir);
+            }
+          }
+        }
+        if (b.type === 'DAT_ConveyorBelt3') {
+          const [dx, dy] = delta(b.rotation);
+          const nx = b.x + dx;
+          const ny = b.y + dy;
+          if (nx < 0 || nx > 31 || ny < 0 || ny > 31) continue;
+          const nb = cellMap.get(`${nx},${ny}`);
+          expect(nb, `${path} belt (${b.x},${b.y},r${b.rotation}) must not dead-end`).toBeDefined();
+          if (nb?.type === 'DAT_ConveyorBelt3') {
+            expect(nb.rotation, `${path} belt (${b.x},${b.y}) head-on collision`).not.toBe((b.rotation + 2) % 4);
+          }
+        }
+      }
+      if (!path.includes('Cell-9P')) {
+        const keys = new Set(
+          doc.buildings.map((b) => {
+            const def = getBuildableDef(b.type)!;
+            const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
+            return `${b.type}:${b.x},${b.y},${w},${d}`;
+          })
+        );
+        for (const b of doc.buildings) {
+          const def = getBuildableDef(b.type)!;
+          const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
+          const my = 32 - b.y - d;
+          expect(
+            keys.has(`${b.type}:${b.x},${my},${w},${d}`),
+            `${path} ${b.type} at (${b.x},${b.y}) missing exact mirror at (${b.x},${my})`
+          ).toBe(true);
+        }
+      }
+    }
+  });
 });
 
 describe('Camera grab-pan orientation invariants', () => {

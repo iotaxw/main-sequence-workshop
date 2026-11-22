@@ -2,8 +2,8 @@
   "format": "station-blueprint-designer",
   "formatVersion": 2,
   "id": "bp_star_cell9p_protomatter9",
-  "name": "Cell-9P · 原物质9台满铺母舱（整3带Mk.3）",
-  "description": "9×9 遗迹合成器 3×3=9 台极限满铺（9+1+9+1+9+1=30），零输入直出整整 3.00 条满载 Mk.3 原物质母线（9.0/s），B1 放 5 间即得 15 条满载原物质干线。",
+  "name": "Cell-9P · 原物质9台满铺母舱（3条笔直Mk.3）",
+  "description": "9×9 遗迹合成器 3×3=9 台默认朝向满铺（9+1+9+1+9+1=30），每台仅开正南单口，三排输出完全笔直零扭曲（y=10/20 直出门洞，y=30 端头置下层带穿墙对接），单舱输出整 3.00 条满载 Mk.3 原物质母线。",
   "gameData": {
     "buildId": "26639889",
     "catalogVersion": 2
@@ -32,6 +32,8 @@
         0,
         1,
         2,
+        4,
+        5,
         6,
         7,
         8,
@@ -52,6 +54,8 @@
         0,
         1,
         2,
+        4,
+        5,
         6,
         7,
         8,
@@ -72,6 +76,8 @@
         0,
         1,
         2,
+        4,
+        5,
         6,
         7,
         8,
@@ -92,6 +98,8 @@
         0,
         1,
         2,
+        4,
+        5,
         6,
         7,
         8,
@@ -112,6 +120,8 @@
         0,
         1,
         2,
+        4,
+        5,
         6,
         7,
         8,
@@ -132,6 +142,8 @@
         0,
         1,
         2,
+        4,
+        5,
         6,
         7,
         8,
@@ -152,6 +164,8 @@
         0,
         1,
         2,
+        4,
+        5,
         6,
         7,
         8,
@@ -172,6 +186,8 @@
         0,
         1,
         2,
+        4,
+        5,
         6,
         7,
         8,
@@ -192,6 +208,8 @@
         0,
         1,
         2,
+        4,
+        5,
         6,
         7,
         8,
@@ -203,7 +221,7 @@
     {
       "id": "b_10",
       "type": "DAT_ConveyorBelt3",
-      "x": 28,
+      "x": 26,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -211,7 +229,7 @@
     {
       "id": "b_11",
       "type": "DAT_ConveyorBelt3",
-      "x": 27,
+      "x": 25,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -219,7 +237,7 @@
     {
       "id": "b_12",
       "type": "DAT_ConveyorBelt3",
-      "x": 26,
+      "x": 24,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -227,7 +245,7 @@
     {
       "id": "b_13",
       "type": "DAT_ConveyorBelt3",
-      "x": 25,
+      "x": 23,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -235,7 +253,7 @@
     {
       "id": "b_14",
       "type": "DAT_ConveyorBelt3",
-      "x": 24,
+      "x": 22,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -243,7 +261,7 @@
     {
       "id": "b_15",
       "type": "DAT_ConveyorBelt3",
-      "x": 23,
+      "x": 21,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -251,7 +269,7 @@
     {
       "id": "b_16",
       "type": "DAT_ConveyorBelt3",
-      "x": 22,
+      "x": 20,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -259,7 +277,7 @@
     {
       "id": "b_17",
       "type": "DAT_ConveyorBelt3",
-      "x": 21,
+      "x": 19,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -267,7 +285,7 @@
     {
       "id": "b_18",
       "type": "DAT_ConveyorBelt3",
-      "x": 20,
+      "x": 18,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -275,7 +293,7 @@
     {
       "id": "b_19",
       "type": "DAT_ConveyorBelt3",
-      "x": 19,
+      "x": 17,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -283,7 +301,7 @@
     {
       "id": "b_20",
       "type": "DAT_ConveyorBelt3",
-      "x": 18,
+      "x": 16,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -291,7 +309,7 @@
     {
       "id": "b_21",
       "type": "DAT_ConveyorBelt3",
-      "x": 17,
+      "x": 15,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -299,7 +317,7 @@
     {
       "id": "b_22",
       "type": "DAT_ConveyorBelt3",
-      "x": 16,
+      "x": 14,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -307,7 +325,7 @@
     {
       "id": "b_23",
       "type": "DAT_ConveyorBelt3",
-      "x": 15,
+      "x": 13,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -315,7 +333,7 @@
     {
       "id": "b_24",
       "type": "DAT_ConveyorBelt3",
-      "x": 14,
+      "x": 12,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -323,7 +341,7 @@
     {
       "id": "b_25",
       "type": "DAT_ConveyorBelt3",
-      "x": 13,
+      "x": 11,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -331,7 +349,7 @@
     {
       "id": "b_26",
       "type": "DAT_ConveyorBelt3",
-      "x": 12,
+      "x": 10,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -339,7 +357,7 @@
     {
       "id": "b_27",
       "type": "DAT_ConveyorBelt3",
-      "x": 11,
+      "x": 9,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -347,7 +365,7 @@
     {
       "id": "b_28",
       "type": "DAT_ConveyorBelt3",
-      "x": 10,
+      "x": 8,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -355,7 +373,7 @@
     {
       "id": "b_29",
       "type": "DAT_ConveyorBelt3",
-      "x": 9,
+      "x": 7,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -363,7 +381,7 @@
     {
       "id": "b_30",
       "type": "DAT_ConveyorBelt3",
-      "x": 8,
+      "x": 6,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -371,7 +389,7 @@
     {
       "id": "b_31",
       "type": "DAT_ConveyorBelt3",
-      "x": 7,
+      "x": 5,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -379,7 +397,7 @@
     {
       "id": "b_32",
       "type": "DAT_ConveyorBelt3",
-      "x": 6,
+      "x": 4,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -387,7 +405,7 @@
     {
       "id": "b_33",
       "type": "DAT_ConveyorBelt3",
-      "x": 5,
+      "x": 3,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -395,7 +413,7 @@
     {
       "id": "b_34",
       "type": "DAT_ConveyorBelt3",
-      "x": 4,
+      "x": 2,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -403,7 +421,7 @@
     {
       "id": "b_35",
       "type": "DAT_ConveyorBelt3",
-      "x": 3,
+      "x": 1,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -411,7 +429,7 @@
     {
       "id": "b_36",
       "type": "DAT_ConveyorBelt3",
-      "x": 2,
+      "x": 0,
       "y": 10,
       "floor": 0,
       "rotation": 2
@@ -419,23 +437,23 @@
     {
       "id": "b_37",
       "type": "DAT_ConveyorBelt3",
-      "x": 1,
-      "y": 10,
+      "x": 26,
+      "y": 20,
       "floor": 0,
       "rotation": 2
     },
     {
       "id": "b_38",
       "type": "DAT_ConveyorBelt3",
-      "x": 0,
-      "y": 10,
+      "x": 25,
+      "y": 20,
       "floor": 0,
       "rotation": 2
     },
     {
       "id": "b_39",
       "type": "DAT_ConveyorBelt3",
-      "x": 28,
+      "x": 24,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -443,7 +461,7 @@
     {
       "id": "b_40",
       "type": "DAT_ConveyorBelt3",
-      "x": 27,
+      "x": 23,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -451,7 +469,7 @@
     {
       "id": "b_41",
       "type": "DAT_ConveyorBelt3",
-      "x": 26,
+      "x": 22,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -459,7 +477,7 @@
     {
       "id": "b_42",
       "type": "DAT_ConveyorBelt3",
-      "x": 25,
+      "x": 21,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -467,7 +485,7 @@
     {
       "id": "b_43",
       "type": "DAT_ConveyorBelt3",
-      "x": 24,
+      "x": 20,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -475,7 +493,7 @@
     {
       "id": "b_44",
       "type": "DAT_ConveyorBelt3",
-      "x": 23,
+      "x": 19,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -483,7 +501,7 @@
     {
       "id": "b_45",
       "type": "DAT_ConveyorBelt3",
-      "x": 22,
+      "x": 18,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -491,7 +509,7 @@
     {
       "id": "b_46",
       "type": "DAT_ConveyorBelt3",
-      "x": 21,
+      "x": 17,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -499,7 +517,7 @@
     {
       "id": "b_47",
       "type": "DAT_ConveyorBelt3",
-      "x": 20,
+      "x": 16,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -507,7 +525,7 @@
     {
       "id": "b_48",
       "type": "DAT_ConveyorBelt3",
-      "x": 19,
+      "x": 15,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -515,7 +533,7 @@
     {
       "id": "b_49",
       "type": "DAT_ConveyorBelt3",
-      "x": 18,
+      "x": 14,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -523,7 +541,7 @@
     {
       "id": "b_50",
       "type": "DAT_ConveyorBelt3",
-      "x": 17,
+      "x": 13,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -531,7 +549,7 @@
     {
       "id": "b_51",
       "type": "DAT_ConveyorBelt3",
-      "x": 16,
+      "x": 12,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -539,7 +557,7 @@
     {
       "id": "b_52",
       "type": "DAT_ConveyorBelt3",
-      "x": 15,
+      "x": 11,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -547,7 +565,7 @@
     {
       "id": "b_53",
       "type": "DAT_ConveyorBelt3",
-      "x": 14,
+      "x": 10,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -555,7 +573,7 @@
     {
       "id": "b_54",
       "type": "DAT_ConveyorBelt3",
-      "x": 13,
+      "x": 9,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -563,7 +581,7 @@
     {
       "id": "b_55",
       "type": "DAT_ConveyorBelt3",
-      "x": 12,
+      "x": 8,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -571,7 +589,7 @@
     {
       "id": "b_56",
       "type": "DAT_ConveyorBelt3",
-      "x": 11,
+      "x": 7,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -579,7 +597,7 @@
     {
       "id": "b_57",
       "type": "DAT_ConveyorBelt3",
-      "x": 10,
+      "x": 6,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -587,7 +605,7 @@
     {
       "id": "b_58",
       "type": "DAT_ConveyorBelt3",
-      "x": 9,
+      "x": 5,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -595,7 +613,7 @@
     {
       "id": "b_59",
       "type": "DAT_ConveyorBelt3",
-      "x": 8,
+      "x": 4,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -603,7 +621,7 @@
     {
       "id": "b_60",
       "type": "DAT_ConveyorBelt3",
-      "x": 7,
+      "x": 3,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -611,7 +629,7 @@
     {
       "id": "b_61",
       "type": "DAT_ConveyorBelt3",
-      "x": 6,
+      "x": 2,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -619,7 +637,7 @@
     {
       "id": "b_62",
       "type": "DAT_ConveyorBelt3",
-      "x": 5,
+      "x": 1,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -627,7 +645,7 @@
     {
       "id": "b_63",
       "type": "DAT_ConveyorBelt3",
-      "x": 4,
+      "x": 0,
       "y": 20,
       "floor": 0,
       "rotation": 2
@@ -635,61 +653,13 @@
     {
       "id": "b_64",
       "type": "DAT_ConveyorBelt3",
-      "x": 3,
-      "y": 20,
-      "floor": 0,
-      "rotation": 2
-    },
-    {
-      "id": "b_65",
-      "type": "DAT_ConveyorBelt3",
-      "x": 2,
-      "y": 20,
-      "floor": 0,
-      "rotation": 2
-    },
-    {
-      "id": "b_66",
-      "type": "DAT_ConveyorBelt3",
-      "x": 1,
-      "y": 20,
-      "floor": 0,
-      "rotation": 2
-    },
-    {
-      "id": "b_67",
-      "type": "DAT_ConveyorBelt3",
-      "x": 0,
-      "y": 20,
-      "floor": 0,
-      "rotation": 2
-    },
-    {
-      "id": "b_68",
-      "type": "DAT_ConveyorBelt3",
-      "x": 28,
-      "y": 30,
-      "floor": 0,
-      "rotation": 2
-    },
-    {
-      "id": "b_69",
-      "type": "DAT_ConveyorBelt3",
-      "x": 27,
-      "y": 30,
-      "floor": 0,
-      "rotation": 2
-    },
-    {
-      "id": "b_70",
-      "type": "DAT_ConveyorBelt3",
       "x": 26,
       "y": 30,
       "floor": 0,
       "rotation": 2
     },
     {
-      "id": "b_71",
+      "id": "b_65",
       "type": "DAT_ConveyorBelt3",
       "x": 25,
       "y": 30,
@@ -697,7 +667,7 @@
       "rotation": 2
     },
     {
-      "id": "b_72",
+      "id": "b_66",
       "type": "DAT_ConveyorBelt3",
       "x": 24,
       "y": 30,
@@ -705,7 +675,7 @@
       "rotation": 2
     },
     {
-      "id": "b_73",
+      "id": "b_67",
       "type": "DAT_ConveyorBelt3",
       "x": 23,
       "y": 30,
@@ -713,7 +683,7 @@
       "rotation": 2
     },
     {
-      "id": "b_74",
+      "id": "b_68",
       "type": "DAT_ConveyorBelt3",
       "x": 22,
       "y": 30,
@@ -721,7 +691,7 @@
       "rotation": 2
     },
     {
-      "id": "b_75",
+      "id": "b_69",
       "type": "DAT_ConveyorBelt3",
       "x": 21,
       "y": 30,
@@ -729,7 +699,7 @@
       "rotation": 2
     },
     {
-      "id": "b_76",
+      "id": "b_70",
       "type": "DAT_ConveyorBelt3",
       "x": 20,
       "y": 30,
@@ -737,7 +707,7 @@
       "rotation": 2
     },
     {
-      "id": "b_77",
+      "id": "b_71",
       "type": "DAT_ConveyorBelt3",
       "x": 19,
       "y": 30,
@@ -745,7 +715,7 @@
       "rotation": 2
     },
     {
-      "id": "b_78",
+      "id": "b_72",
       "type": "DAT_ConveyorBelt3",
       "x": 18,
       "y": 30,
@@ -753,7 +723,7 @@
       "rotation": 2
     },
     {
-      "id": "b_79",
+      "id": "b_73",
       "type": "DAT_ConveyorBelt3",
       "x": 17,
       "y": 30,
@@ -761,7 +731,7 @@
       "rotation": 2
     },
     {
-      "id": "b_80",
+      "id": "b_74",
       "type": "DAT_ConveyorBelt3",
       "x": 16,
       "y": 30,
@@ -769,7 +739,7 @@
       "rotation": 2
     },
     {
-      "id": "b_81",
+      "id": "b_75",
       "type": "DAT_ConveyorBelt3",
       "x": 15,
       "y": 30,
@@ -777,7 +747,7 @@
       "rotation": 2
     },
     {
-      "id": "b_82",
+      "id": "b_76",
       "type": "DAT_ConveyorBelt3",
       "x": 14,
       "y": 30,
@@ -785,7 +755,7 @@
       "rotation": 2
     },
     {
-      "id": "b_83",
+      "id": "b_77",
       "type": "DAT_ConveyorBelt3",
       "x": 13,
       "y": 30,
@@ -793,7 +763,7 @@
       "rotation": 2
     },
     {
-      "id": "b_84",
+      "id": "b_78",
       "type": "DAT_ConveyorBelt3",
       "x": 12,
       "y": 30,
@@ -801,7 +771,7 @@
       "rotation": 2
     },
     {
-      "id": "b_85",
+      "id": "b_79",
       "type": "DAT_ConveyorBelt3",
       "x": 11,
       "y": 30,
@@ -809,7 +779,7 @@
       "rotation": 2
     },
     {
-      "id": "b_86",
+      "id": "b_80",
       "type": "DAT_ConveyorBelt3",
       "x": 10,
       "y": 30,
@@ -817,7 +787,7 @@
       "rotation": 2
     },
     {
-      "id": "b_87",
+      "id": "b_81",
       "type": "DAT_ConveyorBelt3",
       "x": 9,
       "y": 30,
@@ -825,7 +795,7 @@
       "rotation": 2
     },
     {
-      "id": "b_88",
+      "id": "b_82",
       "type": "DAT_ConveyorBelt3",
       "x": 8,
       "y": 30,
@@ -833,7 +803,7 @@
       "rotation": 2
     },
     {
-      "id": "b_89",
+      "id": "b_83",
       "type": "DAT_ConveyorBelt3",
       "x": 7,
       "y": 30,
@@ -841,7 +811,7 @@
       "rotation": 2
     },
     {
-      "id": "b_90",
+      "id": "b_84",
       "type": "DAT_ConveyorBelt3",
       "x": 6,
       "y": 30,
@@ -849,7 +819,7 @@
       "rotation": 2
     },
     {
-      "id": "b_91",
+      "id": "b_85",
       "type": "DAT_ConveyorBelt3",
       "x": 5,
       "y": 30,
@@ -857,7 +827,7 @@
       "rotation": 2
     },
     {
-      "id": "b_92",
+      "id": "b_86",
       "type": "DAT_ConveyorBelt3",
       "x": 4,
       "y": 30,
@@ -865,7 +835,7 @@
       "rotation": 2
     },
     {
-      "id": "b_93",
+      "id": "b_87",
       "type": "DAT_ConveyorBelt3",
       "x": 3,
       "y": 30,
@@ -873,68 +843,22 @@
       "rotation": 2
     },
     {
-      "id": "b_94",
+      "id": "b_88",
       "type": "DAT_ConveyorBelt3",
       "x": 2,
       "y": 30,
       "floor": 0,
-      "rotation": 3
-    },
-    {
-      "id": "b_95",
-      "type": "DAT_ConveyorBelt3",
-      "x": 2,
-      "y": 29,
-      "floor": 0,
-      "rotation": 3
-    },
-    {
-      "id": "b_96",
-      "type": "DAT_ConveyorBelt3",
-      "x": 2,
-      "y": 28,
-      "floor": 0,
-      "rotation": 3
-    },
-    {
-      "id": "b_97",
-      "type": "DAT_ConveyorBelt3",
-      "x": 2,
-      "y": 27,
-      "floor": 0,
-      "rotation": 3
-    },
-    {
-      "id": "b_98",
-      "type": "DAT_ConveyorBelt3",
-      "x": 2,
-      "y": 26,
-      "floor": 0,
-      "rotation": 3
-    },
-    {
-      "id": "b_99",
-      "type": "DAT_ConveyorBelt3",
-      "x": 2,
-      "y": 25,
-      "floor": 0,
       "rotation": 2
     },
     {
-      "id": "b_100",
-      "type": "DAT_ConveyorBelt3",
+      "id": "b_89",
+      "type": "DAT_UndergroundBelt_3",
       "x": 1,
-      "y": 25,
+      "y": 30,
       "floor": 0,
-      "rotation": 2
-    },
-    {
-      "id": "b_101",
-      "type": "DAT_ConveyorBelt3",
-      "x": 0,
-      "y": 25,
-      "floor": 0,
-      "rotation": 2
+      "rotation": 2,
+      "undergroundMode": "in",
+      "label": "穿墙下层带口"
     }
   ]
 }
