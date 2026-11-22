@@ -167,11 +167,12 @@ export class CadCameraRig {
     const worldPerPx = (2 * this.curDistance * Math.tan(fovRad / 2)) / Math.max(1, viewportHeight);
     const cosY = Math.cos(this.curYaw);
     const sinY = Math.sin(this.curYaw);
-    // Screen right = (cosY, -sinY), Screen forward (up) = (-sinY, -cosY)
+    // Screen right = (+cosY, -sinY), Screen up = (-sinY, -cosY)
+    // Grab-panning: dragging right (+dxPx) moves camera left; dragging down (+dyPx) moves camera up.
     const moveRight = -dxPx * worldPerPx;
-    const moveUp = dyPx * worldPerPx;
-    this.targetX += moveRight * cosY + moveUp * sinY;
-    this.targetZ += -moveRight * sinY + moveUp * cosY;
+    const moveUp = (dyPx * worldPerPx) / Math.max(0.35, Math.sin(this.curPitch));
+    this.targetX += moveRight * cosY - moveUp * sinY;
+    this.targetZ += -moveRight * sinY - moveUp * cosY;
   }
 
   panByAxes(rightAxis: number, forwardAxis: number, dt: number): void {

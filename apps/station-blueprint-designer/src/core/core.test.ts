@@ -22,6 +22,7 @@ import {
 import { computeUndergroundLinks, isCellBuildable, validateBuildingPlacement, validateModulePlacement } from './geometry';
 import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
 import { DEFAULT_LIBRARY_PRESETS } from './presets';
+import { CadCameraRig } from '../renderer/camera-rig';
 
 describe('Build 26639889 catalog verification', () => {
   it('includes all extracted station modules, buildables, and recipes with binary-verified dimensions', () => {
@@ -297,5 +298,26 @@ describe('Versioned JSON codec safety', () => {
         }
       }
     }
+  });
+});
+
+describe('Camera grab-pan orientation invariants', () => {
+  it('moves camera opposite to cursor drag along both screen X and screen Y axes at yaw=0 and yaw=90°', () => {
+    const rig = new CadCameraRig(16 / 9);
+    const x0 = rig.targetX;
+    const z0 = rig.targetZ;
+    // Drag right (+dx) -> targetX decreases; drag down (+dy) -> targetZ decreases (moves North/screen-up)
+    rig.panByScreenDelta(100, 100, 900);
+    expect(rig.targetX).toBeLessThan(x0);
+    expect(rig.targetZ).toBeLessThan(z0);
+
+    // Rotate yaw to 90 deg (screen-right = -Z, screen-up = -X)
+    rig.stepYawCardinal(1);
+    for (let i = 0; i < 60; i++) rig.update(0.05, i * 50);
+    const x1 = rig.targetX;
+    const z1 = rig.targetZ;
+    rig.panByScreenDelta(100, 100, 900);
+    expect(rig.targetZ).toBeGreaterThan(z1); // opposite of screen-right (-Z) => +Z
+    expect(rig.targetX).toBeLessThan(x1);    // along screen-up (-X) => -X
   });
 });
