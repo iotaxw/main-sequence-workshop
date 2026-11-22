@@ -145,17 +145,43 @@ function createDirectionalChevron(size: number, color: number, opacity: number):
   return createCrispLineSegments(pts, { color, opacity, widthPx: 1.2 });
 }
 
-function createHollowConnectorBracket(span: number, color: number, opacity: number): THREE.Object3D {
+/**
+ * Minimal single-line station connector indicator (eliminates 8-line double-walled seam clutter!).
+ * Local frame: connector lies on X=0 plane along Z in [-span/2, +span/2], facing outward toward +X.
+ */
+function createStationConnectorMark(
+  span: number,
+  color: number,
+  opacity: number,
+  mode: 'open' | 'mated' | 'ghost'
+): THREE.Object3D {
   const hs = span / 2;
-  const d = 0.28;
-  const pts = [
-    -d, 0, -hs,  d, 0, -hs,
-     d, 0, -hs,  d, 0,  hs,
-     d, 0,  hs, -d, 0,  hs,
-    -d, 0,  hs, -d, 0, -hs,
-    -d * 1.4, 0, 0, d * 1.4, 0, 0,
-  ];
-  return createCrispLineSegments(pts, { color, opacity, widthPx: 1.05 });
+  const pts: number[] = [];
+  if (mode === 'mated') {
+    // Single whisper-clean seam bridge line (drawn once per mated pair!)
+    pts.push(0, 0, -hs * 0.72, 0, 0, hs * 0.72);
+    return createCrispLineSegments(pts, { color, opacity: opacity * 0.55, widthPx: 0.9, lodTier: 'detail' });
+  }
+  // Open or ghost connector: clean slim bar tucked slightly inside + subtle outward orientation tick
+  const tickIn = 0.28;
+  const arrowOut = mode === 'ghost' ? 0.85 : 0.45;
+  pts.push(
+    -0.06, 0, -hs, -0.06, 0, hs,
+    -tickIn, 0, -hs, -0.06, 0, -hs,
+    -tickIn, 0, hs, -0.06, 0, hs,
+    // Outward direction pointer at center
+    -0.06, 0, -0.45, arrowOut, 0, 0,
+    arrowOut, 0, 0, -0.06, 0, 0.45
+  );
+  return createCrispLineSegments(pts, {
+    color,
+    opacity,
+    widthPx: mode === 'ghost' ? 1.35 : 1.05,
+  });
+}
+
+function connectorKey(x: number, y: number, floor: number): string {
+  return `${Math.round(x * 2)},${Math.round(y * 2)},${floor}`;
 }
 
 interface ExtrudeTarget {
@@ -345,11 +371,86 @@ export class CadSceneController {
     return Math.max(0.22, 0.48 - dist * 0.12);
   }
 
+  private addModuleConnectors(
+    target: THREE.Group,
+    mod: PlacedModule,
+    def: StationModuleDef,
+    state: SceneRenderState,
+    palette: CadThemePalette,
+    opts: {
+      isGhost?: boolean;
+      ghostColor?: number;
+      connCounts?: Map<string, number>;
+      drawnMated?: Set<string>;
+    } = {}
+  ): void {
+    const worldConns = getModuleWorldConnectors(mod, def);
+    for (const c of worldConns) {
+      const cOpacity = opts.isGhost ? 0.96 : this.layerOpacityFor(c.floor, state.focusFloor, state.hideAbove);
+      if (cOpacity <= 0.01) continue;
+      // In Building View, skip noisy horizontal station connector markers on placed modules
+      if (!opts.isGhost && state.viewMode === 'building' && !c.type.startsWith('Vertical')) continue;
+
+      const cyWorld = c.floor * FLOOR_VISUAL_SPACING + (opts.isGhost ? 0.09 : 0.05);
+
+      if (c.type.startsWith('Vertical')) {
+        const r = c.type === 'Vertical2x2' ? 3.2 : 1.7;
+        const pts = [
+          c.x, cyWorld, c.y - r, c.x + r, cyWorld, c.y,
+          c.x + r, cyWorld, c.y, c.x, cyWorld, c.y + r,
+          c.x, cyWorld, c.y + r, c.x - r, cyWorld, c.y,
+          c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r,
+        ];
+        target.add(
+          createCrispLineSegments(pts, {
+            color: opts.isGhost ? (opts.ghostColor ?? palette.connVertical) : palette.connVertical,
+            opacity: cOpacity,
+            widthPx: opts.isGhost ? 1.3 : 1.05,
+          })
+        );
+      } else {
+        const key = connectorKey(c.x, c.y, c.floor);
+        const isMated = !opts.isGhost && (opts.connCounts?.get(key) ?? 0) >= 2;
+        if (isMated) {
+          if (opts.drawnMated?.has(key)) continue;
+          opts.drawnMated?.add(key);
+        }
+        const isXL = c.type === 'XLarge';
+        const span = isXL ? 18 : 5.2;
+        const col = opts.isGhost
+          ? (isXL ? palette.connXLarge : (opts.ghostColor ?? palette.validGhost))
+          : (isXL ? palette.connXLarge : palette.connLarge);
+        const mark = createStationConnectorMark(
+          span,
+          col,
+          cOpacity,
+          opts.isGhost ? 'ghost' : isMated ? 'mated' : 'open'
+        );
+        mark.position.set(c.x, cyWorld, c.y);
+        mark.rotation.y = -c.rotation * (Math.PI / 2);
+        target.add(mark);
+      }
+    }
+  }
+
   private rebuildModules(state: SceneRenderState, palette: CadThemePalette): void {
     this.clearGroup(this.modulesGroup);
     this.moduleExtrudeTargets = [];
     const selectedMods = new Set(state.selection.moduleIds);
     const yScale = this.getCurrentExtrusionScale();
+
+    // Count connector positions across all visible modules so mated seams render once cleanly!
+    const connCounts = new Map<string, number>();
+    for (const mod of state.doc.modules) {
+      const def = getModuleDef(mod.type);
+      if (!def) continue;
+      for (const c of getModuleWorldConnectors(mod, def)) {
+        if (c.type.startsWith('Vertical')) continue;
+        const key = connectorKey(c.x, c.y, c.floor);
+        connCounts.set(key, (connCounts.get(key) ?? 0) + 1);
+      }
+    }
+    const drawnMated = new Set<string>();
 
     for (const mod of state.doc.modules) {
       const def = getModuleDef(mod.type);
@@ -363,7 +464,7 @@ export class CadSceneController {
 
       const isSelected = selectedMods.has(mod.id);
       this.modulesGroup.add(
-        this.buildStationPlatformMesh(mod, def, state, effectiveOpacity, isSelected, palette, yScale)
+        this.buildStationPlatformMesh(mod, def, state, effectiveOpacity, isSelected, palette, yScale, connCounts, drawnMated)
       );
     }
   }
@@ -375,7 +476,9 @@ export class CadSceneController {
     opacity: number,
     isSelected: boolean,
     palette: CadThemePalette,
-    yScale: number
+    yScale: number,
+    connCounts: Map<string, number>,
+    drawnMated: Set<string>
   ): THREE.Group {
     const group = new THREE.Group();
     const [cx, cy] = getModuleCenterM(mod, def);
@@ -389,46 +492,113 @@ export class CadSceneController {
 
     if (!def.hasFactoryFloor) {
       // Unified sculpted 3D/2D architectural line-art for ALL non-platform modules
-      // (Armour A/B, Plasma Turret, Solar Panels, Mining Bays, Command, Dock, Scanner, Observatory, Shipyards)
       const art = buildStationModuleArt(mod, def, baseY, opacity, isSelected, palette);
       art.extrudeGroup.scale.y = yScale;
       extrudeGroupRef = art.extrudeGroup;
       labelRoofHeight = art.roofHeight;
       group.add(art.root);
     } else {
-      // Factory-floor module: sleek ultra-flat platform slab with single crisp top perimeter
-      const slabThickness = 0.28;
+      // Factory-floor module: true-contour flat platform slab (narrow corridor, chamfered corner, open industrial dock berth!)
       const isTransparent = opacity < 0.99;
-      const slabW = wM - 0.1;
-      const slabD = dM - 0.1;
-      const slabGeo = new THREE.BoxGeometry(slabW, slabThickness, slabD);
       const slabMat = new THREE.MeshBasicMaterial({
         color: palette.slabFill,
         transparent: isTransparent,
         opacity: opacity * 0.98,
+        side: THREE.DoubleSide,
       });
-      const slab = new THREE.Mesh(slabGeo, slabMat);
-      slab.position.set(cx, baseY - slabThickness / 2 - 0.02, cy);
-      group.add(slab);
 
-      const shw = slabW / 2;
-      const shd = slabD / 2;
-      const topRimY = baseY - 0.015;
-      const slabTopPts = [
-        cx - shw, topRimY, cy - shd, cx + shw, topRimY, cy - shd,
-        cx + shw, topRimY, cy - shd, cx + shw, topRimY, cy + shd,
-        cx + shw, topRimY, cy + shd, cx - shw, topRimY, cy + shd,
-        cx - shw, topRimY, cy + shd, cx - shw, topRimY, cy - shd,
-      ];
-      group.add(
-        createCrispLineSegments(slabTopPts, {
+      if (def.id === 'BPO_StationCorridor_01' || def.id === 'BPO_StationCorner_01') {
+        // Contoured outer slab matching actual narrow corridor / diagonal corner footprint (zero wasted square!)
+        const f0 = def.floors[0];
+        const padSurf: StationFloorSurfaceDef =
+          def.id === 'BPO_StationCorridor_01'
+            ? { ...f0, minX: -8, maxX: 8, minY: -3.7, maxY: 3.7 }
+            : { ...f0, minX: -7.9, maxX: 7.9, minY: -7.9, maxY: 7.9 };
+        const slabShapeGeo = createFloorShapeGeometry(padSurf);
+        const slabMesh = new THREE.Mesh(slabShapeGeo, slabMat);
+        slabMesh.position.set(cx, baseY - 0.02, cy);
+        slabMesh.rotation.y = -mod.rotation * (Math.PI / 2);
+        group.add(slabMesh);
+
+        const rimLine = createCrispLineSegments(edgesToPositions(new THREE.EdgesGeometry(slabShapeGeo)), {
           color: isSelected ? palette.slabEdgeSelected : palette.slabEdge,
           opacity,
           widthPx: isSelected ? 1.45 : 1.05,
-        })
-      );
+        });
+        rimLine.position.set(cx, baseY - 0.012, cy);
+        rimLine.rotation.y = -mod.rotation * (Math.PI / 2);
+        group.add(rimLine);
+      } else if (def.id === 'BPO_Dock_2') {
+        // Industrial Dock 3x2: indoor left bay (x in [-24, +8]) + open external docking berth arms on +X (x in [+8, +23.5])
+        const bayW = 31.8;
+        const bayD = 31.8;
+        const bayGeo = new THREE.BoxGeometry(bayW, 0.28, bayD);
+        const bayHolder = new THREE.Group();
+        bayHolder.position.set(cx, baseY, cy);
+        bayHolder.rotation.y = -mod.rotation * (Math.PI / 2);
 
-      // Buildable floor surface(s)
+        const bayMesh = new THREE.Mesh(bayGeo, slabMat);
+        bayMesh.position.set(-8.0, -0.16, 0);
+        bayHolder.add(bayMesh);
+
+        // Two open docking gantry arms extending into the right open ship berth
+        const armGeo = new THREE.BoxGeometry(15.5, 0.28, 3.2);
+        for (const az of [-13.6, 13.6]) {
+          const arm = new THREE.Mesh(armGeo, slabMat);
+          arm.position.set(15.6, -0.16, az);
+          bayHolder.add(arm);
+        }
+
+        const outlinePts = [
+          // Indoor bay perimeter
+          -23.9, -0.015, -15.9,   7.9, -0.015, -15.9,
+            7.9, -0.015, -15.9,   7.9, -0.015,  15.9,
+            7.9, -0.015,  15.9, -23.9, -0.015,  15.9,
+          -23.9, -0.015,  15.9, -23.9, -0.015, -15.9,
+          // Open right docking arms
+           7.9, -0.015, -15.2, 23.4, -0.015, -15.2,
+          23.4, -0.015, -15.2, 23.4, -0.015, -12.0,
+          23.4, -0.015, -12.0,  7.9, -0.015, -12.0,
+           7.9, -0.015,  12.0, 23.4, -0.015,  12.0,
+          23.4, -0.015,  12.0, 23.4, -0.015,  15.2,
+          23.4, -0.015,  15.2,  7.9, -0.015,  15.2,
+        ];
+        bayHolder.add(
+          createCrispLineSegments(outlinePts, {
+            color: isSelected ? palette.slabEdgeSelected : palette.slabEdge,
+            opacity,
+            widthPx: isSelected ? 1.45 : 1.05,
+          })
+        );
+        group.add(bayHolder);
+      } else {
+        const slabThickness = 0.28;
+        const slabW = wM - 0.1;
+        const slabD = dM - 0.1;
+        const slabGeo = new THREE.BoxGeometry(slabW, slabThickness, slabD);
+        const slab = new THREE.Mesh(slabGeo, slabMat);
+        slab.position.set(cx, baseY - slabThickness / 2 - 0.02, cy);
+        group.add(slab);
+
+        const shw = slabW / 2;
+        const shd = slabD / 2;
+        const topRimY = baseY - 0.015;
+        const slabTopPts = [
+          cx - shw, topRimY, cy - shd, cx + shw, topRimY, cy - shd,
+          cx + shw, topRimY, cy - shd, cx + shw, topRimY, cy + shd,
+          cx + shw, topRimY, cy + shd, cx - shw, topRimY, cy + shd,
+          cx - shw, topRimY, cy + shd, cx - shw, topRimY, cy - shd,
+        ];
+        group.add(
+          createCrispLineSegments(slabTopPts, {
+            color: isSelected ? palette.slabEdgeSelected : palette.slabEdge,
+            opacity,
+            widthPx: isSelected ? 1.45 : 1.05,
+          })
+        );
+      }
+
+      // Buildable floor surface(s) (clean single inner perimeter, zero redundant doorway line stacks!)
       for (const surf of def.floors) {
         const surfFloor = mod.floor + surf.floorOffset;
         const surfOpacity = this.layerOpacityFor(surfFloor, state.focusFloor, state.hideAbove);
@@ -447,37 +617,18 @@ export class CadSceneController {
         floorMesh.rotation.y = -mod.rotation * (Math.PI / 2);
         group.add(floorMesh);
 
-        const borderPts = edgesToPositions(new THREE.EdgesGeometry(floorGeo));
-        const borderLine = createCrispLineSegments(borderPts, {
-          color: surf.floorOffset > 0 ? palette.floorBalconyEdge : palette.floorEdge,
-          opacity: surfOpacity,
-          widthPx: 0.9,
-          lodTier: surf.floorOffset > 0 ? 'primary' : 'detail',
-        });
-        borderLine.position.copy(floorMesh.position);
-        borderLine.rotation.copy(floorMesh.rotation);
-        group.add(borderLine);
-
-        for (const dw of surf.doorways) {
-          const span = dw.end - dw.start;
-          const halfW = (def.sizeUnits[0] * STATION_UNIT_M) / 2;
-          const halfD = (def.sizeUnits[1] * STATION_UNIT_M) / 2;
-          const pts: number[] = [];
-          if (dw.side === 'E') pts.push(halfW - 0.12, 0, dw.start, halfW - 0.12, 0, dw.end);
-          else if (dw.side === 'W') pts.push(-halfW + 0.12, 0, dw.start, -halfW + 0.12, 0, dw.end);
-          else if (dw.side === 'S') pts.push(dw.start, 0, halfD - 0.12, dw.end, 0, halfD - 0.12);
-          else pts.push(dw.start, 0, -halfD + 0.12, dw.end, 0, -halfD + 0.12);
-
-          const dwLine = createCrispLineSegments(pts, {
-            color: span > 10 ? palette.connXLarge : palette.connLarge,
+        // Draw subtle inner floor border only in Building View or on L+1 ring balconies (keeps Station View ultra-clean!)
+        if (state.viewMode === 'building' || surf.floorOffset > 0 || surf.shape === 'ring') {
+          const borderPts = edgesToPositions(new THREE.EdgesGeometry(floorGeo));
+          const borderLine = createCrispLineSegments(borderPts, {
+            color: surf.floorOffset > 0 ? palette.floorBalconyEdge : palette.floorEdge,
             opacity: surfOpacity,
-            widthPx: 1.0,
+            widthPx: 0.85,
+            lodTier: surf.floorOffset > 0 ? 'primary' : 'detail',
           });
-          const holder = new THREE.Group();
-          holder.position.set(cx, surfY + 0.02, cy);
-          holder.rotation.y = -mod.rotation * (Math.PI / 2);
-          holder.add(dwLine);
-          group.add(holder);
+          borderLine.position.copy(floorMesh.position);
+          borderLine.rotation.copy(floorMesh.rotation);
+          group.add(borderLine);
         }
       }
 
@@ -510,42 +661,8 @@ export class CadSceneController {
       }
     }
 
-    // Hollow line-art Station Connectors (applies to both platform & non-platform modules)
-    const worldConns = getModuleWorldConnectors(mod, def);
-    for (const c of worldConns) {
-      const cOpacity = this.layerOpacityFor(c.floor, state.focusFloor, state.hideAbove);
-      if (cOpacity <= 0.01) continue;
-      const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.05;
-
-      if (c.type.startsWith('Vertical')) {
-        const r = c.type === 'Vertical2x2' ? 3.2 : 1.7;
-        const pts = [
-          c.x, cyWorld, c.y - r, c.x + r, cyWorld, c.y,
-          c.x + r, cyWorld, c.y, c.x, cyWorld, c.y + r,
-          c.x, cyWorld, c.y + r, c.x - r, cyWorld, c.y,
-          c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r,
-        ];
-        group.add(
-          createCrispLineSegments(pts, {
-            color: palette.connVertical,
-            opacity: cOpacity,
-            widthPx: 1.05,
-          })
-        );
-      } else {
-        const isXL = c.type === 'XLarge';
-        const span = isXL ? 18 : 5.2;
-        const col = isXL ? palette.connXLarge : palette.connLarge;
-        const bracket = createHollowConnectorBracket(
-          span,
-          col,
-          cOpacity * (state.viewMode === 'station' ? 0.92 : 0.45)
-        );
-        bracket.position.set(c.x, cyWorld, c.y);
-        bracket.rotation.y = -c.rotation * (Math.PI / 2);
-        group.add(bracket);
-      }
-    }
+    // Deduplicated slim station connectors (clean single-line seams!)
+    this.addModuleConnectors(group, mod, def, state, palette, { connCounts, drawnMated });
 
     // Minimal Station Overview caption (rides atop roof smoothly for sculpted non-platform modules!)
     let labelMesh: THREE.Object3D | undefined;
@@ -812,25 +929,35 @@ export class CadSceneController {
       const x1 = (gx + wu) * STATION_UNIT_M - 0.12;
       const z1 = (gy + du) * STATION_UNIT_M - 0.12;
 
+      const ghostMod: PlacedModule = {
+        id: '__ghost_mod',
+        type: def.id,
+        gx,
+        gy,
+        floor: state.focusFloor,
+        rotation: state.activeTool.rotation,
+        label: state.activeTool.label,
+      };
+
       if (!def.hasFactoryFloor) {
-        const ghostMod: PlacedModule = {
-          id: '__ghost_mod',
-          type: def.id,
-          gx,
-          gy,
-          floor: state.focusFloor,
-          rotation: state.activeTool.rotation,
-          label: state.activeTool.label,
-        };
         const ghostArt = buildStationModuleArt(ghostMod, def, baseY + 0.04, 0.96, false, palette, col);
         ghostArt.extrudeGroup.scale.y = yScale;
         this.ghostExtrudeTargets.push(ghostArt.extrudeGroup);
         this.previewGroup.add(ghostArt.root);
+        // Subtle dashed outer cell alignment box so grid occupation stays clear without looking like a full cube
+        this.addFlatRectGhost(x0, z0, x1, z1, baseY + 0.06, col, 0.28);
+      } else {
+        this.addFlatRectGhost(x0, z0, x1, z1, baseY + 0.08, col, 0.94);
+        if (hu > 1) {
+          this.addFlatRectGhost(x0, z0, x1, z1, baseY + FLOOR_VISUAL_SPACING + 0.08, col, 0.5);
+        }
       }
-      this.addFlatRectGhost(x0, z0, x1, z1, baseY + 0.08, col, def.hasFactoryFloor ? 0.94 : 0.65);
-      if (hu > 1 && def.hasFactoryFloor) {
-        this.addFlatRectGhost(x0, z0, x1, z1, baseY + FLOOR_VISUAL_SPACING + 0.08, col, 0.5);
-      }
+
+      // Always render live station connectors on placement ghost so orientation & docking faces are unmistakable!
+      this.addModuleConnectors(this.previewGroup, ghostMod, def, state, palette, {
+        isGhost: true,
+        ghostColor: col,
+      });
       return;
     }
 
@@ -911,6 +1038,10 @@ export class CadSceneController {
         const col = issue && !state.forceReplaceHeld ? palette.invalidGhost : palette.validGhost;
         const [minX, minY, maxX, maxY] = getModuleBoundsM(m, def);
         this.addFlatRectGhost(minX + 0.15, minY + 0.15, maxX - 0.15, maxY - 0.15, m.floor * FLOOR_VISUAL_SPACING + 0.08, col, 0.88);
+        this.addModuleConnectors(this.previewGroup, m, def, state, palette, {
+          isGhost: true,
+          ghostColor: col,
+        });
       }
 
       for (const b of buildings) {

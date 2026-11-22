@@ -6,7 +6,6 @@ import {
   getBuildingSizeCells,
   getBuildingWorldPorts,
   getModuleCenterM,
-  getModuleSizeUnits,
   rotationToDelta,
   STATION_UNIT_M,
 } from './../core/geometry';
@@ -430,11 +429,23 @@ export function buildBeltLineArt(
     else if (cross < 0) localTurn = 'left';
   }
 
-  const bedGeo =
-    localTurn === 'straight'
-      ? new THREE.PlaneGeometry(0.98, 0.54)
-      : new THREE.PlaneGeometry(0.78, 0.78);
-  bedGeo.rotateX(-Math.PI / 2);
+  const r = 0.27;
+  let bedGeo: THREE.BufferGeometry;
+  if (localTurn === 'straight') {
+    bedGeo = new THREE.PlaneGeometry(0.98, r * 2);
+    bedGeo.rotateX(-Math.PI / 2);
+  } else if (localTurn === 'right') {
+    // RingGeometry in XY plane rotated by -PI/2 around X maps (cos(t), -sin(t)) to (X, Z)
+    // Pivot at (+0.5, +0.5); we need angles from X=-0.27,Z=+0.5 (t=PI) to X=+0.5,Z=-0.27 (t=PI/2) -> thetaStart = PI/2, length = PI/2
+    bedGeo = new THREE.RingGeometry(0.5 - r, 0.5 + r, 14, 1, Math.PI * 0.5, Math.PI * 0.5);
+    bedGeo.rotateX(-Math.PI / 2);
+    bedGeo.translate(0.5, 0, 0.5);
+  } else {
+    // Pivot at (+0.5, -0.5); we need (cos(t), -sin(t)) from (-1, 0) [t=PI] to (0, +1) [t=3*PI/2]
+    bedGeo = new THREE.RingGeometry(0.5 - r, 0.5 + r, 14, 1, Math.PI, Math.PI * 0.5);
+    bedGeo.rotateX(-Math.PI / 2);
+    bedGeo.translate(0.5, 0, -0.5);
+  }
   const bedMat = new THREE.MeshBasicMaterial({
     color: isSelected ? palette.baseFillSelected : palette.beltTrackFill,
     transparent: opacity < 0.99,
@@ -447,19 +458,18 @@ export function buildBeltLineArt(
   group.add(bed);
 
   const railPts: number[] = [];
-  const r = 0.27;
 
   if (localTurn === 'straight') {
     pushSeg(railPts, -0.5, -r, 0.5, -r, 0);
     pushSeg(railPts, -0.5, r, 0.5, r, 0);
   } else if (localTurn === 'right') {
-    // Clockwise turn: entering +Z (South) -> exiting +X (East); pivot at (+0.5, +0.5)
-    pushArc(railPts, 0.5, 0.5, 0.5 + r, Math.PI, Math.PI * 1.5, 6, 0);
-    pushArc(railPts, 0.5, 0.5, 0.5 - r, Math.PI, Math.PI * 1.5, 4, 0);
+    // Clockwise smooth quarter-circle arc: entering +Z (South) -> exiting +X (East); pivot at (+0.5, +0.5)
+    pushArc(railPts, 0.5, 0.5, 0.5 + r, Math.PI, Math.PI * 1.5, 14, 0);
+    pushArc(railPts, 0.5, 0.5, 0.5 - r, Math.PI, Math.PI * 1.5, 10, 0);
   } else {
-    // Counter-clockwise turn: entering -Z (North) -> exiting +X (East); pivot at (+0.5, -0.5)
-    pushArc(railPts, 0.5, -0.5, 0.5 + r, Math.PI, Math.PI * 0.5, 6, 0);
-    pushArc(railPts, 0.5, -0.5, 0.5 - r, Math.PI, Math.PI * 0.5, 4, 0);
+    // Counter-clockwise smooth quarter-circle arc: entering -Z (North) -> exiting +X (East); pivot at (+0.5, -0.5)
+    pushArc(railPts, 0.5, -0.5, 0.5 + r, Math.PI, Math.PI * 0.5, 14, 0);
+    pushArc(railPts, 0.5, -0.5, 0.5 - r, Math.PI, Math.PI * 0.5, 10, 0);
   }
 
   const railColor = isSelected
@@ -864,9 +874,9 @@ export function buildMachineLineArt(
 }
 
 /**
- * Unified pitch-responsive architectural 3D/2D line-art for ALL non-factory-floor station modules
- * (Armour A/B, Plasma Turret, Solar Panels I/II/III, Mining Bays I/II, Command, Dock, Scanner,
- *  Deep Space Observatory, Shipyard Core I/II & Side).
+ * Unified pitch-responsive architectural 3D/2D line-art for ALL non-factory-floor station modules.
+ * Styled to match Main Sequence's real in-game volume & negative-space proportions (NO full-grid cubes!):
+ * Attachment modules dock cleanly from their real -X connector wall (x = -lw/2) with open space around them.
  */
 export function buildStationModuleArt(
   mod: PlacedModule,
@@ -879,31 +889,15 @@ export function buildStationModuleArt(
 ): MachineLineArtResult {
   const root = new THREE.Group();
   const [cx, cz] = getModuleCenterM(mod, def);
-  const [wu, du] = getModuleSizeUnits(def, mod.rotation);
   const floorY = baseY;
   const isGhost = ghostTint !== undefined;
 
-  // Local unrotated dimensions (meters)
+  // Local unrotated grid cell span (meters)
   const lw = def.sizeUnits[0] * STATION_UNIT_M;
   const ld = def.sizeUnits[1] * STATION_UNIT_M;
-  const hw = lw / 2 - 0.35;
-  const hd = ld / 2 - 0.35;
+  const hw = lw / 2;
+  const hd = ld / 2;
   const minH = Math.min(hw, hd);
-
-  // Subtle flat anchor deck (keeps footprints clear in 2D top-down)
-  const wM = wu * STATION_UNIT_M;
-  const dM = du * STATION_UNIT_M;
-  const deckGeo = new THREE.PlaneGeometry(wM - 0.25, dM - 0.25);
-  deckGeo.rotateX(-Math.PI / 2);
-  const deckMat = new THREE.MeshBasicMaterial({
-    color: isGhost ? ghostTint : isSelected ? palette.baseFillSelected : palette.slabFill,
-    transparent: isGhost || opacity < 0.99,
-    opacity: isGhost ? opacity * 0.06 : opacity * 0.86,
-    depthWrite: false,
-  });
-  const deck = new THREE.Mesh(deckGeo, deckMat);
-  deck.position.set(cx, floorY - 0.02, cz);
-  root.add(deck);
 
   const extrudeGroup = new THREE.Group();
   extrudeGroup.position.set(cx, floorY, cz);
@@ -933,156 +927,208 @@ export function buildStationModuleArt(
 
   const primaryColor = isGhost ? ghostTint : isSelected ? palette.lineSelected : accentColor;
 
+  // Helper: compact structural docking collar flush against the real -X connector wall (-hw)
+  const addWestNeck = (depthX = 2.6, halfZ = 2.9, h = 2.2) => {
+    addChamferPrism(extrudeGroup, depthX / 2, halfZ, 0, h, 0.35, fillBase, primaryPts, detailPts, {
+      cx: -hw + depthX / 2 + 0.12,
+    });
+  };
+
   switch (def.id) {
     case 'BPO_StationArmour_01':
     case 'BPO_StationArmour_01B': {
-      // Sculpted sloped wedge armour hull (01B is exact mirrored orientation!)
+      // Sleek beveled hull fairing wedge (real 4m height, hugging inner corner with generous open space outside)
       const mirrored = def.id === 'BPO_StationArmour_01B';
-      roofHeight = 3.6;
-      addSlopedArmourPlate(extrudeGroup, hw * 0.94, hd * 0.94, roofHeight, 1.15, mirrored, fillBase, primaryPts, detailPts);
+      roofHeight = 3.4;
+      addSlopedArmourPlate(extrudeGroup, hw * 0.88, hd * 0.84, roofHeight, 0.85, mirrored, fillBase, primaryPts, detailPts);
       break;
     }
 
     case 'BPO_StationTurretBlock_01': {
-      // Octagonal armored gun pedestal + rotating cylindrical turret + twin parallel plasma barrels (+X)
-      roofHeight = 4.4;
-      addChamferPrism(extrudeGroup, hw * 0.86, hd * 0.86, 0, 1.65, 2.2, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.56, minH * 0.48, 8, 1.65, 3.35, Math.PI / 8, fillUpper, primaryPts, detailPts, {
+      // Compact mounted space plasma turret docked at -X: slim collar + compact 7m octagonal mount + tall cupola + long twin barrels!
+      roofHeight = 5.4;
+      addWestNeck(3.2, 2.8, 2.2);
+      // Compact octagonal armored gun mount centered around x = -1.2 (leaves generous open void on N/S/E!)
+      addPolyDrum(extrudeGroup, 3.8, 3.3, 8, 0, 2.4, Math.PI / 8, fillBase, primaryPts, detailPts, {
+        cx: -1.0,
         ribCount: 8,
       });
-      addChamferPrism(extrudeGroup, 2.6, 2.2, 3.35, roofHeight, 0.6, fillBase, primaryPts, detailPts, { cx: -0.4 });
-      // Twin long plasma cannon barrels extending toward +X
-      addRectBlock(extrudeGroup, 3.8, -1.1, 3.4, 0.42, 2.65, 3.45, fillUpper, primaryPts, detailPts);
-      addRectBlock(extrudeGroup, 3.8, 1.1, 3.4, 0.42, 2.65, 3.45, fillUpper, primaryPts, detailPts);
+      // Elevated turret breach housing
+      addChamferPrism(extrudeGroup, 2.3, 2.1, 2.4, 4.4, 0.55, fillUpper, primaryPts, detailPts, { cx: -1.0 });
+      addPolyDrum(extrudeGroup, 1.35, 1.05, 8, 4.4, roofHeight, Math.PI / 8, fillBase, primaryPts, detailPts, {
+        cx: -1.3,
+        ribCount: 4,
+      });
+      // Long protruding twin plasma barrels extending outward into empty space (+X)
+      addRectBlock(extrudeGroup, 3.6, -0.95, 3.4, 0.36, 2.95, 3.65, fillUpper, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, 3.6, 0.95, 3.4, 0.36, 2.95, 3.65, fillUpper, primaryPts, detailPts);
+      break;
+    }
+
+    case 'BPO_CommandModule': {
+      // Compact tapered command bridge pod docked at -X (real 4m height, sleek nose + observation deck + dual spires)
+      roofHeight = 4.6;
+      addWestNeck(2.8, 3.1, 2.1);
+      addChamferPrism(extrudeGroup, 3.6, 3.8, 0, 2.5, 1.3, fillBase, primaryPts, detailPts, { cx: -1.6 });
+      // Tapered forward bridge prow (+X)
+      addChamferPrism(extrudeGroup, 2.1, 2.4, 0.25, 2.9, 0.85, fillUpper, primaryPts, detailPts, { cx: 2.3 });
+      // Upper hexagonal CIC crown
+      addPolyDrum(extrudeGroup, 2.1, 1.65, 6, 2.5, 3.7, Math.PI / 6, fillUpper, primaryPts, detailPts, {
+        cx: -1.5,
+        ribCount: 6,
+      });
+      // Twin slender comms antennae
+      pushSeg(primaryPts, -2.3, -1.1, -2.3, -1.1, 3.7, roofHeight);
+      pushSeg(primaryPts, -2.3, 1.1, -2.3, 1.1, 3.7, roofHeight - 0.45);
+      break;
+    }
+
+    case 'BPO_ScannerModule': {
+      // Compact -X mount + sleek cantilevered sensor boom + circular parabolic radar dish floating in open space
+      roofHeight = 4.9;
+      addWestNeck(3.2, 2.5, 1.9);
+      // Structural boom arm
+      addRectBlock(extrudeGroup, -2.2, 0, 2.6, 1.15, 0.35, 1.65, fillBase, primaryPts, detailPts);
+      // Sculpted parabolic dish centered at x = +1.4 (compact ~4.1m radius with crisp dark void around it)
+      addPolyDrum(extrudeGroup, 1.8, 4.1, 16, 1.4, 3.4, 0, fillUpper, primaryPts, detailPts, {
+        cx: 1.4,
+        ribCount: 8,
+      });
+      // Receiver tripod & emitter needle
+      pushSeg(primaryPts, 1.4, 0, 1.4, 0, 3.4, roofHeight);
+      pushSeg(detailPts, 1.4 - 2.4, 0, 1.4, 0, 3.4, roofHeight - 0.2);
+      pushSeg(detailPts, 1.4 + 2.4, 0, 1.4, 0, 3.4, roofHeight - 0.2);
+      pushSeg(detailPts, 1.4, -2.4, 1.4, 0, 3.4, roofHeight - 0.2);
+      pushSeg(detailPts, 1.4, 2.4, 1.4, 0, 3.4, roofHeight - 0.2);
+      break;
+    }
+
+    case 'BPO_MiningDroneBayBlock':
+    case 'BPO_MiningDroneBayBlock_2': {
+      // Compact docked mining drone bay with open forward (+X) launch apron & twin/quad drone bays (NOT a 16x16 block!)
+      const mk2 = def.id.endsWith('_2');
+      roofHeight = mk2 ? 4.3 : 3.4;
+      addWestNeck(2.4, 3.2, 2.3);
+      const bodyHalfX = mk2 ? 4.2 : 3.4;
+      const bodyHalfZ = mk2 ? 5.2 : 4.1;
+      const bodyCx = -hw + 2.2 + bodyHalfX;
+      addChamferPrism(extrudeGroup, bodyHalfX, bodyHalfZ, 0, roofHeight, 0.9, fillBase, primaryPts, detailPts, {
+        cx: bodyCx,
+      });
+      // Twin open forward launch guide rails extending into empty space on +X
+      const armCx = bodyCx + bodyHalfX + 1.7;
+      addRectBlock(extrudeGroup, armCx, -bodyHalfZ + 0.9, 1.8, 0.65, 0, 1.5, fillUpper, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, armCx, bodyHalfZ - 0.9, 1.8, 0.65, 0, 1.5, fillUpper, primaryPts, detailPts);
+      // Drone launch hatch divisions on deck
+      pushSeg(detailPts, bodyCx, -bodyHalfZ * 0.85, bodyCx, bodyHalfZ * 0.85, roofHeight + 0.02);
+      if (mk2) {
+        pushSeg(detailPts, bodyCx - bodyHalfX * 0.85, 0, bodyCx + bodyHalfX * 0.85, 0, roofHeight + 0.02);
+      }
+      break;
+    }
+
+    case 'BPO_Dock': {
+      // Compact airlock collar on -X + twin slim open ship-docking guide arms cradling dark empty space on +X!
+      roofHeight = 3.0;
+      addWestNeck(3.2, 3.3, 2.4);
+      addPolyDrum(extrudeGroup, 2.6, 2.3, 12, 0.2, roofHeight, 0, fillUpper, primaryPts, detailPts, {
+        cx: -3.2,
+        ribCount: 6,
+      });
+      // Open docking clamp arms flanking empty ship berth
+      addRectBlock(extrudeGroup, 1.8, -3.4, 3.8, 0.65, 0, 1.8, fillBase, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, 1.8, 3.4, 3.8, 0.65, 0, 1.8, fillBase, primaryPts, detailPts);
+      // Subtle docking centerline approach marker
+      pushSeg(detailPts, -0.4, 0, 6.2, 0, 0.4, 0.4);
       break;
     }
 
     case 'BPO_SolarPanelBlock':
     case 'BPO_SolarPanelBlock_02':
     case 'BPO_SolarPanelBlock_03': {
-      // Structural central truss spine + sleek cantilevered solar wing arrays with photovoltaic grid lines
+      // Slim central structural spine between -X & +X connectors + cantilevered thin photovoltaic wings with real air gaps!
       const tier = def.id.endsWith('03') ? 3 : def.id.endsWith('02') ? 2 : 1;
-      roofHeight = tier >= 2 ? 4.2 : 2.6;
-      const wingY = roofHeight * 0.72;
-      // Central mounting spine
-      addChamferPrism(extrudeGroup, hw * 0.24, hd * 0.9, 0, roofHeight, 0.5, fillBase, primaryPts, detailPts);
-      // Left & right thin photovoltaic wing slabs
-      const wingX = hw * 0.6;
-      const wingHx = hw * 0.34;
-      const wingHz = hd * 0.88;
-      addRectBlock(extrudeGroup, -wingX, 0, wingHx, wingHz, wingY - 0.16, wingY + 0.16, fillUpper, primaryPts, detailPts);
-      addRectBlock(extrudeGroup, wingX, 0, wingHx, wingHz, wingY - 0.16, wingY + 0.16, fillUpper, primaryPts, detailPts);
-      // Clean photovoltaic cell ribs
-      const rows = tier === 3 ? 6 : 4;
-      for (let i = 1; i < rows; i++) {
-        const z = -wingHz + (2 * wingHz * i) / rows;
-        pushSeg(detailPts, -wingX - wingHx, z, -wingX + wingHx, z, wingY + 0.18, wingY + 0.18);
-        pushSeg(detailPts, wingX - wingHx, z, wingX + wingHx, z, wingY + 0.18, wingY + 0.18);
-      }
-      break;
-    }
+      roofHeight = tier === 3 ? 5.6 : tier === 2 ? 4.4 : 2.6;
+      const wingY = roofHeight * 0.68;
+      // Slim central spine along X connecting W (-hw) and E (+hw)
+      addChamferPrism(extrudeGroup, hw - 0.15, 1.25, 0, 1.8, 0.25, fillBase, primaryPts, detailPts);
 
-    case 'BPO_MiningDroneBayBlock':
-    case 'BPO_MiningDroneBayBlock_2': {
-      // Armored industrial hangar + twin (Mk.1) / quad (Mk.2) launch hatches & guide rails
-      const mk2 = def.id.endsWith('_2');
-      roofHeight = mk2 ? 4.4 : 3.4;
-      addChamferPrism(extrudeGroup, hw * 0.92, hd * 0.92, 0, 1.8, 1.4, fillBase, primaryPts, detailPts);
-      addChamferPrism(extrudeGroup, hw * 0.72, hd * 0.72, 1.8, roofHeight, 0.9, fillUpper, primaryPts, detailPts);
-      // Launch bay recessed hatches on top deck
-      if (mk2) {
-        for (const sx of [-1, 1]) {
-          for (const sz of [-1, 1]) {
-            pushRect(primaryPts, hw * 0.24, hd * 0.24, roofHeight + 0.02, 0.2);
-            pushSeg(detailPts, sx * hw * 0.34, sz * hd * 0.1, sx * hw * 0.34, sz * hd * 0.56, roofHeight + 0.02);
+      // Cantilevered photovoltaic wings on North (-Z) and South (+Z) with crisp air gap around the spine
+      const wingCountX = tier === 3 ? 2 : 1;
+      const wingSpanX = (lw - 2.6) / wingCountX - 0.9;
+      const wingDepthZ = tier >= 2 ? hd * 0.68 : hd * 0.56;
+      const wingOffsetZ = 1.85 + wingDepthZ / 2;
+
+      for (let ix = 0; ix < wingCountX; ix++) {
+        const wx = wingCountX === 1 ? 0 : -hw / 2 + ix * hw;
+        for (const sz of [-1, 1]) {
+          // Support strut from central spine to wing
+          pushSeg(detailPts, wx, sz * 1.25, wx, sz * (1.85 + 0.1), 1.3, wingY);
+          // Thin photovoltaic wing slab
+          addRectBlock(extrudeGroup, wx, sz * wingOffsetZ, wingSpanX / 2, wingDepthZ / 2, wingY - 0.14, wingY + 0.14, fillUpper, primaryPts, detailPts);
+          // Crisp cell sub-grid lines
+          const cols = tier === 3 ? 4 : 3;
+          for (let c = 1; c < cols; c++) {
+            const lx = wx - wingSpanX / 2 + (wingSpanX * c) / cols;
+            pushSeg(detailPts, lx, sz * (wingOffsetZ - wingDepthZ / 2), lx, sz * (wingOffsetZ + wingDepthZ / 2), wingY + 0.16);
           }
+          pushSeg(detailPts, wx - wingSpanX / 2, sz * wingOffsetZ, wx + wingSpanX / 2, sz * wingOffsetZ, wingY + 0.16);
         }
-        pushSeg(primaryPts, -hw * 0.68, 0, hw * 0.68, 0, roofHeight + 0.02);
-        pushSeg(primaryPts, 0, -hd * 0.68, 0, hd * 0.68, roofHeight + 0.02);
-      } else {
-        pushSeg(primaryPts, 0, -hd * 0.66, 0, hd * 0.66, roofHeight + 0.02);
-        pushRect(detailPts, hw * 0.54, hd * 0.54, roofHeight + 0.02, 0.3);
       }
-      break;
-    }
-
-    case 'BPO_CommandModule': {
-      // Tiered hexagonal command superstructure + elevated bridge crown + dual comms masts
-      roofHeight = 5.4;
-      addChamferPrism(extrudeGroup, hw * 0.88, hd * 0.88, 0, 1.8, 2.2, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.68, minH * 0.56, 6, 1.8, 3.7, Math.PI / 6, fillUpper, primaryPts, detailPts, {
-        ribCount: 6,
-      });
-      addPolyDrum(extrudeGroup, minH * 0.34, minH * 0.26, 6, 3.7, 4.6, Math.PI / 6, fillBase, primaryPts, detailPts, {
-        ribCount: 6,
-      });
-      // Dual delicate comms spires
-      pushSeg(primaryPts, -1.2, 0, -1.2, 0, 4.6, roofHeight);
-      pushSeg(primaryPts, 1.2, 0, 1.2, 0, 4.6, roofHeight - 0.5);
-      break;
-    }
-
-    case 'BPO_Dock': {
-      // Precision docking collar + twin alignment clamp arms
-      roofHeight = 3.2;
-      addChamferPrism(extrudeGroup, hw * 0.88, hd * 0.88, 0, 1.4, 1.6, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.52, minH * 0.46, 16, 1.4, roofHeight, 0, fillUpper, primaryPts, detailPts, {
-        ribCount: 8,
-      });
-      // Docking clamp rails extending outward
-      addRectBlock(extrudeGroup, hw * 0.55, -hd * 0.52, hw * 0.32, 0.75, 0, 2.2, fillBase, primaryPts, detailPts);
-      addRectBlock(extrudeGroup, hw * 0.55, hd * 0.52, hw * 0.32, 0.75, 0, 2.2, fillBase, primaryPts, detailPts);
-      break;
-    }
-
-    case 'BPO_ScannerModule': {
-      // Octagonal pedestal + parabolic sensor dish + central emitter mast
-      roofHeight = 5.2;
-      addChamferPrism(extrudeGroup, hw * 0.84, hd * 0.84, 0, 1.5, 2.0, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.34, minH * 0.76, 16, 1.5, 3.6, 0, fillUpper, primaryPts, detailPts, {
-        ribCount: 8,
-      });
-      pushSeg(primaryPts, 0, 0, 0, 0, 3.6, roofHeight);
-      pushPolygon(primaryPts, minH * 0.2, 8, roofHeight - 0.4, 0);
       break;
     }
 
     case 'BPO_DeepSpaceObservatory': {
-      // Grand 2x2 geodesic observatory dome + stepped ring plinth + telescope slit
+      // Grand 2x2 circular geodesic observatory ring anchored to -X XLarge neck with open void at corners!
       roofHeight = 7.4;
-      addChamferPrism(extrudeGroup, hw * 0.92, hd * 0.92, 0, 2.0, 4.2, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.78, minH * 0.7, 16, 2.0, 5.2, 0, fillUpper, primaryPts, detailPts, {
+      addWestNeck(4.5, 6.2, 3.2);
+      addPolyDrum(extrudeGroup, minH * 0.72, minH * 0.66, 16, 0, 2.4, 0, fillBase, primaryPts, detailPts, {
+        cx: 1.0,
         ribCount: 8,
       });
-      addPolyDrum(extrudeGroup, minH * 0.7, minH * 0.28, 16, 5.2, roofHeight, 0, fillBase, primaryPts, detailPts, {
+      addPolyDrum(extrudeGroup, minH * 0.64, minH * 0.56, 16, 2.4, 5.4, 0, fillUpper, primaryPts, detailPts, {
+        cx: 1.0,
         ribCount: 8,
       });
-      // Telescope aperture slit
-      pushSeg(primaryPts, -1.2, -minH * 0.68, -1.2, minH * 0.68, 5.3, 5.3);
-      pushSeg(primaryPts, 1.2, -minH * 0.68, 1.2, minH * 0.68, 5.3, 5.3);
+      addPolyDrum(extrudeGroup, minH * 0.56, minH * 0.22, 16, 5.4, roofHeight, 0, fillBase, primaryPts, detailPts, {
+        cx: 1.0,
+        ribCount: 8,
+      });
+      // Prominent telescope slit & protruding lens barrel (+X)
+      addRectBlock(extrudeGroup, 6.8, 0, 3.2, 1.3, 4.4, 6.2, fillUpper, primaryPts, detailPts);
       break;
     }
 
     case 'BPO_ShipyardCore':
     case 'BPO_ShipyardCore_02':
     case 'BPO_ShipyardSide': {
-      // Heavy orbital drydock gantry bay with parallel structural arms & overhead truss arches
+      // Open skeletal orbital drydock gantry frames (true real bounds: ShipyardSide = 9x16m offset -X, Core2 = 24x32m!)
       const isBig = def.id === 'BPO_ShipyardCore_02';
-      roofHeight = isBig ? 6.2 : 4.6;
-      const armT = isBig ? 2.4 : 1.6;
-      addRectBlock(extrudeGroup, 0, -hd + armT, hw * 0.92, armT, 0, roofHeight, fillBase, primaryPts, detailPts);
-      addRectBlock(extrudeGroup, 0, hd - armT, hw * 0.92, armT, 0, roofHeight, fillBase, primaryPts, detailPts);
-      // Transverse overhead gantry bridges
-      const bridges = isBig ? [-hw * 0.55, 0, hw * 0.55] : [-hw * 0.42, hw * 0.42];
-      for (const bx of bridges) {
-        addRectBlock(extrudeGroup, bx, 0, armT * 0.55, hd - armT * 2, roofHeight - 1.1, roofHeight, fillUpper, primaryPts, detailPts);
+      const isSide = def.id === 'BPO_ShipyardSide';
+      roofHeight = isBig ? 6.2 : 4.8;
+      const spineX = isSide ? -hw + 2.8 : -hw + 2.6;
+      const spineHalfX = isSide ? 2.4 : 2.2;
+      // Structural spine along -X connector side
+      addChamferPrism(extrudeGroup, spineHalfX, hd - 0.6, 0, roofHeight, 0.5, fillBase, primaryPts, detailPts, {
+        cx: spineX,
+      });
+      // Slender cantilevered overhead gantry arms reaching out over open drydock build space (+X)
+      const armReach = isSide ? 4.8 : isBig ? 17.5 : 10.2;
+      const armCx = spineX + spineHalfX + armReach / 2;
+      const armHalfZ = isBig ? 1.4 : 1.0;
+      const zOffsets = isBig ? [-hd + 2.4, 0, hd - 2.4] : [-hd + 2.0, hd - 2.0];
+      for (const oz of zOffsets) {
+        addRectBlock(extrudeGroup, armCx, oz, armReach / 2, armHalfZ, roofHeight - 1.15, roofHeight, fillUpper, primaryPts, detailPts);
+        // Vertical end-stanchion tick
+        addRectBlock(extrudeGroup, spineX + spineHalfX + armReach - 0.6, oz, 0.6, armHalfZ * 0.85, 0, roofHeight - 1.15, fillBase, primaryPts, detailPts);
       }
       break;
     }
 
     default: {
       roofHeight = 3.2;
-      addChamferPrism(extrudeGroup, hw * 0.88, hd * 0.88, 0, roofHeight, 1.4, fillBase, primaryPts, detailPts);
+      addWestNeck(2.6, 2.8, 2.0);
+      addChamferPrism(extrudeGroup, hw * 0.58, hd * 0.58, 0, roofHeight, 1.0, fillBase, primaryPts, detailPts);
       break;
     }
   }

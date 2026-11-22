@@ -82,7 +82,7 @@ export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
 					}`,
       `float _aa = max( fwidth( vUv.x ), 0.02 );
 					float _cap = max( 0.0, abs( vUv.y ) - 1.0 );
-					if ( _cap > 0.16 ) discard;
+					if ( _cap > 0.22 ) discard;
 					float _dist = abs( vUv.x );
 					float _cov = 1.0 - smoothstep( max( 0.0, 1.0 - _aa * 0.92 ), 1.0, _dist );
 					if ( _cov <= 0.005 ) discard;
