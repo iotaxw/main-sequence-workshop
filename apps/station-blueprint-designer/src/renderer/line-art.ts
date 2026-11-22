@@ -271,32 +271,37 @@ function addStationArmourCap(
     return crownH + 0.42;
   }
 
-  // Bottom/belly vertically flipped mirror armour cap (SM2_StationArmour_01B: inverted recessed belly hull)
-  const rimH = 1.65;
-  addChamferPrism(target, outerW, outerD, 0, rimH, outerChamfer, fillBase, primaryPts, detailPts);
-  // Stepped recessed inner belly frame (visually distinct inverted keel silhouette!)
-  const innerW = outerW * 0.72;
-  const innerD = outerD * 0.72;
-  pushRect(primaryPts, innerW, innerD, rimH + 0.02, 1.3);
-  pushRect(detailPts, innerW * 0.54, innerD * 0.54, rimH + 0.02, 0.8);
-  // Diagonal structural belly X-truss ribs (immediately distinguishes flipped bottom cap in 2D & 3D!)
-  pushSeg(detailPts, -innerW * 0.85, -innerD * 0.85, innerW * 0.85, innerD * 0.85, rimH + 0.02, rimH + 0.02);
-  pushSeg(detailPts, -innerW * 0.85, innerD * 0.85, innerW * 0.85, -innerD * 0.85, rimH + 0.02, rimH + 0.02);
-  // Outer bevel corner tie lines
+  // Bottom/belly vertically flipped mirror armour cap (SM2_StationArmour_01B):
+  // Clings flush near the TOP of its grid cell (ceiling-mounted against the station deck above) and tapers DOWNWARD!
+  const topY = 7.8;
+  const skirtBottomY = 6.95;
+  const bellyBottomY = 5.35;
+  const bossBottomY = 4.95;
+
+  // Upper mounting apron hugging the top of the cell
+  addChamferPrism(target, outerW, outerD, skirtBottomY, topY, outerChamfer, fillBase, primaryPts, detailPts);
+  // Inverted downward-stepped armored belly plate hanging underneath
+  addChamferPrism(target, outerW * 0.78, outerD * 0.78, bellyBottomY, skirtBottomY, 1.65, fillUpper, primaryPts, detailPts);
+  // Inverted central keel boss on the underside
+  addChamferPrism(target, 2.5, 2.5, bossBottomY, bellyBottomY, 0.55, fillBase, primaryPts, detailPts);
+
+  // Diagonal underside corner gusset ribs sloping downward from outer skirt to belly crown
+  const cOut = outerW - outerChamfer * 0.5;
+  const cIn = outerW * 0.78 - 1.65 * 0.5;
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
-      pushSeg(
-        detailPts,
-        sx * (outerW - outerChamfer * 0.55),
-        sz * (outerD - outerChamfer * 0.55),
-        sx * (innerW - 0.65),
-        sz * (innerD - 0.65),
-        rimH + 0.02,
-        rimH + 0.02
-      );
+      pushSeg(detailPts, sx * cOut, sz * cOut, sx * cIn, sz * cIn, skirtBottomY, bellyBottomY);
     }
   }
-  return rimH;
+
+  // Distinct inverted X-truss structural keel ribs on top mounting face so 2D top-down instantly separates 底 vs 顶
+  const innerW = outerW * 0.72;
+  const innerD = outerD * 0.72;
+  pushRect(detailPts, innerW, innerD, topY + 0.02, 1.3);
+  pushSeg(detailPts, -innerW * 0.82, -innerD * 0.82, innerW * 0.82, innerD * 0.82, topY + 0.02, topY + 0.02);
+  pushSeg(detailPts, -innerW * 0.82, innerD * 0.82, innerW * 0.82, -innerD * 0.82, topY + 0.02, topY + 0.02);
+
+  return topY;
 }
 
 /**
