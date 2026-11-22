@@ -6,6 +6,7 @@ import {
   getBuildingSizeCells,
   getBuildingWorldPorts,
   getModuleCenterM,
+  isPortToggleable,
   rotationToDelta,
   STATION_UNIT_M,
 } from './../core/geometry';
@@ -914,24 +915,20 @@ export function buildMachineLineArt(
 
   root.add(extrudeGroup);
 
-  if (def.configurablePorts) {
-    const isLogistics = def.kind === 'splitter' || def.kind === 'balancer';
+  const isLogistics = def.kind === 'splitter' || def.kind === 'balancer';
+  if (def.configurablePorts || isLogistics) {
     const worldPorts = getBuildingWorldPorts(b, def);
     const markerOp = isGhost ? opacity * 0.82 : opacity;
     for (const wp of worldPorts) {
       const idx = wp.port.index;
-      const isPriorityIn = b.priorityIn === idx;
-      const isPriorityOut = b.priorityOut === idx;
-      const hasFilter = Boolean(b.portFilters?.[idx]);
+      const canToggle = isPortToggleable(def, wp.port);
+      const isPriorityIn = isLogistics && b.priorityIn === idx;
+      const isPriorityOut = isLogistics && b.priorityOut === idx;
+      const hasFilter = isLogistics && Boolean(b.portFilters?.[idx]);
 
-      // For Splitters: show compact micro-slots on all 3 outputs (plus input only if disabled).
-      // For Balancers: show compact micro-slots only when disabled (keeps balanced lanes ultra-clean!).
-      const drawSlot =
-        !isLogistics ||
-        !wp.enabled ||
-        (def.kind === 'splitter' && wp.port.role === 'out');
-
-      if (drawSlot) {
+      // Only draw enable/disable port slots for ports that are genuinely toggleable!
+      // (Never draws port-config slots on fixed always-on Splitter input or Balancer lanes!)
+      if (canToggle) {
         root.add(
           buildFlushPortMarker(
             wp.worldX,

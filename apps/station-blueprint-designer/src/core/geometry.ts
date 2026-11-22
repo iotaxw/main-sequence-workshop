@@ -374,6 +374,20 @@ export interface WorldMachinePort {
   enabled: boolean;
 }
 
+/** Return whether a given port on `def` supports being enabled/disabled by the player. */
+export function isPortToggleable(def: BuildableDef, port: MachinePortDef): boolean {
+  if (!def.configurablePorts) return false;
+  // Splitter's single input port is fixed always-on; only its 3 output ports can be toggled.
+  if (def.kind === 'splitter') return port.role === 'out';
+  // Belt Balancer lanes are all fixed always-on (priority & item filter only, no port disable).
+  if (def.kind === 'balancer') return false;
+  return true;
+}
+
+export function getToggleablePorts(def: BuildableDef): MachinePortDef[] {
+  return def.ports.filter((p) => isPortToggleable(def, p));
+}
+
 /** Compute world positions and enabled states of all ports on a placed building */
 export function getBuildingWorldPorts(b: PlacedBuilding, def: BuildableDef): WorldMachinePort[] {
   const [cx, cy] = getBuildingCenterM(b, def);
@@ -386,6 +400,7 @@ export function getBuildingWorldPorts(b: PlacedBuilding, def: BuildableDef): Wor
     const [dx, dy] = sideToDelta(side);
     const wx = cx + rx;
     const wy = cy + ry;
+    const canToggle = isPortToggleable(def, port);
     return {
       port,
       worldX: wx,
@@ -393,7 +408,7 @@ export function getBuildingWorldPorts(b: PlacedBuilding, def: BuildableDef): Wor
       side,
       outsideCellX: Math.floor(wx + dx * 0.5),
       outsideCellY: Math.floor(wy + dy * 0.5),
-      enabled: !disabled.has(port.index),
+      enabled: canToggle ? !disabled.has(port.index) : true,
     };
   });
 }

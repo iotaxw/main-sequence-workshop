@@ -1,5 +1,6 @@
 import { CATALOG, getBuildableDef, getModuleDef } from './catalog';
 import { createEntityId } from './commands';
+import { isPortToggleable } from './geometry';
 import type { BlueprintDocument, PlacedBuilding, PlacedModule, Rotation } from './types';
 
 export const CURRENT_FORMAT = 'station-blueprint-designer' as const;
@@ -130,13 +131,19 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
     if (!isFiniteInt(b.x) || !isFiniteInt(b.y) || !isFiniteInt(b.floor) || !isRotation(b.rotation)) {
       return { ok: false, error: `buildings[${i}] 坐标或旋转角无效。` };
     }
-    if (!getBuildableDef(b.type)) {
+    const bDef = getBuildableDef(b.type);
+    if (!bDef) {
       warnings.push(`包含未知建筑类型「${b.type}」，已原样保留。`);
     }
     const bid = typeof b.id === 'string' && b.id && !seenBldIds.has(b.id) ? b.id : createEntityId('bld');
     seenBldIds.add(bid);
     const disabledPorts = Array.isArray(b.disabledPorts)
-      ? b.disabledPorts.filter((p): p is number => isFiniteInt(p) && p >= 0)
+      ? b.disabledPorts.filter((p): p is number => {
+          if (!isFiniteInt(p) || p < 0) return false;
+          if (!bDef) return true;
+          const pDef = bDef.ports.find((x) => x.index === p);
+          return pDef ? isPortToggleable(bDef, pDef) : false;
+        })
       : undefined;
     let portFilters: Record<number, string> | undefined;
     if (b.portFilters && typeof b.portFilters === 'object' && !Array.isArray(b.portFilters)) {

@@ -7,7 +7,14 @@ import {
   getRecipeDef,
   getRecipesForCrafter,
 } from '../core/catalog';
-import { findBuildingsInsideModule, getBuildingSizeCells, rotateSide, rotateVec2 } from '../core/geometry';
+import {
+  findBuildingsInsideModule,
+  getBuildingSizeCells,
+  getToggleablePorts,
+  isPortToggleable,
+  rotateSide,
+  rotateVec2,
+} from '../core/geometry';
 import type { BlueprintDocument, MachinePortDef, PlacedBuilding, PlacedModule, SelectionState } from '../core/types';
 
 export interface BuildingConfigPatch {
@@ -61,10 +68,10 @@ function getPortDisplayLabel(
 
 const PortDiagram: React.FC<{
   building: PlacedBuilding;
-  onTogglePort: (portIndex: number) => void;
+  onTogglePort?: (portIndex: number) => void;
 }> = ({ building, onTogglePort }) => {
   const def = getBuildableDef(building.type);
-  if (!def || !def.configurablePorts) return null;
+  if (!def || (!def.configurablePorts && def.kind !== 'balancer')) return null;
 
   const [w, d] = getBuildingSizeCells(def, building.rotation);
   const disabledSet = new Set(building.disabledPorts ?? []);
@@ -91,7 +98,8 @@ const PortDiagram: React.FC<{
         {def.ports.map((port) => {
           const [rx, ry] = rotateVec2(port.hx * 0.5, port.hy * 0.5, building.rotation);
           const side = rotateSide(port.side, building.rotation);
-          const enabled = !disabledSet.has(port.index);
+          const canToggle = isPortToggleable(def, port) && Boolean(onTogglePort);
+          const enabled = canToggle ? !disabledSet.has(port.index) : true;
           const isPriority = building.priorityIn === port.index || building.priorityOut === port.index;
           const filterItemId = building.portFilters?.[port.index];
           const isHoriz = side === 'N' || side === 'S';
@@ -108,19 +116,23 @@ const PortDiagram: React.FC<{
             ? 'var(--line-disabled)'
             : isPriority
               ? 'var(--line-warn)'
-              : 'var(--line-active)';
+              : canToggle
+                ? 'var(--line-active)'
+                : 'var(--text-dim)';
 
           return (
             <g
               key={port.index}
-              className="port-node"
-              onClick={() => onTogglePort(port.index)}
-              style={{ cursor: 'pointer' }}
+              className={canToggle ? 'port-node' : 'port-node-fixed'}
+              onClick={canToggle ? () => onTogglePort?.(port.index) : undefined}
+              style={{ cursor: canToggle ? 'pointer' : 'default' }}
             >
               <title>
-                {`${portLabel} · ${enabled ? '活跃（点击禁用）' : '已禁用（点击启用）'}${
-                  isPriority ? ' · 优先通道' : ''
-                }${filterItemId ? ` · 过滤：${getItemNameZh(filterItemId)}` : ''}`}
+                {`${portLabel} · ${
+                  canToggle ? (enabled ? '活跃（点击禁用）' : '已禁用（点击启用）') : '固定启用（不可关闭）'
+                }${isPriority ? ' · 优先通道' : ''}${
+                  filterItemId ? ` · 过滤：${getItemNameZh(filterItemId)}` : ''
+                }`}
               </title>
               <rect
                 x={cx - rw / 2}
@@ -130,7 +142,8 @@ const PortDiagram: React.FC<{
                 rx={0.04}
                 fill="var(--bg-input)"
                 stroke={strokeCol}
-                strokeWidth={isPriority ? 0.12 : 0.095}
+                strokeWidth={isPriority ? 0.12 : canToggle ? 0.095 : 0.075}
+                strokeDasharray={!canToggle && !isPriority ? '0.12 0.08' : undefined}
               />
               {enabled ? (
                 isHoriz ? (
@@ -214,7 +227,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
       );
     });
     const disabledSet = new Set(singleBuilding.disabledPorts ?? []);
-    const activePortCount = def ? def.ports.length - disabledSet.size : 0;
+    const toggleablePorts = def ? getToggleablePorts(def) : [];
+    const activeToggleCount = toggleablePorts.filter((p) => !disabledSet.has(p.index)).length;
 
     const inputPorts = def ? def.ports.filter((p) => p.role === 'in') : [];
     const outputPorts = def ? def.ports.filter((p) => p.role === 'out') : [];
@@ -228,6 +242,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     });
 
     const handleTogglePort = (idx: number) => {
+      if (!def) return;
+      const pDef = def.ports.find((p) => p.index === idx);
+      if (!pDef || !isPortToggleable(def, pDef)) return;
       const next = new Set(disabledSet);
       if (next.has(idx)) next.delete(idx);
       else next.add(idx);
@@ -512,12 +529,12 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             </div>
           )}
 
-          {/* Active / Disabled Ports Configuration */}
-          {def?.configurablePorts && (
+          {/* Active / Disabled Ports Configuration (only for buildings with genuinely toggleable ports!) */}
+          {def && toggleablePorts.length > 0 && (
             <div className="inspector-section">
               <div className="section-head">
                 <span className="section-label">
-                  接口状态（活跃 {activePortCount}/{def.ports.length}）
+                  {def.kind === 'splitter' ? '输出接口' : '接口状态'}（活跃 {activeToggleCount}/{toggleablePorts.length}）
                 </span>
                 <div className="btn-row compact">
                   <button
@@ -532,9 +549,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     className="lib-mini-btn"
                     onClick={() =>
                       onUpdateBuilding([singleBuilding.id], {
-                        disabledPorts: def.ports
-                          .filter((p) => (def.kind === 'splitter' ? p.role === 'out' : true))
-                          .map((p) => p.index),
+                        disabledPorts: toggleablePorts.map((p) => p.index),
                         priorityOut: null,
                       })
                     }
@@ -548,6 +563,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 <span><i className="dot green" /> 活跃</span>
                 <span><i className="dot red" /> 禁用（点击切换）</span>
               </div>
+            </div>
+          )}
+
+          {/* Read-only lane reference diagram for Belt Balancer (all 4 lanes are fixed always-on) */}
+          {def?.kind === 'balancer' && (
+            <div className="inspector-section">
+              <div className="section-label">通道方位示意（四口固定启用）</div>
+              <PortDiagram building={singleBuilding} />
             </div>
           )}
 

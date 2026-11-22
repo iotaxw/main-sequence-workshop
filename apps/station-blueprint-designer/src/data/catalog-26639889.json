@@ -3211,7 +3211,7 @@
           "role": "out"
         }
       ],
-      "configurablePorts": true,
+      "configurablePorts": false,
       "sourceAsset": "/Game/Data/Buildables/DAT_BeltBalancer_01"
     },
     {
@@ -3260,7 +3260,7 @@
           "role": "out"
         }
       ],
-      "configurablePorts": true,
+      "configurablePorts": false,
       "sourceAsset": "/Game/Data/Buildables/DAT_BeltBalancer_02"
     },
     {
@@ -3309,7 +3309,7 @@
           "role": "out"
         }
       ],
-      "configurablePorts": true,
+      "configurablePorts": false,
       "sourceAsset": "/Game/Data/Buildables/DAT_BeltBalancer_03"
     },
     {

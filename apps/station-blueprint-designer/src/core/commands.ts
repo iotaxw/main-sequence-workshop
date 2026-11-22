@@ -5,6 +5,7 @@ import {
   getBuildingSizeCells,
   getModuleBoundsM,
   getModuleSizeUnits,
+  isPortToggleable,
   normalizeRotation,
   rotateVec2,
   STATION_UNIT_M,
@@ -42,6 +43,16 @@ function cloneBuildingExtras(b: {
   if (b.portFilters && Object.keys(b.portFilters).length > 0) out.portFilters = { ...b.portFilters };
   if (b.filterItems && b.filterItems.length > 0) out.filterItems = [...b.filterItems];
   return out;
+}
+
+function sanitizeDisabledPorts(def: BuildableDef | undefined, ports?: number[]): number[] | undefined {
+  if (!ports || ports.length === 0) return undefined;
+  if (!def) return [...new Set(ports)].sort((a, z) => a - z);
+  const valid = ports.filter((idx) => {
+    const p = def.ports.find((x) => x.index === idx);
+    return p ? isPortToggleable(def, p) : false;
+  });
+  return valid.length > 0 ? [...new Set(valid)].sort((a, z) => a - z) : undefined;
 }
 
 /** Remap a building's local port index when mirroring a blueprint horizontally across world X */
@@ -152,6 +163,7 @@ export function placeBuildingCmd(
     }
   }
 
+  const cleanDisabled = sanitizeDisabledPorts(def, spec.disabledPorts);
   const building: PlacedBuilding = {
     id: createEntityId('bld'),
     type: spec.type,
@@ -159,7 +171,7 @@ export function placeBuildingCmd(
     y: spec.y,
     floor: spec.floor,
     rotation: normalizeRotation(spec.rotation),
-    ...cloneBuildingExtras(spec),
+    ...cloneBuildingExtras({ ...spec, disabledPorts: cleanDisabled }),
   };
 
   return {
@@ -254,8 +266,10 @@ export function updateBuildingConfigCmd(
       else next.label = patch.label;
     }
     if (patch.disabledPorts !== undefined) {
-      if (patch.disabledPorts.length === 0) delete next.disabledPorts;
-      else next.disabledPorts = [...new Set(patch.disabledPorts)].sort((a, z) => a - z);
+      const def = getBuildableDef(b.type);
+      const clean = sanitizeDisabledPorts(def, patch.disabledPorts);
+      if (!clean || clean.length === 0) delete next.disabledPorts;
+      else next.disabledPorts = clean;
     }
     if (patch.undergroundMode !== undefined) {
       next.undergroundMode = patch.undergroundMode;

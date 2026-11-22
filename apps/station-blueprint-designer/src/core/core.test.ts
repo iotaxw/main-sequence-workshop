@@ -499,9 +499,9 @@ describe('Station module asymmetric alignment & corner symmetry', () => {
     }
   });
 
-  it('supports Splitter/Balancer port toggles, priorities, item filters, Container logistic filters, and exact mirror port remapping', () => {
+  it('supports Splitter output port toggles (never fixed input), Balancer priority/filter (never port disable), Container filters, and mirror remapping', () => {
     expect(getBuildableDef('DAT_Splitter')?.configurablePorts).toBe(true);
-    expect(getBuildableDef('DAT_BeltBalancer_01')?.configurablePorts).toBe(true);
+    expect(getBuildableDef('DAT_BeltBalancer_01')?.configurablePorts).toBe(false);
 
     let doc = createEmptyBlueprint();
     doc = placeModuleCmd(doc, { type: 'BPO_Station_01', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
@@ -515,12 +515,14 @@ describe('Station module asymmetric alignment & corner symmetry', () => {
     doc = box.doc;
     const boxId = box.addedBuildingIds![0];
 
+    // Attempting to disable Splitter's fixed input port 0 or any Balancer port is strictly stripped!
     doc = updateBuildingConfigCmd(doc, [spId], {
-      disabledPorts: [1], // S output disabled
+      disabledPorts: [0, 1], // 0 is fixed always-on input -> stripped; 1 (S output) kept!
       priorityOut: 3, // N output prioritized
       portFilters: { 2: 'ITEM_BasicCircuit' },
     }).doc;
     doc = updateBuildingConfigCmd(doc, [balId], {
+      disabledPorts: [0, 2], // Balancer lanes are fixed always-on -> stripped completely!
       priorityIn: 0, // W-S input prioritized
       priorityOut: 3, // E-N output prioritized
       portFilters: { 2: 'ITEM_TitaniumPlates' },
@@ -529,7 +531,7 @@ describe('Station module asymmetric alignment & corner symmetry', () => {
       filterItems: ['ITEM_BasicCircuit', 'ITEM_TitaniumPlates'],
     }).doc;
 
-    // JSON round-trip preserves every single logistics & container config field
+    // JSON round-trip preserves valid configs and guarantees no illegal disabledPorts exist
     const decoded = deserializeBlueprint(serializeBlueprint(doc));
     expect(decoded.ok).toBe(true);
     if (!decoded.ok) return;
@@ -537,6 +539,7 @@ describe('Station module asymmetric alignment & corner symmetry', () => {
     const balRt = decoded.doc.buildings.find((b) => b.id === balId)!;
     const boxRt = decoded.doc.buildings.find((b) => b.id === boxId)!;
     expect(spRt.disabledPorts).toEqual([1]);
+    expect(balRt.disabledPorts).toBeUndefined();
     expect(spRt.priorityOut).toBe(3);
     expect(spRt.portFilters).toEqual({ 2: 'ITEM_BasicCircuit' });
     expect(balRt.priorityIn).toBe(0);

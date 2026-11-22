@@ -28,6 +28,7 @@ import {
   findModuleAtWorldPoint,
   getBuildingSizeCells,
   getModuleBoundsM,
+  getToggleablePorts,
   normalizeRotation,
   STATION_UNIT_M,
 } from './core/geometry';
@@ -561,7 +562,8 @@ export const App: React.FC = () => {
         if (b.portFilters && Object.keys(b.portFilters).length > 0) parts.push('含口过滤');
         if (b.filterItems && b.filterItems.length > 0) parts.push(`过滤${b.filterItems.length}项`);
         if (def?.configurablePorts && b.disabledPorts && b.disabledPorts.length > 0) {
-          parts.push(`${def.ports.length - b.disabledPorts.length}/${def.ports.length}口`);
+          const toggleableCount = getToggleablePorts(def).length;
+          parts.push(`${Math.max(0, toggleableCount - b.disabledPorts.length)}/${toggleableCount}口`);
         }
         showToast(`吸管复制：${parts.join(' · ')}`);
       }
