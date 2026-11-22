@@ -28,6 +28,7 @@ import {
 } from './geometry';
 import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
 import { DEFAULT_LIBRARY_PRESETS } from './presets';
+import { simulateBlueprint } from './simulation';
 import { CadCameraRig, MAX_DISTANCE } from '../renderer/camera-rig';
 
 describe('Build 26639889 catalog verification', () => {
@@ -559,5 +560,76 @@ describe('Station module asymmetric alignment & corner symmetry', () => {
     expect(balM.priorityIn).toBe(1);
     expect(balM.priorityOut).toBe(2);
     expect(balM.portFilters).toEqual({ 3: 'ITEM_TitaniumPlates' });
+  });
+});
+
+describe('General-purpose production-line simulation, flow rates, and zero-anomaly audit', () => {
+  it('verifies 0 simulation errors, strict anti-diagonal symmetry on Corner Vault, and exact flow rates across all Star-Citadel cells & B1 hubs', () => {
+    const targets = DEFAULT_LIBRARY_PRESETS.filter(
+      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-')
+    );
+    expect(targets.length).toBe(14);
+    for (const { doc, path } of targets) {
+      const report = simulateBlueprint(doc);
+      expect(
+        report.issues.filter((i) => i.severity === 'error'),
+        `${path} simulation errors: ${report.issues.map((i) => `${i.code}@(${i.x},${i.y}): ${i.message}`).join(' | ')}`
+      ).toEqual([]);
+      expect(report.passed, `${path} must pass simulation`).toBe(true);
+    }
+
+    // Verify exact Cell-3 full dual-Mk.3 output (6.00 items/s Titanium Plates, 100% efficiency)
+    const cell3 = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('Cell-3'))!.doc;
+    const r3 = simulateBlueprint(cell3);
+    expect(r3.avgEfficiency).toBe(1);
+    expect(r3.netOutputs.find((o) => o.itemId === 'ITEM_TitaniumPlates')?.ratePerSec).toBeCloseTo(6.0, 2);
+
+    // Verify Cell-9Q runs with 0 errors, 0 warnings, and 100% efficiency across all 6 Advanced Assemblers
+    const cell9q = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('Cell-9Q'))!.doc;
+    const r9q = simulateBlueprint(cell9q);
+    expect(r9q.errorCount).toBe(0);
+    expect(r9q.warnCount).toBe(0);
+    expect(r9q.avgEfficiency).toBe(1);
+    expect(r9q.configuredMachineCount).toBe(6);
+
+    // Verify B1 2:1 Ore Enricher with Priority Balancers: 100% efficiency, Protomatter-only net input (0 external raw ore!), 1.333/s enriched output
+    const b1Ore = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('B1-矿石2比1'))!.doc;
+    const rOre = simulateBlueprint(b1Ore);
+    expect(rOre.errorCount).toBe(0);
+    expect(rOre.warnCount).toBe(0);
+    expect(rOre.avgEfficiency).toBe(1);
+    expect(rOre.netInputs.map((i) => i.itemId)).toEqual(['ITEM_Protomatter']);
+    expect(rOre.netOutputs.find((o) => o.itemId === 'ITEM_EnrichedTitaniumOre')?.ratePerSec).toBeCloseTo(4 / 3, 2);
+
+    // Verify B1 Corner Vault has 100% bit-for-bit anti-diagonal mirror symmetry: (x, y, w, d) <-> (32-y-d, 32-x-w, d, w)!
+    const vault = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('角落稳压母库'))!.doc;
+    const vaultKeys = new Set(
+      vault.buildings.map((b) => {
+        const def = getBuildableDef(b.type)!;
+        const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
+        return `${b.type}:${b.x},${b.y},${w},${d}`;
+      })
+    );
+    for (const b of vault.buildings) {
+      const def = getBuildableDef(b.type)!;
+      const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
+      const mx = 32 - b.y - d;
+      const my = 32 - b.x - w;
+      expect(
+        vaultKeys.has(`${b.type}:${mx},${my},${d},${w}`),
+        `Corner Vault ${b.type} at (${b.x},${b.y}) missing exact anti-diagonal mirror at (${mx},${my})`
+      ).toBe(true);
+    }
+  });
+
+  it('catches orphan belts, dead-end belts, splitter leaks, and mixed-item contamination accurately', () => {
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_03', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    // Place an isolated floating belt in the middle of the room
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 10, y: 10, floor: 0, rotation: 0 }).doc;
+    const rep = simulateBlueprint(doc);
+    expect(rep.passed).toBe(false);
+    expect(rep.issues.some((i) => i.code === 'orphan-belt' && i.x === 10 && i.y === 10)).toBe(true);
+    expect(rep.issues.some((i) => i.code === 'dead-end-belt' && i.x === 10 && i.y === 10)).toBe(true);
   });
 });

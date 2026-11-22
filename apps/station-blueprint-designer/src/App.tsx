@@ -41,6 +41,7 @@ import {
   saveWorkspaceAutosave,
   VirtualFolderDriver,
 } from './core/library';
+import { simulateBlueprint, type SimulationIssue } from './core/simulation';
 import type {
   ActiveTool,
   BlueprintDocument,
@@ -58,6 +59,7 @@ import { HelpDrawer } from './ui/HelpDrawer';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { LibrarySidebar } from './ui/LibrarySidebar';
 import { PaletteDock } from './ui/PaletteDock';
+import { SimulationPanel } from './ui/SimulationPanel';
 
 const EMPTY_SELECTION: SelectionState = { moduleIds: [], buildingIds: [] };
 
@@ -108,8 +110,18 @@ export const App: React.FC = () => {
 
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [simOpen, setSimOpen] = useState(false);
   const [driver, setDriver] = useState<BlueprintLibraryDriver>(() => new VirtualFolderDriver());
   const [libraryTree, setLibraryTree] = useState<LibraryNode[]>([]);
+
+  const simReport = useMemo(() => (simOpen ? simulateBlueprint(doc) : null), [doc, simOpen]);
+  const simOverlayIssues = useMemo(
+    () =>
+      simReport
+        ? simReport.issues.map((i) => ({ floor: i.floor, x: i.x, y: i.y, severity: i.severity }))
+        : undefined,
+    [simReport]
+  );
 
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
   const [beltPreview, setBeltPreview] = useState<Array<{ x: number; y: number; rotation: Rotation }>>([]);
@@ -216,14 +228,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        const ts = saveWorkspaceAutosave(doc, activeSourcePath);
+        const ts = saveWorkspaceAutosave(doc, activeSourcePath, dirty);
         setLastAutosaveAt(ts);
       } catch {
         // Ignore storage quota errors without claiming file saved
       }
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [doc, activeSourcePath]);
+  }, [doc, activeSourcePath, dirty]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -269,6 +281,7 @@ export const App: React.FC = () => {
       beltPreview,
       boxSelectRect,
       forceReplaceHeld,
+      simulationIssues: simOverlayIssues,
     });
   }, [
     doc,
@@ -283,6 +296,7 @@ export const App: React.FC = () => {
     beltPreview,
     boxSelectRect,
     forceReplaceHeld,
+    simOverlayIssues,
   ]);
 
   const switchViewMode = useCallback((nextMode: ViewMode, focusCenter?: [number, number]) => {
@@ -1468,6 +1482,18 @@ export const App: React.FC = () => {
         <div className="topbar-group right-aligned">
           <button
             type="button"
+            className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
+            onClick={() => setSimOpen((v) => !v)}
+            title="开启/关闭实时产线模拟、流量计算与零异常体检"
+          >
+            {simOpen
+              ? simReport?.passed
+                ? '模拟 · 0异常'
+                : `模拟 · ${simReport?.errorCount ?? 0}异常`
+              : '产线模拟'}
+          </button>
+          <button
+            type="button"
             className="cad-btn"
             onClick={() =>
               setSelectionLayerMode((m) => (m === 'focus' ? 'visible' : m === 'visible' ? 'all' : 'focus'))
@@ -1575,6 +1601,19 @@ export const App: React.FC = () => {
           }}
           onDeleteSelection={() => requestDeleteSelection(selection)}
           onClearSelection={() => setSelection(EMPTY_SELECTION)}
+        />
+
+        <SimulationPanel
+          open={simOpen}
+          report={simReport}
+          onClose={() => setSimOpen(false)}
+          onFocusIssue={(issue: SimulationIssue) => {
+            setFocusFloor(issue.floor);
+            switchViewMode('building', [issue.x + 0.5, issue.y + 0.5]);
+            if (issue.buildingId) {
+              setSelection({ moduleIds: [], buildingIds: [issue.buildingId] });
+            }
+          }}
         />
 
         {activeTool.kind !== 'select' && (

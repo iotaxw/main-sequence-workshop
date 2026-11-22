@@ -54,6 +54,7 @@ export interface SceneRenderState {
   beltPreview: Array<{ x: number; y: number; rotation: Rotation }>;
   boxSelectRect: { minX: number; minY: number; maxX: number; maxY: number } | null;
   forceReplaceHeld: boolean;
+  simulationIssues?: Array<{ floor: number; x: number; y: number; severity: 'error' | 'warn' }>;
 }
 
 const labelTextureCache = new Map<string, THREE.CanvasTexture>();
@@ -779,7 +780,9 @@ export class CadSceneController {
     }
 
     const selectionChanged =
-      visibilityChanged || prev.selection !== state.selection;
+      visibilityChanged ||
+      prev.selection !== state.selection ||
+      prev.simulationIssues !== state.simulationIssues;
     if (selectionChanged) {
       this.rebuildSelectionOverlay(state, palette);
     }
@@ -1142,7 +1145,9 @@ export class CadSceneController {
    */
   private rebuildSelectionOverlay(state: SceneRenderState, palette: CadThemePalette): void {
     this.clearGroup(this.selectionGroup);
-    if (state.selection.moduleIds.length === 0 && state.selection.buildingIds.length === 0) return;
+    const hasSelection = state.selection.moduleIds.length > 0 || state.selection.buildingIds.length > 0;
+    const simIssues = state.simulationIssues ?? [];
+    if (!hasSelection && simIssues.length === 0) return;
 
     const selectedMods = new Set(state.selection.moduleIds);
     const selectedBlds = new Set(state.selection.buildingIds);
@@ -1205,6 +1210,47 @@ export class CadSceneController {
           widthPx: 1.75,
         })
       );
+    }
+
+    if (simIssues.length > 0) {
+      const errPts: number[] = [];
+      const warnPts: number[] = [];
+      for (const issue of simIssues) {
+        const op = this.layerOpacityFor(issue.floor, state.focusFloor, state.hideAbove);
+        if (op <= 0.01) continue;
+        const targetPts = issue.severity === 'error' ? errPts : warnPts;
+        const y = issue.floor * FLOOR_VISUAL_SPACING + 0.16;
+        const x0 = issue.x + 0.08;
+        const z0 = issue.y + 0.08;
+        const x1 = issue.x + 0.92;
+        const z1 = issue.y + 0.92;
+        targetPts.push(
+          x0, y, z0, x1, y, z0,
+          x1, y, z0, x1, y, z1,
+          x1, y, z1, x0, y, z1,
+          x0, y, z1, x0, y, z0,
+          x0 + 0.12, y, z0 + 0.12, x1 - 0.12, y, z1 - 0.12,
+          x1 - 0.12, y, z0 + 0.12, x0 + 0.12, y, z1 - 0.12
+        );
+      }
+      if (errPts.length >= 6) {
+        this.selectionGroup.add(
+          createCrispLineSegments(errPts, {
+            color: palette.invalidGhost,
+            opacity: 0.96,
+            widthPx: 2.1,
+          })
+        );
+      }
+      if (warnPts.length >= 6) {
+        this.selectionGroup.add(
+          createCrispLineSegments(warnPts, {
+            color: palette.lineSelected,
+            opacity: 0.88,
+            widthPx: 1.65,
+          })
+        );
+      }
     }
   }
 

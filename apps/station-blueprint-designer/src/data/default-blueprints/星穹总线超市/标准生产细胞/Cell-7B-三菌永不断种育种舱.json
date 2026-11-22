@@ -132,7 +132,8 @@
       "disabledPorts": [
         2
       ],
-      "label": "异源细菌保种分流"
+      "priorityOut": 3,
+      "label": "异源细菌保种优先分流"
     },
     {
       "id": "b_8",
@@ -360,7 +361,8 @@
       "disabledPorts": [
         2
       ],
-      "label": "异源古菌保种分流"
+      "priorityOut": 3,
+      "label": "异源古菌保种优先分流"
     },
     {
       "id": "b_36",
@@ -668,7 +670,8 @@
       "disabledPorts": [
         2
       ],
-      "label": "异源真核生物保种分流"
+      "priorityOut": 3,
+      "label": "异源真核生物保种优先分流"
     },
     {
       "id": "b_74",
@@ -1246,7 +1249,8 @@
       "disabledPorts": [
         2
       ],
-      "label": "异源细菌保种分流"
+      "priorityOut": 1,
+      "label": "异源细菌保种优先分流"
     },
     {
       "id": "b_144",
@@ -1474,7 +1478,8 @@
       "disabledPorts": [
         2
       ],
-      "label": "异源古菌保种分流"
+      "priorityOut": 1,
+      "label": "异源古菌保种优先分流"
     },
     {
       "id": "b_172",
@@ -1782,7 +1787,8 @@
       "disabledPorts": [
         2
       ],
-      "label": "异源真核生物保种分流"
+      "priorityOut": 1,
+      "label": "异源真核生物保种优先分流"
     },
     {
       "id": "b_210",

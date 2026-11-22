@@ -20,11 +20,19 @@ export interface AutosaveRecord {
   savedAt: number;
   sourcePath: string | null;
   doc: BlueprintDocument;
+  dirty?: boolean;
+  presetRevision?: number;
 }
 
-export function saveWorkspaceAutosave(doc: BlueprintDocument, sourcePath: string | null): number {
+export function saveWorkspaceAutosave(doc: BlueprintDocument, sourcePath: string | null, dirty = false): number {
   const savedAt = Date.now();
-  const payload = JSON.stringify({ savedAt, sourcePath, raw: serializeBlueprint(doc) });
+  const payload = JSON.stringify({
+    savedAt,
+    sourcePath,
+    dirty,
+    presetRevision: CURRENT_PRESET_REVISION,
+    raw: serializeBlueprint(doc),
+  });
   localStorage.setItem(AUTOSAVE_KEY, payload);
   return savedAt;
 }
@@ -33,13 +41,37 @@ export function loadWorkspaceAutosave(): AutosaveRecord | null {
   try {
     const text = localStorage.getItem(AUTOSAVE_KEY);
     if (!text) return null;
-    const parsed = JSON.parse(text) as { savedAt?: number; sourcePath?: string | null; raw?: string };
+    const parsed = JSON.parse(text) as {
+      savedAt?: number;
+      sourcePath?: string | null;
+      dirty?: boolean;
+      presetRevision?: number;
+      raw?: string;
+    };
     if (!parsed || typeof parsed.raw !== 'string') return null;
+    const sourcePath = typeof parsed.sourcePath === 'string' ? parsed.sourcePath : null;
+    // If an unmodified built-in preset was open in the previous session and built-in presets upgraded,
+    // automatically load the freshly updated preset instead of showing stale pre-fix cached geometry!
+    if (sourcePath && !parsed.dirty && (parsed.presetRevision ?? 0) < CURRENT_PRESET_REVISION) {
+      const norm = normalizeRelPath(sourcePath);
+      const freshPreset = DEFAULT_LIBRARY_PRESETS.find((p) => normalizeRelPath(p.path) === norm);
+      if (freshPreset) {
+        return {
+          savedAt: Date.now(),
+          sourcePath,
+          dirty: false,
+          presetRevision: CURRENT_PRESET_REVISION,
+          doc: freshPreset.doc,
+        };
+      }
+    }
     const decoded = deserializeBlueprint(parsed.raw);
     if (!decoded.ok) return null;
     return {
       savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : Date.now(),
-      sourcePath: typeof parsed.sourcePath === 'string' ? parsed.sourcePath : null,
+      sourcePath,
+      dirty: Boolean(parsed.dirty),
+      presetRevision: parsed.presetRevision,
       doc: decoded.doc,
     };
   } catch {
@@ -210,7 +242,7 @@ interface VirtualStoreData {
 }
 
 const VIRTUAL_LIB_KEY = 'ms-sbd:virtual-library:v2';
-const CURRENT_PRESET_REVISION = 5;
+const CURRENT_PRESET_REVISION = 6;
 const SUPERSEDED_PRESET_PATHS = [
   '星穹总线超市/标准生产细胞/Cell-7S-超算9台满铺舱.json',
   '星穹总线超市/标准枢纽/B1-中央7x8井字立交.json',

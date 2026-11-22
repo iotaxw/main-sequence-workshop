@@ -1163,60 +1163,6 @@
     },
     {
       "id": "m_129",
-      "type": "BPO_StationArmour_01",
-      "gx": -1,
-      "gy": -15,
-      "floor": 2,
-      "rotation": 0,
-      "label": "北翼左装甲A"
-    },
-    {
-      "id": "m_130",
-      "type": "BPO_StationArmour_01B",
-      "gx": 2,
-      "gy": -15,
-      "floor": 2,
-      "rotation": 0,
-      "label": "北翼右镜像装甲B"
-    },
-    {
-      "id": "m_131",
-      "type": "BPO_StationArmour_01",
-      "gx": -15,
-      "gy": -1,
-      "floor": 2,
-      "rotation": 3,
-      "label": "西翼上装甲A"
-    },
-    {
-      "id": "m_132",
-      "type": "BPO_StationArmour_01B",
-      "gx": -15,
-      "gy": 2,
-      "floor": 2,
-      "rotation": 3,
-      "label": "西翼下镜像装甲B"
-    },
-    {
-      "id": "m_133",
-      "type": "BPO_StationArmour_01",
-      "gx": 16,
-      "gy": -1,
-      "floor": 2,
-      "rotation": 1,
-      "label": "东翼上装甲A"
-    },
-    {
-      "id": "m_134",
-      "type": "BPO_StationArmour_01B",
-      "gx": 16,
-      "gy": 2,
-      "floor": 2,
-      "rotation": 1,
-      "label": "东翼下镜像装甲B"
-    },
-    {
-      "id": "m_135",
       "type": "BPO_Station_03",
       "gx": 0,
       "gy": 0,
@@ -1225,7 +1171,7 @@
       "label": "F2 中央零带星际中庭"
     },
     {
-      "id": "m_136",
+      "id": "m_130",
       "type": "BPO_ElevatorBlock_02A",
       "gx": 0,
       "gy": -2,
@@ -1234,7 +1180,7 @@
       "label": "北电梯 F2 (11常备)"
     },
     {
-      "id": "m_137",
+      "id": "m_131",
       "type": "BPO_ElevatorBlock_02A",
       "gx": 2,
       "gy": 0,
@@ -1243,7 +1189,7 @@
       "label": "东电梯 F2 (10常备)"
     },
     {
-      "id": "m_138",
+      "id": "m_132",
       "type": "BPO_ElevatorBlock_02A",
       "gx": 0,
       "gy": 2,
@@ -1252,7 +1198,7 @@
       "label": "南电梯 F2 (7常备+EA)"
     },
     {
-      "id": "m_139",
+      "id": "m_133",
       "type": "BPO_ElevatorBlock_02A",
       "gx": -2,
       "gy": 0,
@@ -1261,7 +1207,7 @@
       "label": "西电梯 F2 (11常备)"
     },
     {
-      "id": "m_140",
+      "id": "m_134",
       "type": "BPO_StationCorridor_02",
       "gx": 0,
       "gy": -4,
@@ -1270,7 +1216,7 @@
       "label": "F2 北商业街前段 · 基础建材与燃料馆"
     },
     {
-      "id": "m_141",
+      "id": "m_135",
       "type": "BPO_StationCorridor_02",
       "gx": 0,
       "gy": -6,
@@ -1279,7 +1225,7 @@
       "label": "F2 北商业街后段 · 基础建材与燃料馆"
     },
     {
-      "id": "m_142",
+      "id": "m_136",
       "type": "BPO_StationCorridor_02",
       "gx": 4,
       "gy": 0,
@@ -1288,7 +1234,7 @@
       "label": "F2 东商业街前段 · 机电与电路馆"
     },
     {
-      "id": "m_143",
+      "id": "m_137",
       "type": "BPO_StationCorridor_02",
       "gx": 6,
       "gy": 0,
@@ -1297,7 +1243,7 @@
       "label": "F2 东商业街后段 · 机电与电路馆"
     },
     {
-      "id": "m_144",
+      "id": "m_138",
       "type": "BPO_StationCorridor_02",
       "gx": -4,
       "gy": 0,
@@ -1306,7 +1252,7 @@
       "label": "F2 西商业街前段 · 重工与战备馆"
     },
     {
-      "id": "m_145",
+      "id": "m_139",
       "type": "BPO_StationCorridor_02",
       "gx": -6,
       "gy": 0,
@@ -1315,7 +1261,7 @@
       "label": "F2 西商业街后段 · 重工与战备馆"
     },
     {
-      "id": "m_146",
+      "id": "m_140",
       "type": "BPO_StationCorridor_02",
       "gx": 0,
       "gy": 4,
@@ -1324,7 +1270,7 @@
       "label": "F2 南商业街前段 · 生物与终局皇冠馆"
     },
     {
-      "id": "m_147",
+      "id": "m_141",
       "type": "BPO_StationCorridor_02",
       "gx": 0,
       "gy": 6,
@@ -1333,7 +1279,7 @@
       "label": "F2 南商业街后段 · 生物与终局皇冠馆"
     },
     {
-      "id": "m_148",
+      "id": "m_142",
       "type": "BPO_StationAdapter_01",
       "gx": 0,
       "gy": -7,
@@ -1342,7 +1288,7 @@
       "label": "F2 北观景终端适配器"
     },
     {
-      "id": "m_149",
+      "id": "m_143",
       "type": "BPO_Dock_2",
       "gx": 0,
       "gy": -10,
@@ -1351,7 +1297,7 @@
       "label": "F2 北旗舰停泊主港"
     },
     {
-      "id": "m_150",
+      "id": "m_144",
       "type": "BPO_StationAdapter_01",
       "gx": 0,
       "gy": 8,
@@ -1360,7 +1306,7 @@
       "label": "F2 南观景终端适配器"
     },
     {
-      "id": "m_151",
+      "id": "m_145",
       "type": "BPO_CommandModule",
       "gx": 0,
       "gy": 9,
@@ -1369,7 +1315,7 @@
       "label": "星穹母港指挥舱"
     },
     {
-      "id": "m_152",
+      "id": "m_146",
       "type": "BPO_ScannerModule",
       "gx": 1,
       "gy": 9,
@@ -1378,7 +1324,7 @@
       "label": "星穹母港扫描舱"
     },
     {
-      "id": "m_153",
+      "id": "m_147",
       "type": "BPO_StationAdapter_01",
       "gx": 8,
       "gy": 0,
@@ -1387,7 +1333,7 @@
       "label": "F2 东观景终端适配器"
     },
     {
-      "id": "m_154",
+      "id": "m_148",
       "type": "BPO_Dock_2",
       "gx": 9,
       "gy": 0,
@@ -1396,7 +1342,7 @@
       "label": "F2 东旗舰停泊副港"
     },
     {
-      "id": "m_155",
+      "id": "m_149",
       "type": "BPO_StationAdapter_01",
       "gx": -7,
       "gy": 0,
@@ -1405,7 +1351,7 @@
       "label": "F2 西观景终端适配器"
     },
     {
-      "id": "m_156",
+      "id": "m_150",
       "type": "BPO_Dock",
       "gx": -8,
       "gy": 0,
@@ -1414,7 +1360,7 @@
       "label": "F2 西轻型穿梭机对接口"
     },
     {
-      "id": "m_157",
+      "id": "m_151",
       "type": "BPO_Dock",
       "gx": -8,
       "gy": 1,
@@ -1423,71 +1369,71 @@
       "label": "F2 西轻型穿梭机对接口"
     },
     {
-      "id": "m_158",
+      "id": "m_152",
       "type": "BPO_StationCorridor_01",
       "gx": -6,
       "gy": -7,
       "floor": 4,
       "rotation": 0,
       "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_153",
+      "type": "BPO_StationCorridor_01",
+      "gx": -5,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_154",
+      "type": "BPO_StationCorridor_01",
+      "gx": -4,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_155",
+      "type": "BPO_StationCorridor_01",
+      "gx": -3,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_156",
+      "type": "BPO_StationCorridor_01",
+      "gx": -2,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_157",
+      "type": "BPO_StationCorridor_01",
+      "gx": -1,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_158",
+      "type": "BPO_StationCorridor_01",
+      "gx": 2,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北东玻璃天桥"
     },
     {
       "id": "m_159",
       "type": "BPO_StationCorridor_01",
-      "gx": -5,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_160",
-      "type": "BPO_StationCorridor_01",
-      "gx": -4,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_161",
-      "type": "BPO_StationCorridor_01",
-      "gx": -3,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_162",
-      "type": "BPO_StationCorridor_01",
-      "gx": -2,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_163",
-      "type": "BPO_StationCorridor_01",
-      "gx": -1,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_164",
-      "type": "BPO_StationCorridor_01",
-      "gx": 2,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北东玻璃天桥"
-    },
-    {
-      "id": "m_165",
-      "type": "BPO_StationCorridor_01",
       "gx": 3,
       "gy": -7,
       "floor": 4,
@@ -1495,7 +1441,7 @@
       "label": "F2 北东玻璃天桥"
     },
     {
-      "id": "m_166",
+      "id": "m_160",
       "type": "BPO_StationCorridor_01",
       "gx": 4,
       "gy": -7,
@@ -1504,7 +1450,7 @@
       "label": "F2 北东玻璃天桥"
     },
     {
-      "id": "m_167",
+      "id": "m_161",
       "type": "BPO_StationCorridor_01",
       "gx": 5,
       "gy": -7,
@@ -1513,7 +1459,7 @@
       "label": "F2 北东玻璃天桥"
     },
     {
-      "id": "m_168",
+      "id": "m_162",
       "type": "BPO_StationCorridor_01",
       "gx": 6,
       "gy": -7,
@@ -1522,7 +1468,7 @@
       "label": "F2 北东玻璃天桥"
     },
     {
-      "id": "m_169",
+      "id": "m_163",
       "type": "BPO_StationCorridor_01",
       "gx": 7,
       "gy": -7,
@@ -1531,7 +1477,7 @@
       "label": "F2 北东玻璃天桥"
     },
     {
-      "id": "m_170",
+      "id": "m_164",
       "type": "BPO_StationCorridor_01",
       "gx": -6,
       "gy": 8,
@@ -1540,7 +1486,7 @@
       "label": "F2 南西玻璃天桥"
     },
     {
-      "id": "m_171",
+      "id": "m_165",
       "type": "BPO_StationCorridor_01",
       "gx": -5,
       "gy": 8,
@@ -1549,7 +1495,7 @@
       "label": "F2 南西玻璃天桥"
     },
     {
-      "id": "m_172",
+      "id": "m_166",
       "type": "BPO_StationCorridor_01",
       "gx": -4,
       "gy": 8,
@@ -1558,7 +1504,7 @@
       "label": "F2 南西玻璃天桥"
     },
     {
-      "id": "m_173",
+      "id": "m_167",
       "type": "BPO_StationCorridor_01",
       "gx": -3,
       "gy": 8,
@@ -1567,7 +1513,7 @@
       "label": "F2 南西玻璃天桥"
     },
     {
-      "id": "m_174",
+      "id": "m_168",
       "type": "BPO_StationCorridor_01",
       "gx": -2,
       "gy": 8,
@@ -1576,7 +1522,7 @@
       "label": "F2 南西玻璃天桥"
     },
     {
-      "id": "m_175",
+      "id": "m_169",
       "type": "BPO_StationCorridor_01",
       "gx": -1,
       "gy": 8,
@@ -1585,7 +1531,7 @@
       "label": "F2 南西玻璃天桥"
     },
     {
-      "id": "m_176",
+      "id": "m_170",
       "type": "BPO_StationCorridor_01",
       "gx": 2,
       "gy": 8,
@@ -1594,7 +1540,7 @@
       "label": "F2 南东玻璃天桥"
     },
     {
-      "id": "m_177",
+      "id": "m_171",
       "type": "BPO_StationCorridor_01",
       "gx": 3,
       "gy": 8,
@@ -1603,7 +1549,7 @@
       "label": "F2 南东玻璃天桥"
     },
     {
-      "id": "m_178",
+      "id": "m_172",
       "type": "BPO_StationCorridor_01",
       "gx": 4,
       "gy": 8,
@@ -1612,7 +1558,7 @@
       "label": "F2 南东玻璃天桥"
     },
     {
-      "id": "m_179",
+      "id": "m_173",
       "type": "BPO_StationCorridor_01",
       "gx": 5,
       "gy": 8,
@@ -1621,7 +1567,7 @@
       "label": "F2 南东玻璃天桥"
     },
     {
-      "id": "m_180",
+      "id": "m_174",
       "type": "BPO_StationCorridor_01",
       "gx": 6,
       "gy": 8,
@@ -1630,88 +1576,88 @@
       "label": "F2 南东玻璃天桥"
     },
     {
-      "id": "m_181",
+      "id": "m_175",
       "type": "BPO_StationCorridor_01",
       "gx": 7,
       "gy": 8,
       "floor": 4,
       "rotation": 0,
       "label": "F2 南东玻璃天桥"
+    },
+    {
+      "id": "m_176",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -6,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_177",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -5,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_178",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -4,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_179",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -3,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_180",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -2,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_181",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -1,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
     },
     {
       "id": "m_182",
       "type": "BPO_StationCorridor_01",
       "gx": -7,
-      "gy": -6,
+      "gy": 2,
       "floor": 4,
       "rotation": 1,
-      "label": "F2 西北玻璃天桥"
+      "label": "F2 西南玻璃天桥"
     },
     {
       "id": "m_183",
       "type": "BPO_StationCorridor_01",
       "gx": -7,
-      "gy": -5,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_184",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -4,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_185",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -3,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_186",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -2,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_187",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -1,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_188",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": 2,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西南玻璃天桥"
-    },
-    {
-      "id": "m_189",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
       "gy": 3,
       "floor": 4,
       "rotation": 1,
       "label": "F2 西南玻璃天桥"
     },
     {
-      "id": "m_190",
+      "id": "m_184",
       "type": "BPO_StationCorridor_01",
       "gx": -7,
       "gy": 4,
@@ -1720,7 +1666,7 @@
       "label": "F2 西南玻璃天桥"
     },
     {
-      "id": "m_191",
+      "id": "m_185",
       "type": "BPO_StationCorridor_01",
       "gx": -7,
       "gy": 5,
@@ -1729,7 +1675,7 @@
       "label": "F2 西南玻璃天桥"
     },
     {
-      "id": "m_192",
+      "id": "m_186",
       "type": "BPO_StationCorridor_01",
       "gx": -7,
       "gy": 6,
@@ -1738,7 +1684,7 @@
       "label": "F2 西南玻璃天桥"
     },
     {
-      "id": "m_193",
+      "id": "m_187",
       "type": "BPO_StationCorridor_01",
       "gx": -7,
       "gy": 7,
@@ -1747,7 +1693,7 @@
       "label": "F2 西南玻璃天桥"
     },
     {
-      "id": "m_194",
+      "id": "m_188",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -6,
@@ -1756,7 +1702,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_195",
+      "id": "m_189",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -5,
@@ -1765,7 +1711,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_196",
+      "id": "m_190",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -4,
@@ -1774,7 +1720,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_197",
+      "id": "m_191",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -3,
@@ -1783,7 +1729,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_198",
+      "id": "m_192",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -2,
@@ -1792,7 +1738,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_199",
+      "id": "m_193",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -1,
@@ -1801,7 +1747,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_200",
+      "id": "m_194",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 2,
@@ -1810,7 +1756,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_201",
+      "id": "m_195",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 3,
@@ -1819,7 +1765,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_202",
+      "id": "m_196",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 4,
@@ -1828,7 +1774,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_203",
+      "id": "m_197",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 5,
@@ -1837,7 +1783,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_204",
+      "id": "m_198",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 6,
@@ -1846,7 +1792,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_205",
+      "id": "m_199",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 7,
@@ -1855,7 +1801,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_206",
+      "id": "m_200",
       "type": "BPO_StationCorner_01",
       "gx": -7,
       "gy": -7,
@@ -1864,7 +1810,7 @@
       "label": "F2 西北全景落地窗观景台"
     },
     {
-      "id": "m_207",
+      "id": "m_201",
       "type": "BPO_StationCorner_01",
       "gx": 8,
       "gy": -7,
@@ -1873,7 +1819,7 @@
       "label": "F2 东北全景落地窗观景台"
     },
     {
-      "id": "m_208",
+      "id": "m_202",
       "type": "BPO_StationCorner_01",
       "gx": 8,
       "gy": 8,
@@ -1882,49 +1828,13 @@
       "label": "F2 东南全景落地窗观景台"
     },
     {
-      "id": "m_209",
+      "id": "m_203",
       "type": "BPO_StationCorner_01",
       "gx": -7,
       "gy": 8,
       "floor": 4,
       "rotation": 2,
       "label": "F2 西南全景落地窗观景台"
-    },
-    {
-      "id": "m_210",
-      "type": "BPO_StationArmour_01",
-      "gx": -8,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 冠冕装甲A"
-    },
-    {
-      "id": "m_211",
-      "type": "BPO_StationArmour_01B",
-      "gx": 9,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 冠冕镜像装甲B"
-    },
-    {
-      "id": "m_212",
-      "type": "BPO_StationArmour_01",
-      "gx": -8,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 2,
-      "label": "F2 冠冕装甲A"
-    },
-    {
-      "id": "m_213",
-      "type": "BPO_StationArmour_01B",
-      "gx": 9,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 2,
-      "label": "F2 冠冕镜像装甲B"
     }
   ],
   "buildings": [

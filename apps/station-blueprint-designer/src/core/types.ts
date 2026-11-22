@@ -95,6 +95,7 @@ export interface BuildableDef {
   ports: MachinePortDef[];
   configurablePorts: boolean;
   maxLength?: number;
+  powerKW?: number;
   sourceAsset: string;
 }
 
@@ -104,8 +105,9 @@ export interface RecipeDef {
   nameEn: string;
   nameZh: string;
   shortCode: string;
-  inputs: Array<{ itemId: string; nameZh: string }>;
-  outputs: Array<{ itemId: string; nameZh: string }>;
+  durationSeconds?: number;
+  inputs: Array<{ itemId: string; nameZh: string; quantity?: number }>;
+  outputs: Array<{ itemId: string; nameZh: string; quantity?: number; isByproduct?: boolean }>;
 }
 
 export interface GameCatalog {
