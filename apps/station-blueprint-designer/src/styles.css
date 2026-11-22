@@ -1,10 +1,23 @@
 :root {
   --bg-canvas: #06080c;
+  --bg-topbar: rgba(9, 13, 19, 0.94);
   --bg-panel: rgba(9, 12, 18, 0.88);
   --bg-panel-solid: #0a0e15;
   --bg-surface: rgba(15, 20, 29, 0.8);
   --bg-surface-hover: rgba(23, 30, 42, 0.88);
   --bg-surface-active: rgba(27, 34, 46, 0.92);
+  --bg-input: rgba(8, 11, 16, 0.85);
+  --bg-elevated: rgba(10, 14, 21, 0.92);
+  --bg-scrim: rgba(4, 6, 10, 0.76);
+  --bg-row-hover: rgba(24, 33, 47, 0.55);
+  --scroll-thumb: #1f2b3c;
+  --scroll-thumb-hover: #304157;
+  --vignette-bg: radial-gradient(
+    ellipse 64% 60% at 50% 48%,
+    transparent 46%,
+    rgba(5, 7, 11, 0.18) 78%,
+    rgba(3, 5, 8, 0.42) 100%
+  );
   --border-hairline: #171f2c;
   --border-subtle: #222c3c;
   --border-mid: #344357;
@@ -13,6 +26,8 @@
   --text-main: #c1cddb;
   --text-dim: #7f91a6;
   --text-muted: #526378;
+  --text-warn: #cbb98c;
+  --text-danger: #cfa0a4;
   --line-active: #56ba88;
   --line-disabled: #96444a;
   --line-warn: #a69062;
@@ -20,13 +35,36 @@
   --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 }
 
-.cad-shell[data-theme='obsidian-slate'] {
-  --bg-canvas: #080b10;
-  --bg-panel: rgba(11, 15, 22, 0.86);
-  --bg-panel-solid: #0c1018;
-  --border-focus: #4a617d;
-  --text-bright: #dce5f0;
-  --text-main: #bac7d6;
+:root[data-theme='stealth-cad'],
+.cad-shell[data-theme='stealth-cad'] {
+  color-scheme: only light;
+  --bg-canvas: #f1f3f6;
+  --bg-topbar: #f7f8fa;
+  --bg-panel: rgba(255, 255, 255, 0.96);
+  --bg-panel-solid: #ffffff;
+  --bg-surface: #f4f6f9;
+  --bg-surface-hover: #e9edf3;
+  --bg-surface-active: #dfe8f4;
+  --bg-input: #ffffff;
+  --bg-elevated: rgba(255, 255, 255, 0.97);
+  --bg-scrim: rgba(15, 23, 36, 0.32);
+  --bg-row-hover: #eef2f7;
+  --scroll-thumb: #c6ceda;
+  --scroll-thumb-hover: #9aa6b8;
+  --vignette-bg: none;
+  --border-hairline: #dde2ea;
+  --border-subtle: #cbd3df;
+  --border-mid: #9aa7b8;
+  --border-focus: #1c5aa6;
+  --text-bright: #141c27;
+  --text-main: #2a3444;
+  --text-dim: #546275;
+  --text-muted: #7c899b;
+  --text-warn: #7d5b18;
+  --text-danger: #9f2d36;
+  --line-active: #257a4e;
+  --line-disabled: #a63c44;
+  --line-warn: #8c6922;
 }
 
 * {
@@ -58,11 +96,11 @@ body,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f2b3c;
+  background: var(--scroll-thumb);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #304157;
+  background: var(--scroll-thumb-hover);
 }
 
 .cad-shell {
@@ -71,12 +109,13 @@ body,
   width: 100%;
   height: 100%;
   background: var(--bg-canvas);
+  color: var(--text-main);
 }
 
 /* Top Restrained CAD Bar */
 .cad-topbar {
   height: 42px;
-  background: rgba(9, 13, 19, 0.94);
+  background: var(--bg-topbar);
   border-bottom: 1px solid var(--border-hairline);
   display: flex;
   align-items: center;
@@ -151,7 +190,7 @@ body,
 
 /* Segmented Control (Flat & Quiet) */
 .segmented {
-  background: rgba(13, 18, 26, 0.8);
+  background: var(--bg-surface);
   border: 1px solid var(--border-hairline);
   border-radius: 999px;
   padding: 2px;
@@ -308,7 +347,7 @@ body,
 
 .cad-input {
   width: 100%;
-  background: rgba(8, 11, 16, 0.85);
+  background: var(--bg-input);
   border: 1px solid var(--border-subtle);
   color: var(--text-bright);
   padding: 5px 9px;
@@ -354,12 +393,7 @@ body,
   inset: 0;
   pointer-events: none;
   z-index: 6;
-  background: radial-gradient(
-    ellipse 64% 60% at 50% 48%,
-    transparent 46%,
-    rgba(5, 7, 11, 0.18) 78%,
-    rgba(3, 5, 8, 0.42) 100%
-  );
+  background: var(--vignette-bg);
 }
 
 /* Sidebars */
@@ -527,7 +561,7 @@ body,
 }
 
 .lib-row:hover {
-  background: rgba(24, 33, 47, 0.55);
+  background: var(--bg-row-hover);
 }
 
 .lib-row.editing {
@@ -709,14 +743,14 @@ body,
   overflow-y: auto;
   border: 1px solid var(--border-hairline);
   border-radius: 8px;
-  background: rgba(8, 11, 16, 0.72);
+  background: var(--bg-input);
 }
 
 .recipe-item {
   width: 100%;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(24, 33, 47, 0.65);
+  border-bottom: 1px solid var(--border-hairline);
   color: var(--text-main);
   padding: 5px 9px;
   display: flex;
@@ -743,7 +777,7 @@ body,
 }
 
 .port-diagram-wrap {
-  background: rgba(8, 11, 16, 0.78);
+  background: var(--bg-input);
   border: 1px solid var(--border-hairline);
   border-radius: 9px;
   padding: 7px;
@@ -782,7 +816,52 @@ body,
 }
 
 .port-legend .dot.red {
-  border: 1.3px solid #873d42;
+  border: 1.3px solid var(--line-disabled);
+}
+
+.port-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.port-filter-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.port-filter-tag {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.port-filter-select {
+  padding: 3px 6px;
+  font-size: 11px;
+}
+
+.filter-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.filter-chip {
+  background: var(--bg-surface-active);
+  border: 1px solid var(--border-mid);
+  color: var(--text-bright);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.filter-chip:hover {
+  border-color: var(--line-disabled);
+  color: var(--text-danger);
 }
 
 .inspector-note {
@@ -815,7 +894,7 @@ body,
   left: 50%;
   transform: translateX(-50%);
   z-index: 18;
-  background: rgba(11, 15, 22, 0.86);
+  background: var(--bg-panel);
   border: 1px solid var(--border-subtle);
   color: var(--text-main);
   padding: 5px 14px;
@@ -833,7 +912,7 @@ body,
   z-index: 15;
   display: flex;
   gap: 10px;
-  background: rgba(9, 13, 19, 0.72);
+  background: var(--bg-panel);
   border: 1px solid var(--border-hairline);
   padding: 4px 11px;
   border-radius: 999px;
@@ -867,7 +946,7 @@ body,
 
 .s2-hover-card {
   pointer-events: none;
-  background: rgba(10, 14, 21, 0.94);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: 9px;
   padding: 7px 12px;
@@ -918,7 +997,7 @@ body,
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(11, 15, 22, 0.9);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: 11px;
   padding: 4px 8px;
@@ -956,7 +1035,7 @@ body,
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(10, 14, 21, 0.88);
+  background: var(--bg-panel);
   border: 1px solid var(--border-hairline);
   border-radius: 13px;
   padding: 5px 6px;
@@ -1072,7 +1151,7 @@ body,
   left: 50%;
   transform: translateX(-50%);
   z-index: 40;
-  background: rgba(12, 16, 24, 0.94);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-mid);
   color: var(--text-bright);
   padding: 6px 15px;
@@ -1083,13 +1162,13 @@ body,
 }
 
 .cad-toast.warn {
-  border-color: rgba(140, 123, 82, 0.65);
-  color: #cbb98c;
+  border-color: var(--line-warn);
+  color: var(--text-warn);
 }
 
 .cad-toast.error {
-  border-color: rgba(125, 62, 67, 0.72);
-  color: #cfa0a4;
+  border-color: var(--line-disabled);
+  color: var(--text-danger);
 }
 
 /* Modals & Help Drawer */
@@ -1097,7 +1176,7 @@ body,
 .cad-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(4, 6, 10, 0.76);
+  background: var(--bg-scrim);
   z-index: 60;
   display: flex;
   align-items: center;
@@ -1146,7 +1225,7 @@ body,
 }
 
 .help-card {
-  background: rgba(9, 13, 19, 0.85);
+  background: var(--bg-surface);
   border: 1px solid var(--border-hairline);
   border-radius: 10px;
   padding: 11px 12px;
@@ -1201,7 +1280,7 @@ body,
 .help-meta code {
   font-family: var(--font-mono);
   color: var(--text-main);
-  background: rgba(16, 22, 32, 0.8);
+  background: var(--bg-surface);
   border: 1px solid var(--border-hairline);
   padding: 1px 5px;
   border-radius: 4px;

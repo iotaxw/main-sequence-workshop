@@ -250,6 +250,11 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    document.documentElement.style.colorScheme = theme === 'stealth-cad' ? 'only light' : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
     sceneRef.current?.syncState({
       doc,
       theme,
@@ -471,6 +476,10 @@ export const App: React.FC = () => {
         recipeId?: string;
         label?: string;
         disabledPorts?: number[];
+        priorityIn?: number;
+        priorityOut?: number;
+        portFilters?: Record<number, string>;
+        filterItems?: string[];
       }
     ) => {
       setStampingLibPath(null);
@@ -504,6 +513,14 @@ export const App: React.FC = () => {
           ...(opts?.disabledPorts && opts.disabledPorts.length > 0
             ? { disabledPorts: [...opts.disabledPorts] }
             : {}),
+          ...(opts?.priorityIn !== undefined ? { priorityIn: opts.priorityIn } : {}),
+          ...(opts?.priorityOut !== undefined ? { priorityOut: opts.priorityOut } : {}),
+          ...(opts?.portFilters && Object.keys(opts.portFilters).length > 0
+            ? { portFilters: { ...opts.portFilters } }
+            : {}),
+          ...(opts?.filterItems && opts.filterItems.length > 0
+            ? { filterItems: [...opts.filterItems] }
+            : {}),
         }));
       }
     },
@@ -528,6 +545,10 @@ export const App: React.FC = () => {
           recipeId: b.recipeId,
           label: b.label,
           disabledPorts: b.disabledPorts ? [...b.disabledPorts] : undefined,
+          priorityIn: b.priorityIn,
+          priorityOut: b.priorityOut,
+          portFilters: b.portFilters ? { ...b.portFilters } : undefined,
+          filterItems: b.filterItems ? [...b.filterItems] : undefined,
         });
         const def = getBuildableDef(b.type);
         const parts: string[] = [getShortLabel(b.type, def?.nameZh)];
@@ -536,6 +557,9 @@ export const App: React.FC = () => {
           if (rec) parts.push(rec.nameZh);
         }
         if (b.label) parts.push(b.label);
+        if (b.priorityIn !== undefined || b.priorityOut !== undefined) parts.push('含优先级');
+        if (b.portFilters && Object.keys(b.portFilters).length > 0) parts.push('含口过滤');
+        if (b.filterItems && b.filterItems.length > 0) parts.push(`过滤${b.filterItems.length}项`);
         if (def?.configurablePorts && b.disabledPorts && b.disabledPorts.length > 0) {
           parts.push(`${def.ports.length - b.disabledPorts.length}/${def.ports.length}口`);
         }
@@ -692,6 +716,16 @@ export const App: React.FC = () => {
       }
       if (lower === 'f') {
         e.preventDefault();
+        const tool = stateRef.current.activeTool;
+        if (
+          tool.kind === 'place-module' &&
+          (tool.moduleType === 'BPO_StationArmour_01' || tool.moduleType === 'BPO_StationArmour_01B')
+        ) {
+          const flipped = tool.moduleType === 'BPO_StationArmour_01' ? 'BPO_StationArmour_01B' : 'BPO_StationArmour_01';
+          selectEntityTool(flipped, { rotation: tool.rotation, label: tool.label });
+          showToast(flipped === 'BPO_StationArmour_01' ? '已翻转为顶面装甲（Z: 0..+4m）' : '已翻转为底面装甲（Z: -4..0m）');
+          return;
+        }
         focusSelection();
         return;
       }
@@ -750,6 +784,13 @@ export const App: React.FC = () => {
         if (tool.kind === 'stamp-blueprint') {
           setActiveTool({ ...tool, blueprint: mirrorBlueprintX(tool.blueprint) });
           showToast('已水平镜像翻转蓝图');
+        } else if (
+          tool.kind === 'place-module' &&
+          (tool.moduleType === 'BPO_StationArmour_01' || tool.moduleType === 'BPO_StationArmour_01B')
+        ) {
+          const flipped = tool.moduleType === 'BPO_StationArmour_01' ? 'BPO_StationArmour_01B' : 'BPO_StationArmour_01';
+          selectEntityTool(flipped, { rotation: tool.rotation, label: tool.label });
+          showToast(flipped === 'BPO_StationArmour_01' ? '已翻转为顶面装甲（Z: 0..+4m）' : '已翻转为底面装甲（Z: -4..0m）');
         }
         return;
       }
@@ -956,6 +997,10 @@ export const App: React.FC = () => {
           ...(tool.recipeId ? { recipeId: tool.recipeId } : {}),
           ...(tool.label ? { label: tool.label } : {}),
           ...(tool.disabledPorts && tool.disabledPorts.length > 0 ? { disabledPorts: [...tool.disabledPorts] } : {}),
+          ...(tool.priorityIn !== undefined ? { priorityIn: tool.priorityIn } : {}),
+          ...(tool.priorityOut !== undefined ? { priorityOut: tool.priorityOut } : {}),
+          ...(tool.portFilters && Object.keys(tool.portFilters).length > 0 ? { portFilters: { ...tool.portFilters } } : {}),
+          ...(tool.filterItems && tool.filterItems.length > 0 ? { filterItems: [...tool.filterItems] } : {}),
         },
         { allowForceReplace: e.shiftKey }
       );
@@ -1451,11 +1496,11 @@ export const App: React.FC = () => {
             type="button"
             className="cad-btn"
             onClick={() => {
-              const next: CadThemeId = theme === 'platinum-gold' ? 'obsidian-slate' : 'platinum-gold';
+              const next: CadThemeId = theme === 'platinum-gold' ? 'stealth-cad' : 'platinum-gold';
               setTheme(next);
               saveTheme(next);
             }}
-            title="切换线条主题（曜石白金·香槟金 / 经典曜石银灰）"
+            title="切换外观主题（白金香槟 / 工程白图·办公伪装）"
           >
             主题 · {CAD_THEMES[theme].nameZh}
           </button>
@@ -1536,6 +1581,10 @@ export const App: React.FC = () => {
             {activeTool.kind === 'place-module' &&
               `${getShortLabel(activeTool.moduleType, getModuleDef(activeTool.moduleType)?.nameZh)}${
                 activeTool.label ? ` [${activeTool.label}]` : ''
+              }${
+                activeTool.moduleType === 'BPO_StationArmour_01' || activeTool.moduleType === 'BPO_StationArmour_01B'
+                  ? ' · M/F 上下翻转'
+                  : ''
               } · Tab 组内轮换 · R 旋转 · Q/E 切层 · 右键取消`}
             {activeTool.kind === 'place-building' &&
               `${getShortLabel(activeTool.buildingType, getBuildableDef(activeTool.buildingType)?.nameZh)}${

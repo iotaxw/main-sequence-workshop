@@ -108,13 +108,28 @@ export interface WorldConnector {
   rotation: Rotation;
 }
 
+/**
+ * Compute local actor-origin offset [ox, oy] in meters relative to the geometric grid center
+ * of a module's `sizeUnits` bounding box (handles asymmetric modules like BPO_Dock_2 and BPO_ShipyardCore_02).
+ * World position of a local actor coordinate (ax, ay) is `center + rotate(ax - ox, ay - oy)`.
+ */
+export function getModuleOriginOffsetM(def: StationModuleDef): [number, number] {
+  if (!def.blockBoundsM) return [0, 0];
+  const rawOx = def.blockBoundsM.minX + (def.sizeUnits[0] * STATION_UNIT_M) / 2;
+  const rawOy = def.blockBoundsM.minY + (def.sizeUnits[1] * STATION_UNIT_M) / 2;
+  const ox = Math.abs(rawOx) < 0.5 ? 0 : Math.round(rawOx * 2) / 2;
+  const oy = Math.abs(rawOy) < 0.5 ? 0 : Math.round(rawOy * 2) / 2;
+  return [ox, oy];
+}
+
 /** Transform module connectors into world coordinates */
 export function getModuleWorldConnectors(mod: PlacedModule, def: StationModuleDef): WorldConnector[] {
   const [cx, cy] = getModuleCenterM(mod, def);
+  const [ox, oy] = getModuleOriginOffsetM(def);
   return def.connectors.map((c) => {
-    // Native GridLocation unit = 4m (16m module has edge at ±2 native units = ±8m)
-    const lx = c.gx * 4;
-    const ly = c.gy * 4;
+    // Native GridLocation unit = 4m (16m module has edge at ±2 native units = ±8m), shifted to centered module frame
+    const lx = c.gx * 4 - ox;
+    const ly = c.gy * 4 - oy;
     const [rx, ry] = rotateVec2(lx, ly, mod.rotation);
     return {
       moduleId: mod.id,
@@ -156,8 +171,8 @@ function isLocalCellOnSurface(lx: number, ly: number, surf: StationFloorSurfaceD
   }
 
   if (surf.shape === 'corner-ws') {
-    // Diagonal bevel cutting off the (+X, -Y) corner (NE): keep lx - ly <= 2
-    return lx - ly <= 2.5;
+    // Symmetric 45° panoramic bevel cutting off the (+X, -Y) corner (NE): keep lx - ly <= 3.0
+    return lx - ly <= 3.0;
   }
 
   return true;

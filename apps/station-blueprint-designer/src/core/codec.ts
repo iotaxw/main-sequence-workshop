@@ -138,6 +138,21 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
     const disabledPorts = Array.isArray(b.disabledPorts)
       ? b.disabledPorts.filter((p): p is number => isFiniteInt(p) && p >= 0)
       : undefined;
+    let portFilters: Record<number, string> | undefined;
+    if (b.portFilters && typeof b.portFilters === 'object' && !Array.isArray(b.portFilters)) {
+      const cleaned: Record<number, string> = {};
+      for (const [k, v] of Object.entries(b.portFilters as Record<string, unknown>)) {
+        const idx = Number(k);
+        if (isFiniteInt(idx) && idx >= 0 && typeof v === 'string' && v.trim()) {
+          cleaned[idx] = v.trim();
+        }
+      }
+      if (Object.keys(cleaned).length > 0) portFilters = cleaned;
+    }
+    const filterItems = Array.isArray(b.filterItems)
+      ? Array.from(new Set(b.filterItems.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)))
+      : undefined;
+
     buildings.push({
       id: bid,
       type: b.type,
@@ -149,6 +164,10 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
       ...(typeof b.label === 'string' && b.label ? { label: b.label } : {}),
       ...(disabledPorts && disabledPorts.length > 0 ? { disabledPorts } : {}),
       ...(b.undergroundMode === 'in' || b.undergroundMode === 'out' ? { undergroundMode: b.undergroundMode } : {}),
+      ...(isFiniteInt(b.priorityIn) && b.priorityIn >= 0 ? { priorityIn: b.priorityIn } : {}),
+      ...(isFiniteInt(b.priorityOut) && b.priorityOut >= 0 ? { priorityOut: b.priorityOut } : {}),
+      ...(portFilters ? { portFilters } : {}),
+      ...(filterItems && filterItems.length > 0 ? { filterItems } : {}),
     });
   }
 

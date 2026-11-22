@@ -112,7 +112,7 @@ export function createRoundedGridOverlay(): {
     uCursorActive: { value: 0 },
   };
 
-  const geo = new THREE.PlaneGeometry(1600, 1600);
+  const geo = new THREE.PlaneGeometry(4000, 4000);
   geo.rotateX(-Math.PI / 2);
 
   const mat = new THREE.ShaderMaterial({

@@ -224,8 +224,8 @@ const SHORT_LABELS: Record<string, string> = {
   BPO_ShipyardSide: '船坞侧',
   BPO_DeepSpaceObservatory: '天文台',
   BPO_StationTurretBlock_01: '炮塔',
-  BPO_StationArmour_01: '装甲 A',
-  BPO_StationArmour_01B: '装甲 B',
+  BPO_StationArmour_01: '装甲·顶',
+  BPO_StationArmour_01B: '装甲·底',
 };
 
 export function getShortLabel(id: string, fallback?: string): string {

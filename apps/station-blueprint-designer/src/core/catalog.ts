@@ -15,11 +15,28 @@ for (const b of CATALOG.buildables) {
 
 const recipeMap = new Map<string, RecipeDef>();
 const recipesByCrafter = new Map<string, RecipeDef[]>();
+const itemNameMap = new Map<string, string>();
 for (const r of CATALOG.recipes) {
   recipeMap.set(r.id, r);
   const list = recipesByCrafter.get(r.crafterId) ?? [];
   list.push(r);
   recipesByCrafter.set(r.crafterId, list);
+  for (const x of [...r.inputs, ...r.outputs]) {
+    if (!itemNameMap.has(x.itemId)) itemNameMap.set(x.itemId, x.nameZh);
+  }
+}
+
+export interface CatalogItemEntry {
+  id: string;
+  nameZh: string;
+}
+
+export const CATALOG_ITEMS: CatalogItemEntry[] = Array.from(itemNameMap.entries())
+  .map(([id, nameZh]) => ({ id, nameZh }))
+  .sort((a, b) => a.nameZh.localeCompare(b.nameZh, 'zh-Hans'));
+
+export function getItemNameZh(itemId: string): string {
+  return itemNameMap.get(itemId) ?? getBuildableDef(itemId)?.nameZh ?? itemId;
 }
 
 export function getModuleDef(id: string): StationModuleDef | undefined {

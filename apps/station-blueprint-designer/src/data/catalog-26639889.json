@@ -1198,8 +1198,8 @@
     {
       "id": "BPO_StationArmour_01",
       "nameEn": "Station Armour",
-      "nameZh": "空间站装甲",
-      "descriptionZh": "用于保护空间站模块的大型装甲部件。",
+      "nameZh": "空间站装甲（顶）",
+      "descriptionZh": "覆盖于空间站上方的 1×1 顶面大型装甲板（Z: 0..+4m）；建造时按 F 可翻转切换底面镜像件。",
       "categoryEn": "Defence",
       "categoryZh": "防御",
       "sizeUnits": [
@@ -1225,8 +1225,8 @@
     {
       "id": "BPO_StationArmour_01B",
       "nameEn": "Station Armour (Mirror)",
-      "nameZh": "空间站装甲（镜像）",
-      "descriptionZh": "用于保护空间站模块的大型装甲部件。",
+      "nameZh": "空间站装甲（底）",
+      "descriptionZh": "覆盖于空间站下方的 1×1 底面装甲板（顶面装甲垂直翻转镜像，Z: -4..0m）；建造时按 F 可切回顶面件。",
       "categoryEn": "Defence",
       "categoryZh": "防御",
       "sizeUnits": [
@@ -1341,8 +1341,8 @@
         {
           "floorOffset": 0,
           "shape": "rect",
-          "minX": -15,
-          "maxX": 7,
+          "minX": -23,
+          "maxX": -9,
           "minY": -15,
           "maxY": 15,
           "doorways": [
@@ -1358,13 +1358,13 @@
             },
             {
               "side": "S",
-              "start": -11,
-              "end": -5
+              "start": -19,
+              "end": -13
             },
             {
               "side": "N",
-              "start": -11,
-              "end": -5
+              "start": -19,
+              "end": -13
             }
           ]
         }
@@ -3064,7 +3064,7 @@
           "role": "out"
         }
       ],
-      "configurablePorts": false,
+      "configurablePorts": true,
       "sourceAsset": "/Game/Data/Buildables/DAT_Splitter"
     },
     {
@@ -3113,7 +3113,7 @@
           "role": "out"
         }
       ],
-      "configurablePorts": false,
+      "configurablePorts": true,
       "sourceAsset": "/Game/Data/Buildables/DAT_Splitter_2"
     },
     {
@@ -3162,7 +3162,7 @@
           "role": "out"
         }
       ],
-      "configurablePorts": false,
+      "configurablePorts": true,
       "sourceAsset": "/Game/Data/Buildables/DAT_Splitter_3"
     },
     {
@@ -3211,7 +3211,7 @@
           "role": "out"
         }
       ],
-      "configurablePorts": false,
+      "configurablePorts": true,
       "sourceAsset": "/Game/Data/Buildables/DAT_BeltBalancer_01"
     },
     {
@@ -3260,7 +3260,7 @@
           "role": "out"
         }
       ],
-      "configurablePorts": false,
+      "configurablePorts": true,
       "sourceAsset": "/Game/Data/Buildables/DAT_BeltBalancer_02"
     },
     {
@@ -3309,7 +3309,7 @@
           "role": "out"
         }
       ],
-      "configurablePorts": false,
+      "configurablePorts": true,
       "sourceAsset": "/Game/Data/Buildables/DAT_BeltBalancer_03"
     },
     {

@@ -303,7 +303,13 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
       );
     }
     if (id.includes('Corner')) {
-      return <path d="M4,20 V8 L8,4 H20 V12 H12 V20 Z" {...s} />;
+      // Symmetric 45° panoramic bevel corner (W & S connectors, chamfered NE glass wall)
+      return (
+        <>
+          <polygon points="4,4 9.5,4 20,14.5 20,20 4,20" {...s} />
+          <line x1="9.5" y1="6.5" x2="17.5" y2="14.5" {...dim} />
+        </>
+      );
     }
     if (id.includes('Elevator')) {
       return (
@@ -326,20 +332,22 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
       );
     }
     if (id === 'BPO_StationArmour_01') {
-      // Sloped armour wedge A
+      // Upper roof armour cap (16x16 beveled top plate + upward indicator)
       return (
         <>
-          <polygon points="4,18 4,6 19,6 13,18" {...s} />
-          <line x1="4" y1="12" x2="16" y2="12" {...dim} />
+          <polygon points="6.5,4 17.5,4 20,6.5 20,17.5 17.5,20 6.5,20 4,17.5 4,6.5" {...s} />
+          <rect x="8" y="8" width="8" height="8" rx="1" {...dim} />
+          <polyline points="9.5,13 12,10.2 14.5,13" {...s} />
         </>
       );
     }
     if (id === 'BPO_StationArmour_01B') {
-      // Mirrored sloped armour wedge B
+      // Lower belly armour cap (vertically flipped mirror of 01 + downward indicator)
       return (
         <>
-          <polygon points="20,18 20,6 5,6 11,18" {...s} />
-          <line x1="20" y1="12" x2="8" y2="12" {...dim} />
+          <polygon points="6.5,4 17.5,4 20,6.5 20,17.5 17.5,20 6.5,20 4,17.5 4,6.5" {...dim} />
+          <rect x="7.5" y="7.5" width="9" height="9" rx="1" {...s} />
+          <polyline points="9.5,11 12,13.8 14.5,11" {...s} />
         </>
       );
     }
@@ -363,12 +371,22 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
         </>
       );
     }
-    if (id === 'BPO_Dock' || id === 'BPO_Dock_2') {
+    if (id === 'BPO_Dock') {
       return (
         <>
-          <rect x="4" y="5" width="16" height="14" rx="2" {...dim} />
-          <circle cx="12" cy="12" r="3.8" {...s} />
-          <line x1="15.8" y1="12" x2="20" y2="12" {...s} />
+          <rect x="4" y="6" width="6" height="12" rx="1" {...s} />
+          <path d="M10,7 H19 M10,17 H19" {...s} />
+          <line x1="11" y1="12" x2="18" y2="12" {...dim} />
+        </>
+      );
+    }
+    if (id === 'BPO_Dock_2') {
+      // Industrial Dock 3x2: west indoor factory bay + wide east open freighter gantry arms
+      return (
+        <>
+          <rect x="3.5" y="4.5" width="6.5" height="15" rx="1" {...s} />
+          <path d="M10,5.5 H20.5 V8 H10 M10,16 H20.5 V18.5 H10" {...s} />
+          <line x1="12" y1="12" x2="19.5" y2="12" {...dim} />
         </>
       );
     }

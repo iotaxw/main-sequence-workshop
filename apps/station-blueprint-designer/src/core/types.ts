@@ -147,6 +147,14 @@ export interface PlacedBuilding {
   disabledPorts?: number[];
   /** Underground belt role when placed as entry/exit */
   undergroundMode?: 'in' | 'out';
+  /** Prioritized input port index (e.g. Belt Balancer input lane 0 or 1) */
+  priorityIn?: number;
+  /** Prioritized output port index (e.g. Splitter output 1/2/3 or Balancer output 2/3) */
+  priorityOut?: number;
+  /** Per-port item filter mapping: portIndex -> itemId (Splitter / Balancer outputs) */
+  portFilters?: Record<number, string>;
+  /** Container logistic item filter whitelist (WBP_LogisticFilters) */
+  filterItems?: string[];
 }
 
 /** Unified Blueprint Document (Scheme A: can be opened as workspace OR stamped as sub-blueprint!) */
@@ -183,6 +191,10 @@ export type ActiveTool =
       recipeId?: string;
       label?: string;
       disabledPorts?: number[];
+      priorityIn?: number;
+      priorityOut?: number;
+      portFilters?: Record<number, string>;
+      filterItems?: string[];
     }
   | { kind: 'stamp-blueprint'; blueprint: BlueprintDocument; name: string; rotation: Rotation; floorOffset: number };
 

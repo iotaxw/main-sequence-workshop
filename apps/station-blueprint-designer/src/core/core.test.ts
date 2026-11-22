@@ -19,10 +19,16 @@ import {
   undoHistory,
   updateBuildingConfigCmd,
 } from './commands';
-import { computeUndergroundLinks, isCellBuildable, validateBuildingPlacement, validateModulePlacement } from './geometry';
+import {
+  computeUndergroundLinks,
+  getModuleWorldConnectors,
+  isCellBuildable,
+  validateBuildingPlacement,
+  validateModulePlacement,
+} from './geometry';
 import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
 import { DEFAULT_LIBRARY_PRESETS } from './presets';
-import { CadCameraRig } from '../renderer/camera-rig';
+import { CadCameraRig, MAX_DISTANCE } from '../renderer/camera-rig';
 
 describe('Build 26639889 catalog verification', () => {
   it('includes all extracted station modules, buildables, and recipes with binary-verified dimensions', () => {
@@ -441,5 +447,114 @@ describe('Camera grab-pan orientation invariants', () => {
     rig.panByScreenDelta(100, 100, 900);
     expect(rig.targetZ).toBeGreaterThan(z1); // opposite of screen-right (-Z) => +Z
     expect(rig.targetX).toBeLessThan(x1);    // along screen-up (-X) => -X
+  });
+
+  it('frames massive 560x528m macro stations cleanly within expanded MAX_DISTANCE', () => {
+    const rig = new CadCameraRig(16 / 9);
+    expect(MAX_DISTANCE).toBeGreaterThanOrEqual(1000);
+    rig.fitBounds(-280, -264, 280, 264);
+    expect(rig.targetX).toBe(0);
+    expect(rig.targetZ).toBe(0);
+    expect(rig.targetDistance).toBeGreaterThan(650);
+    expect(rig.targetDistance).toBeLessThanOrEqual(MAX_DISTANCE);
+  });
+});
+
+describe('Station module asymmetric alignment & corner symmetry', () => {
+  it('aligns BPO_Dock_2 connectors flush onto the 16m station grid boundary and restricts floor to west 1x2 bay', () => {
+    const dockDef = getModuleDef('BPO_Dock_2')!;
+    const adapterDef = getModuleDef('BPO_StationAdapter_01')!;
+    const adapter = { id: 'a1', type: 'BPO_StationAdapter_01', gx: 8, gy: 0, floor: 0, rotation: 0 as const };
+    const dock = { id: 'd1', type: 'BPO_Dock_2', gx: 9, gy: 0, floor: 0, rotation: 0 as const };
+
+    const aConns = getModuleWorldConnectors(adapter, adapterDef).filter((c) => c.rotation === 0);
+    const dWestConns = getModuleWorldConnectors(dock, dockDef).filter((c) => c.rotation === 2);
+    expect(dWestConns.length).toBe(2);
+    for (const wc of dWestConns) {
+      expect(wc.x).toBe(144); // Exact West wall (9 * 16m), NOT 152m!
+      expect(aConns.some((ac) => ac.x === wc.x && ac.y === wc.y)).toBe(true);
+    }
+
+    // West indoor bay (x in [145..158]) is buildable; east open freighter bay (x in [165..190]) is NOT buildable
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_Dock_2', gx: 9, gy: 0, floor: 0, rotation: 0 }).doc;
+    expect(isCellBuildable(doc, 148, 10, 0)).not.toBeNull();
+    expect(isCellBuildable(doc, 170, 10, 0)).toBeNull();
+  });
+
+  it('keeps BPO_StationCorner_01 45-degree NE bevel symmetric across West and South faces', () => {
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_StationCorner_01', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    // Center (8,8) is inside, SW (2,13) is inside, NE (13,2) is outside the 45° panoramic bevel
+    expect(isCellBuildable(doc, 8, 8, 0)).not.toBeNull();
+    expect(isCellBuildable(doc, 2, 13, 0)).not.toBeNull();
+    expect(isCellBuildable(doc, 13, 2, 0)).toBeNull();
+    // Exact 45° mirror symmetry across (lx, ly) <-> (-ly, -lx): cell (cx, cy) <-> (15-cy, 15-cx)
+    for (let cx = 0; cx < 16; cx++) {
+      for (let cy = 0; cy < 16; cy++) {
+        const a = isCellBuildable(doc, cx, cy, 0) !== null;
+        const b = isCellBuildable(doc, 15 - cy, 15 - cx, 0) !== null;
+        expect(a, `corner symmetry (${cx},${cy}) vs (${15 - cy},${15 - cx})`).toBe(b);
+      }
+    }
+  });
+
+  it('supports Splitter/Balancer port toggles, priorities, item filters, Container logistic filters, and exact mirror port remapping', () => {
+    expect(getBuildableDef('DAT_Splitter')?.configurablePorts).toBe(true);
+    expect(getBuildableDef('DAT_BeltBalancer_01')?.configurablePorts).toBe(true);
+
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_01', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    const sp = placeBuildingCmd(doc, { type: 'DAT_Splitter', x: 5, y: 5, floor: 0, rotation: 0 });
+    doc = sp.doc;
+    const spId = sp.addedBuildingIds![0];
+    const bal = placeBuildingCmd(doc, { type: 'DAT_BeltBalancer_01', x: 8, y: 5, floor: 0, rotation: 0 });
+    doc = bal.doc;
+    const balId = bal.addedBuildingIds![0];
+    const box = placeBuildingCmd(doc, { type: 'DAT_Container', x: 10, y: 5, floor: 0, rotation: 0 });
+    doc = box.doc;
+    const boxId = box.addedBuildingIds![0];
+
+    doc = updateBuildingConfigCmd(doc, [spId], {
+      disabledPorts: [1], // S output disabled
+      priorityOut: 3, // N output prioritized
+      portFilters: { 2: 'ITEM_BasicCircuit' },
+    }).doc;
+    doc = updateBuildingConfigCmd(doc, [balId], {
+      priorityIn: 0, // W-S input prioritized
+      priorityOut: 3, // E-N output prioritized
+      portFilters: { 2: 'ITEM_TitaniumPlates' },
+    }).doc;
+    doc = updateBuildingConfigCmd(doc, [boxId], {
+      filterItems: ['ITEM_BasicCircuit', 'ITEM_TitaniumPlates'],
+    }).doc;
+
+    // JSON round-trip preserves every single logistics & container config field
+    const decoded = deserializeBlueprint(serializeBlueprint(doc));
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    const spRt = decoded.doc.buildings.find((b) => b.id === spId)!;
+    const balRt = decoded.doc.buildings.find((b) => b.id === balId)!;
+    const boxRt = decoded.doc.buildings.find((b) => b.id === boxId)!;
+    expect(spRt.disabledPorts).toEqual([1]);
+    expect(spRt.priorityOut).toBe(3);
+    expect(spRt.portFilters).toEqual({ 2: 'ITEM_BasicCircuit' });
+    expect(balRt.priorityIn).toBe(0);
+    expect(balRt.priorityOut).toBe(3);
+    expect(balRt.portFilters).toEqual({ 2: 'ITEM_TitaniumPlates' });
+    expect(boxRt.filterItems).toEqual(['ITEM_BasicCircuit', 'ITEM_TitaniumPlates']);
+
+    // Horizontal mirror across X flips rotation 0 -> 2 and remaps S<->N on Splitter (1<->3) and lanes on Balancer (0<->1, 2<->3)!
+    const mirrored = mirrorBlueprintX(decoded.doc);
+    const spM = mirrored.buildings.find((b) => b.id === spId)!;
+    const balM = mirrored.buildings.find((b) => b.id === balId)!;
+    expect(spM.rotation).toBe(2);
+    expect(spM.disabledPorts).toEqual([3]);
+    expect(spM.priorityOut).toBe(1);
+    expect(spM.portFilters).toEqual({ 2: 'ITEM_BasicCircuit' });
+    expect(balM.rotation).toBe(2);
+    expect(balM.priorityIn).toBe(1);
+    expect(balM.priorityOut).toBe(2);
+    expect(balM.portFilters).toEqual({ 3: 'ITEM_TitaniumPlates' });
   });
 });

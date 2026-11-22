@@ -11,7 +11,7 @@ export const PITCH_SNAP_PRESETS = [
 ] as const;
 
 export const MIN_DISTANCE = 9;
-export const MAX_DISTANCE = 260;
+export const MAX_DISTANCE = 1200;
 export const ZOOM_ENTER_BUILDING = 44; // Crossing below enters Building View
 export const ZOOM_EXIT_TO_STATION = 62; // Crossing above returns to Station Overview (hysteresis!)
 
@@ -70,7 +70,7 @@ export class CadCameraRig {
       onTelemetryChange?: (info: { yawDeg: number; pitchDeg: number; distance: number }) => void;
     } = {}
   ) {
-    this.camera = new THREE.PerspectiveCamera(42, aspect, 0.5, 1400);
+    this.camera = new THREE.PerspectiveCamera(42, aspect, 0.8, 6000);
     this.onAutoViewModeChange = callbacks.onAutoViewModeChange;
     this.onTelemetryChange = callbacks.onTelemetryChange;
     this.applyImmediate();
@@ -226,10 +226,18 @@ export class CadCameraRig {
   fitBounds(minX: number, minZ: number, maxX: number, maxZ: number): void {
     const cx = (minX + maxX) / 2;
     const cz = (minZ + maxZ) / 2;
-    const span = Math.max(24, maxX - minX, maxZ - minZ);
+    const spanX = Math.max(24, maxX - minX);
+    const spanZ = Math.max(24, maxZ - minZ);
+    const fovRad = (this.camera.fov * Math.PI) / 180;
+    const tanHalf = Math.tan(fovRad / 2);
+    const aspect = Math.max(0.5, this.camera.aspect);
+    // Exact perspective framing for arbitrary macro stations (e.g. 560x528m Star Pyramid!)
+    const distForZ = (spanZ * 0.62) / tanHalf;
+    const distForX = (spanX * 0.62) / (tanHalf * aspect);
+    const needed = Math.max(distForX, distForZ, Math.max(spanX, spanZ) * 1.15);
     this.targetX = cx;
     this.targetZ = cz;
-    this.targetDistance = THREE.MathUtils.clamp(span * 1.35, 34, MAX_DISTANCE);
+    this.targetDistance = THREE.MathUtils.clamp(needed, 34, MAX_DISTANCE);
     if (this.targetDistance > ZOOM_EXIT_TO_STATION && this.viewMode !== 'station') {
       this.viewMode = 'station';
       this.onAutoViewModeChange?.('station');

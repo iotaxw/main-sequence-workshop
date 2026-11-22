@@ -1,21 +1,62 @@
 import React, { useMemo, useState } from 'react';
-import { getBuildableDef, getModuleDef, getRecipeDef, getRecipesForCrafter } from '../core/catalog';
+import {
+  CATALOG_ITEMS,
+  getBuildableDef,
+  getItemNameZh,
+  getModuleDef,
+  getRecipeDef,
+  getRecipesForCrafter,
+} from '../core/catalog';
 import { findBuildingsInsideModule, getBuildingSizeCells, rotateSide, rotateVec2 } from '../core/geometry';
-import type { BlueprintDocument, PlacedBuilding, PlacedModule, SelectionState } from '../core/types';
+import type { BlueprintDocument, MachinePortDef, PlacedBuilding, PlacedModule, SelectionState } from '../core/types';
+
+export interface BuildingConfigPatch {
+  recipeId?: string | null;
+  label?: string | null;
+  disabledPorts?: number[];
+  undergroundMode?: 'in' | 'out';
+  priorityIn?: number | null;
+  priorityOut?: number | null;
+  portFilters?: Record<number, string> | null;
+  filterItems?: string[] | null;
+}
 
 interface InspectorPanelProps {
   doc: BlueprintDocument;
   selection: SelectionState;
-  onUpdateBuilding: (
-    ids: string[],
-    patch: { recipeId?: string | null; label?: string | null; disabledPorts?: number[]; undergroundMode?: 'in' | 'out' }
-  ) => void;
+  onUpdateBuilding: (ids: string[], patch: BuildingConfigPatch) => void;
   onUpdateModuleLabel: (id: string, label: string) => void;
   onCopySelection: () => void;
   onSaveSelectionAsBlueprint: () => void;
   onRotateSelection: () => void;
   onDeleteSelection: () => void;
   onClearSelection: () => void;
+}
+
+const SIDE_ZH: Record<'N' | 'E' | 'S' | 'W', string> = {
+  N: '北',
+  E: '东',
+  S: '南',
+  W: '西',
+};
+
+function getPortDisplayLabel(
+  kind: string,
+  port: MachinePortDef,
+  rotation: 0 | 1 | 2 | 3
+): string {
+  const worldSide = rotateSide(port.side, rotation);
+  if (kind === 'splitter') {
+    const rel =
+      port.side === 'W' ? '输入' : port.side === 'E' ? '直出' : port.side === 'N' ? '左出' : '右出';
+    return `${rel}(${SIDE_ZH[worldSide]})`;
+  }
+  if (kind === 'balancer') {
+    const lane = port.hy < 0 ? '左道' : '右道';
+    const role = port.role === 'in' ? '入' : '出';
+    return `${lane}${role}(${SIDE_ZH[worldSide]})`;
+  }
+  return `#${port.index + 1}(${SIDE_ZH[worldSide]})`;
 }
 
 const PortDiagram: React.FC<{
@@ -39,11 +80,11 @@ const PortDiagram: React.FC<{
           width={w}
           height={d}
           rx={0.22}
-          fill="#0d131c"
-          stroke="#35465c"
+          fill="var(--bg-surface)"
+          stroke="var(--border-mid)"
           strokeWidth={0.09}
         />
-        <text x={0} y={0.22} textAnchor="middle" fill="#52657d" fontSize={0.58} fontFamily="monospace">
+        <text x={0} y={0.22} textAnchor="middle" fill="var(--text-muted)" fontSize={0.56} fontFamily="monospace">
           {w}×{d}
         </text>
 
@@ -51,16 +92,24 @@ const PortDiagram: React.FC<{
           const [rx, ry] = rotateVec2(port.hx * 0.5, port.hy * 0.5, building.rotation);
           const side = rotateSide(port.side, building.rotation);
           const enabled = !disabledSet.has(port.index);
+          const isPriority = building.priorityIn === port.index || building.priorityOut === port.index;
+          const filterItemId = building.portFilters?.[port.index];
           const isHoriz = side === 'N' || side === 'S';
-          const along = Math.min(0.66, Math.max(0.46, viewW * 0.082));
-          const thick = Math.min(0.24, Math.max(0.16, viewW * 0.03));
+          const along = Math.min(0.62, Math.max(0.36, viewW * 0.08));
+          const thick = Math.min(0.22, Math.max(0.14, viewW * 0.03));
           const rw = isHoriz ? along : thick;
           const rh = isHoriz ? thick : along;
-          // Flush tightly against building wall
           const ox = side === 'E' ? -thick * 0.28 : side === 'W' ? thick * 0.28 : 0;
           const oy = side === 'N' ? thick * 0.28 : side === 'S' ? -thick * 0.28 : 0;
           const cx = rx + ox;
           const cy = ry + oy;
+          const portLabel = getPortDisplayLabel(def.kind, port, building.rotation);
+          const strokeCol = !enabled
+            ? 'var(--line-disabled)'
+            : isPriority
+              ? 'var(--line-warn)'
+              : 'var(--line-active)';
+
           return (
             <g
               key={port.index}
@@ -68,16 +117,20 @@ const PortDiagram: React.FC<{
               onClick={() => onTogglePort(port.index)}
               style={{ cursor: 'pointer' }}
             >
-              <title>{`接口 #${port.index + 1} (${side}) · ${enabled ? '活跃（点击禁用）' : '已禁用（点击启用）'}`}</title>
+              <title>
+                {`${portLabel} · ${enabled ? '活跃（点击禁用）' : '已禁用（点击启用）'}${
+                  isPriority ? ' · 优先通道' : ''
+                }${filterItemId ? ` · 过滤：${getItemNameZh(filterItemId)}` : ''}`}
+              </title>
               <rect
                 x={cx - rw / 2}
                 y={cy - rh / 2}
                 width={rw}
                 height={rh}
                 rx={0.04}
-                fill="#0b1017"
-                stroke={enabled ? '#50a87b' : '#873d42'}
-                strokeWidth={0.1}
+                fill="var(--bg-input)"
+                stroke={strokeCol}
+                strokeWidth={isPriority ? 0.12 : 0.095}
               />
               {enabled ? (
                 isHoriz ? (
@@ -86,7 +139,7 @@ const PortDiagram: React.FC<{
                     y1={cy}
                     x2={cx + rw * 0.3}
                     y2={cy}
-                    stroke="#50a87b"
+                    stroke={strokeCol}
                     strokeWidth={0.08}
                   />
                 ) : (
@@ -95,15 +148,18 @@ const PortDiagram: React.FC<{
                     y1={cy - rh * 0.3}
                     x2={cx}
                     y2={cy + rh * 0.3}
-                    stroke="#50a87b"
+                    stroke={strokeCol}
                     strokeWidth={0.08}
                   />
                 )
               ) : (
-                <g stroke="#8c4247" strokeWidth={0.08}>
+                <g stroke="var(--line-disabled)" strokeWidth={0.08}>
                   <line x1={cx - rw * 0.38} y1={cy - rh * 0.38} x2={cx + rw * 0.38} y2={cy + rh * 0.38} />
                   <line x1={cx + rw * 0.38} y1={cy - rh * 0.38} x2={cx - rw * 0.38} y2={cy + rh * 0.38} />
                 </g>
+              )}
+              {filterItemId && enabled && (
+                <circle cx={cx} cy={cy} r={Math.min(rw, rh) * 0.34} fill="var(--border-focus)" />
               )}
             </g>
           );
@@ -125,6 +181,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onClearSelection,
 }) => {
   const [recipeQuery, setRecipeQuery] = useState('');
+  const [itemQuery, setItemQuery] = useState('');
 
   const selectedModules = useMemo(
     () => doc.modules.filter((m) => selection.moduleIds.includes(m.id)),
@@ -159,11 +216,41 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     const disabledSet = new Set(singleBuilding.disabledPorts ?? []);
     const activePortCount = def ? def.ports.length - disabledSet.size : 0;
 
+    const inputPorts = def ? def.ports.filter((p) => p.role === 'in') : [];
+    const outputPorts = def ? def.ports.filter((p) => p.role === 'out') : [];
+    const isSplitterOrBalancer = def?.kind === 'splitter' || def?.kind === 'balancer';
+    const isContainer = def?.kind === 'container';
+
+    const filteredCatalogItems = CATALOG_ITEMS.filter((it) => {
+      const q = itemQuery.trim().toLowerCase();
+      if (!q) return true;
+      return it.nameZh.toLowerCase().includes(q) || it.id.toLowerCase().includes(q);
+    });
+
     const handleTogglePort = (idx: number) => {
       const next = new Set(disabledSet);
       if (next.has(idx)) next.delete(idx);
       else next.add(idx);
-      onUpdateBuilding([singleBuilding.id], { disabledPorts: Array.from(next) });
+      const patch: BuildingConfigPatch = { disabledPorts: Array.from(next) };
+      if (next.has(idx)) {
+        if (singleBuilding.priorityIn === idx) patch.priorityIn = null;
+        if (singleBuilding.priorityOut === idx) patch.priorityOut = null;
+      }
+      onUpdateBuilding([singleBuilding.id], patch);
+    };
+
+    const handleSetPortFilter = (portIdx: number, itemId: string) => {
+      const next: Record<number, string> = { ...(singleBuilding.portFilters ?? {}) };
+      if (!itemId) delete next[portIdx];
+      else next[portIdx] = itemId;
+      onUpdateBuilding([singleBuilding.id], { portFilters: Object.keys(next).length > 0 ? next : null });
+    };
+
+    const handleToggleContainerFilter = (itemId: string) => {
+      const cur = new Set(singleBuilding.filterItems ?? []);
+      if (cur.has(itemId)) cur.delete(itemId);
+      else cur.add(itemId);
+      onUpdateBuilding([singleBuilding.id], { filterItems: Array.from(cur) });
     };
 
     return (
@@ -207,6 +294,111 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 >
                   出口 (OUT)
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Splitter / Balancer Priority Configuration */}
+          {isSplitterOrBalancer && def && (
+            <div className="inspector-section">
+              {def.kind === 'balancer' && inputPorts.length >= 2 && (
+                <>
+                  <div className="section-label">输入优先级</div>
+                  <div className="btn-row compact">
+                    <button
+                      type="button"
+                      className={`cad-btn ${singleBuilding.priorityIn === undefined ? 'accent' : ''}`}
+                      onClick={() => onUpdateBuilding([singleBuilding.id], { priorityIn: null })}
+                    >
+                      均衡
+                    </button>
+                    {inputPorts.map((p) => (
+                      <button
+                        key={p.index}
+                        type="button"
+                        className={`cad-btn ${singleBuilding.priorityIn === p.index ? 'accent' : ''}`}
+                        onClick={() =>
+                          onUpdateBuilding([singleBuilding.id], {
+                            priorityIn: singleBuilding.priorityIn === p.index ? null : p.index,
+                          })
+                        }
+                      >
+                        {getPortDisplayLabel(def.kind, p, singleBuilding.rotation)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {outputPorts.length >= 2 && (
+                <>
+                  <div className="section-label">输出优先级</div>
+                  <div className="btn-row compact">
+                    <button
+                      type="button"
+                      className={`cad-btn ${singleBuilding.priorityOut === undefined ? 'accent' : ''}`}
+                      onClick={() => onUpdateBuilding([singleBuilding.id], { priorityOut: null })}
+                    >
+                      均分
+                    </button>
+                    {outputPorts.map((p) => (
+                      <button
+                        key={p.index}
+                        type="button"
+                        className={`cad-btn ${singleBuilding.priorityOut === p.index ? 'accent' : ''}`}
+                        onClick={() =>
+                          onUpdateBuilding([singleBuilding.id], {
+                            priorityOut: singleBuilding.priorityOut === p.index ? null : p.index,
+                          })
+                        }
+                      >
+                        {getPortDisplayLabel(def.kind, p, singleBuilding.rotation)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Splitter / Balancer Output Item Filters */}
+          {isSplitterOrBalancer && def && outputPorts.length > 0 && (
+            <div className="inspector-section">
+              <div className="section-head">
+                <span className="section-label">输出口物品过滤</span>
+                {singleBuilding.portFilters && Object.keys(singleBuilding.portFilters).length > 0 && (
+                  <button
+                    type="button"
+                    className="lib-mini-btn"
+                    onClick={() => onUpdateBuilding([singleBuilding.id], { portFilters: null })}
+                  >
+                    清空
+                  </button>
+                )}
+              </div>
+              <div className="port-filter-list">
+                {outputPorts.map((p) => {
+                  const curVal = singleBuilding.portFilters?.[p.index] ?? '';
+                  return (
+                    <label key={p.index} className="port-filter-row">
+                      <span className="port-filter-tag">
+                        {getPortDisplayLabel(def.kind, p, singleBuilding.rotation)}
+                      </span>
+                      <select
+                        className="cad-input port-filter-select"
+                        value={curVal}
+                        onChange={(e) => handleSetPortFilter(p.index, e.target.value)}
+                      >
+                        <option value="">不限物品</option>
+                        {CATALOG_ITEMS.map((it) => (
+                          <option key={it.id} value={it.id}>
+                            {it.nameZh}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -260,6 +452,66 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             </div>
           )}
 
+          {/* Container Logistic Item Filters (WBP_LogisticFilters) */}
+          {isContainer && (
+            <div className="inspector-section">
+              <div className="section-head">
+                <span className="section-label">
+                  容器物流过滤（{singleBuilding.filterItems?.length ?? 0}）
+                </span>
+                {singleBuilding.filterItems && singleBuilding.filterItems.length > 0 && (
+                  <button
+                    type="button"
+                    className="lib-mini-btn"
+                    onClick={() => onUpdateBuilding([singleBuilding.id], { filterItems: null })}
+                  >
+                    清空
+                  </button>
+                )}
+              </div>
+              {singleBuilding.filterItems && singleBuilding.filterItems.length > 0 && (
+                <div className="filter-chip-row">
+                  {singleBuilding.filterItems.map((itemId) => (
+                    <button
+                      key={itemId}
+                      type="button"
+                      className="filter-chip"
+                      onClick={() => handleToggleContainerFilter(itemId)}
+                      title="点击移除该物品过滤"
+                    >
+                      {getItemNameZh(itemId)} ×
+                    </button>
+                  ))}
+                </div>
+              )}
+              <input
+                id="container-item-filter"
+                name="containerItemFilter"
+                type="text"
+                className="cad-input"
+                placeholder={`筛选 ${CATALOG_ITEMS.length} 种物品...`}
+                value={itemQuery}
+                onChange={(e) => setItemQuery(e.target.value)}
+              />
+              <div className="recipe-list">
+                {filteredCatalogItems.slice(0, 40).map((it) => {
+                  const active = singleBuilding.filterItems?.includes(it.id) ?? false;
+                  return (
+                    <button
+                      key={it.id}
+                      type="button"
+                      className={`recipe-item ${active ? 'selected' : ''}`}
+                      onClick={() => handleToggleContainerFilter(it.id)}
+                    >
+                      <span className="recipe-name">{it.nameZh}</span>
+                      <span className="recipe-en">{active ? '已选' : '+'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Active / Disabled Ports Configuration */}
           {def?.configurablePorts && (
             <div className="inspector-section">
@@ -280,7 +532,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     className="lib-mini-btn"
                     onClick={() =>
                       onUpdateBuilding([singleBuilding.id], {
-                        disabledPorts: def.ports.map((p) => p.index),
+                        disabledPorts: def.ports
+                          .filter((p) => (def.kind === 'splitter' ? p.role === 'out' : true))
+                          .map((p) => p.index),
+                        priorityOut: null,
                       })
                     }
                   >
@@ -290,8 +545,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               </div>
               <PortDiagram building={singleBuilding} onTogglePort={handleTogglePort} />
               <div className="port-legend">
-                <span><i className="dot green" /> 活跃接口</span>
-                <span><i className="dot red" /> 已禁用接口（点击节点切换）</span>
+                <span><i className="dot green" /> 活跃</span>
+                <span><i className="dot red" /> 禁用（点击切换）</span>
               </div>
             </div>
           )}

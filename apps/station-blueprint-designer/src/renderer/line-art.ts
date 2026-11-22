@@ -228,85 +228,79 @@ function addRectBlock(
 }
 
 /**
- * Adds a sculpted tapered architectural wedge / sloped armour plate.
+ * Adds a true-to-game 16x16m station hull armour cap:
+ * - BPO_StationArmour_01 (top/roof, Z in [0, +4m]): raised chamfered convex armored roof plate with structural corner ribs & central boss.
+ * - BPO_StationArmour_01B (bottom/belly vertical flip, Z in [-4m, 0]): inverted recessed belly plate with internal X-truss keel ribs.
  */
-function addSlopedArmourPlate(
+function addStationArmourCap(
   target: THREE.Group,
   hw: number,
   hd: number,
-  hBack: number,
-  hFront: number,
-  mirrored: boolean,
-  fillMat: THREE.Material,
+  isBottomMirror: boolean,
+  fillBase: THREE.Material,
+  fillUpper: THREE.Material,
   primaryPts: number[],
   detailPts: number[]
-): void {
-  // Base trapezoid in XZ (sloping from back edge -X to narrower beveled nose +X, mirrored across Z for 01B)
-  const s = mirrored ? -1 : 1;
-  const xBack = -hw;
-  const xFront = hw;
-  const zOuter = s * hd;
-  const zInner = -s * hd;
-  const zTaper = s * (hd * 0.25);
+): number {
+  const outerW = hw - 0.35;
+  const outerD = hd - 0.35;
+  const outerChamfer = 2.0;
 
-  const b0: [number, number, number] = [xBack, 0, zInner];
-  const b1: [number, number, number] = [xFront, 0, zInner];
-  const b2: [number, number, number] = [xFront, 0, zTaper];
-  const b3: [number, number, number] = [xBack, 0, zOuter];
-
-  const t0: [number, number, number] = [xBack, hBack, zInner];
-  const t1: [number, number, number] = [xFront, hFront, zInner];
-  const t2: [number, number, number] = [xFront, hFront * 0.65, zTaper];
-  const t3: [number, number, number] = [xBack, hBack * 0.72, zOuter];
-
-  // Build crisp 6-face matte occlusion prism via BufferGeometry
-  const verts = [
-    // Top face (two tris)
-    ...t0, ...t1, ...t2, ...t0, ...t2, ...t3,
-    // Bottom face
-    ...b0, ...b2, ...b1, ...b0, ...b3, ...b2,
-    // Side walls
-    ...b0, ...b1, ...t1, ...b0, ...t1, ...t0,
-    ...b1, ...b2, ...t2, ...b1, ...t2, ...t1,
-    ...b2, ...b3, ...t3, ...b2, ...t3, ...t2,
-    ...b3, ...b0, ...t0, ...b3, ...t0, ...t3,
-  ];
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-  geo.computeVertexNormals();
-  target.add(new THREE.Mesh(geo, fillMat));
-
-  // Primary silhouette edges
-  const topLoop = [t0, t1, t2, t3];
-  const botLoop = [b0, b1, b2, b3];
-  for (let i = 0; i < 4; i++) {
-    const a = topLoop[i];
-    const b = topLoop[(i + 1) % 4];
-    pushSeg(primaryPts, a[0], a[2], b[0], b[2], a[1], b[1]);
-    const ba = botLoop[i];
-    const bb = botLoop[(i + 1) % 4];
-    pushSeg(detailPts, ba[0], ba[2], bb[0], bb[2], ba[1], bb[1]);
-    pushSeg(detailPts, ba[0], ba[2], a[0], a[2], ba[1], a[1]);
+  if (!isBottomMirror) {
+    // Upper roof armour cap (SM2_StationArmour_01: 16x16m x ~2.4m convex stepped hull cap)
+    const baseH = 0.85;
+    const crownH = 2.45;
+    addChamferPrism(target, outerW, outerD, 0, baseH, outerChamfer, fillBase, primaryPts, detailPts);
+    addChamferPrism(target, outerW * 0.78, outerD * 0.78, baseH, crownH, 1.65, fillUpper, primaryPts, detailPts);
+    // Central bolted armor boss
+    addChamferPrism(target, 2.5, 2.5, crownH, crownH + 0.42, 0.55, fillBase, primaryPts, detailPts);
+    // Sloped corner reinforcement ribs linking apron to raised crown
+    const cOut = outerW - outerChamfer * 0.5;
+    const cIn = outerW * 0.78 - 1.65 * 0.5;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        pushSeg(detailPts, sx * cOut, sz * cOut, sx * cIn, sz * cIn, baseH + 0.02, crownH + 0.02);
+      }
+    }
+    // Clean 4-quadrant armor panel expansion seams on crown
+    pushSeg(detailPts, -outerW * 0.76, 0, -2.5, 0, crownH + 0.02, crownH + 0.02);
+    pushSeg(detailPts, 2.5, 0, outerW * 0.76, 0, crownH + 0.02, crownH + 0.02);
+    pushSeg(detailPts, 0, -outerD * 0.76, 0, -2.5, crownH + 0.02, crownH + 0.02);
+    pushSeg(detailPts, 0, 2.5, 0, outerD * 0.76, crownH + 0.02, crownH + 0.02);
+    return crownH + 0.42;
   }
-  // Armored rib creases along the sloped deck
-  const midZ1 = (zInner + zOuter) * 0.5;
-  const midZ2 = (zInner + zTaper) * 0.5;
-  const midY1 = (hBack + hBack * 0.72) * 0.5;
-  const midY2 = (hFront + hFront * 0.65) * 0.5;
-  pushSeg(detailPts, xBack, midZ1, xFront, midZ2, midY1 + 0.02, midY2 + 0.02);
-  pushSeg(
-    detailPts,
-    (xBack + xFront) * 0.5,
-    zInner,
-    (xBack + xFront) * 0.5,
-    (zOuter + zTaper) * 0.5,
-    (hBack + hFront) * 0.5 + 0.02,
-    (hBack * 0.72 + hFront * 0.65) * 0.5 + 0.02
-  );
+
+  // Bottom/belly vertically flipped mirror armour cap (SM2_StationArmour_01B: inverted recessed belly hull)
+  const rimH = 1.65;
+  addChamferPrism(target, outerW, outerD, 0, rimH, outerChamfer, fillBase, primaryPts, detailPts);
+  // Stepped recessed inner belly frame (visually distinct inverted keel silhouette!)
+  const innerW = outerW * 0.72;
+  const innerD = outerD * 0.72;
+  pushRect(primaryPts, innerW, innerD, rimH + 0.02, 1.3);
+  pushRect(detailPts, innerW * 0.54, innerD * 0.54, rimH + 0.02, 0.8);
+  // Diagonal structural belly X-truss ribs (immediately distinguishes flipped bottom cap in 2D & 3D!)
+  pushSeg(detailPts, -innerW * 0.85, -innerD * 0.85, innerW * 0.85, innerD * 0.85, rimH + 0.02, rimH + 0.02);
+  pushSeg(detailPts, -innerW * 0.85, innerD * 0.85, innerW * 0.85, -innerD * 0.85, rimH + 0.02, rimH + 0.02);
+  // Outer bevel corner tie lines
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      pushSeg(
+        detailPts,
+        sx * (outerW - outerChamfer * 0.55),
+        sz * (outerD - outerChamfer * 0.55),
+        sx * (innerW - 0.65),
+        sz * (innerD - 0.65),
+        rimH + 0.02,
+        rimH + 0.02
+      );
+    }
+  }
+  return rimH;
 }
 
 /**
  * Flush elongated rectangular port marker hugging the building perimeter edge.
+ * Supports `compact` micro-scale for 1×1 Splitters & 1×2 Balancers so small logistics tiles stay delicate!
  */
 function buildFlushPortMarker(
   wx: number,
@@ -315,26 +309,28 @@ function buildFlushPortMarker(
   side: 'N' | 'E' | 'S' | 'W',
   enabled: boolean,
   opacity: number,
-  palette: CadThemePalette
+  palette: CadThemePalette,
+  compact = false
 ): THREE.Object3D {
   const pts: number[] = [];
-  const along = 0.27;
-  const thick = 0.068;
+  const along = compact ? 0.145 : 0.27;
+  const thick = compact ? 0.038 : 0.068;
+  const inset = compact ? 0.055 : 0.08;
   let offX = 0;
   let offZ = 0;
   let hx = along;
   let hz = thick;
 
   if (side === 'N') {
-    offZ = 0.08;
+    offZ = inset;
   } else if (side === 'S') {
-    offZ = -0.08;
+    offZ = -inset;
   } else if (side === 'E') {
-    offX = -0.08;
+    offX = -inset;
     hx = thick;
     hz = along;
   } else {
-    offX = 0.08;
+    offX = inset;
     hx = thick;
     hz = along;
   }
@@ -356,9 +352,68 @@ function buildFlushPortMarker(
     pts,
     enabled ? palette.portActiveLine : palette.portDisabledLine,
     opacity,
-    1.05,
+    compact ? 0.95 : 1.08,
     'detail'
   );
+  segs.position.set(wx + offX, y, wz + offZ);
+  return segs;
+}
+
+/**
+ * Delicate micro-chevron priority indicator for Splitter / Balancer priority input or output lane.
+ */
+function buildPortPriorityMarker(
+  wx: number,
+  y: number,
+  wz: number,
+  side: 'N' | 'E' | 'S' | 'W',
+  isInput: boolean,
+  opacity: number,
+  palette: CadThemePalette
+): THREE.Object3D {
+  // Position tucked slightly inside the wall edge
+  const inset = 0.155;
+  const offX = side === 'E' ? -inset : side === 'W' ? inset : 0;
+  const offZ = side === 'S' ? -inset : side === 'N' ? inset : 0;
+  // Base direction: outward from building along `side`; flip for input priority so chevron points along item flow!
+  const outRot = side === 'E' ? 0 : side === 'S' ? 1 : side === 'W' ? 2 : 3;
+  const flowRot = isInput ? (outRot + 2) % 4 : outRot;
+
+  const pts: number[] = [];
+  // Compact double-chevron (» / «)
+  pushChevron(pts, -0.032, 0, 0.115, 0);
+  pushChevron(pts, 0.042, 0, 0.115, 0);
+
+  const color = palette.isLight ? palette.selectOutline : palette.powerTint;
+  const segs = buildLineSegments(pts, color, opacity, 1.15, 'primary');
+  segs.position.set(wx + offX, y, wz + offZ);
+  segs.rotation.y = -flowRot * (Math.PI / 2);
+  return segs;
+}
+
+/**
+ * Tiny crisp diamond pip indicating an active item filter on a Splitter / Balancer output port.
+ */
+function buildPortFilterPip(
+  wx: number,
+  y: number,
+  wz: number,
+  side: 'N' | 'E' | 'S' | 'W',
+  hasPriority: boolean,
+  opacity: number,
+  palette: CadThemePalette
+): THREE.Object3D {
+  const inset = hasPriority ? 0.255 : 0.165;
+  const offX = side === 'E' ? -inset : side === 'W' ? inset : 0;
+  const offZ = side === 'S' ? -inset : side === 'N' ? inset : 0;
+  const r = 0.058;
+  const pts = [
+    0, 0, -r, r, 0, 0,
+    r, 0, 0, 0, 0, r,
+    0, 0, r, -r, 0, 0,
+    -r, 0, 0, 0, 0, -r,
+  ];
+  const segs = buildLineSegments(pts, palette.researchTint, opacity, 1.05, 'detail');
   segs.position.set(wx + offX, y, wz + offZ);
   return segs;
 }
@@ -450,6 +505,9 @@ export function buildBeltLineArt(
     color: isSelected ? palette.baseFillSelected : palette.beltTrackFill,
     transparent: opacity < 0.99,
     opacity: opacity * 0.92,
+    polygonOffset: true,
+    polygonOffsetFactor: 2,
+    polygonOffsetUnits: 4,
     depthWrite: false,
   });
   const bed = new THREE.Mesh(bedGeo, bedMat);
@@ -541,6 +599,9 @@ export function buildMachineLineArt(
     color: isGhost ? ghostTint : isSelected ? palette.baseFillSelected : palette.baseFill,
     transparent: isGhost || opacity < 0.99,
     opacity: isGhost ? opacity * 0.08 : opacity * 0.98,
+    polygonOffset: true,
+    polygonOffsetFactor: 2,
+    polygonOffsetUnits: 4,
     depthWrite: false,
   });
   const plate = new THREE.Mesh(plateGeo, plateMat);
@@ -854,19 +915,64 @@ export function buildMachineLineArt(
   root.add(extrudeGroup);
 
   if (def.configurablePorts) {
+    const isLogistics = def.kind === 'splitter' || def.kind === 'balancer';
     const worldPorts = getBuildingWorldPorts(b, def);
+    const markerOp = isGhost ? opacity * 0.82 : opacity;
     for (const wp of worldPorts) {
-      root.add(
-        buildFlushPortMarker(
-          wp.worldX,
-          floorY + 0.025,
-          wp.worldY,
-          wp.side,
-          wp.enabled,
-          isGhost ? opacity * 0.82 : opacity,
-          palette
-        )
-      );
+      const idx = wp.port.index;
+      const isPriorityIn = b.priorityIn === idx;
+      const isPriorityOut = b.priorityOut === idx;
+      const hasFilter = Boolean(b.portFilters?.[idx]);
+
+      // For Splitters: show compact micro-slots on all 3 outputs (plus input only if disabled).
+      // For Balancers: show compact micro-slots only when disabled (keeps balanced lanes ultra-clean!).
+      const drawSlot =
+        !isLogistics ||
+        !wp.enabled ||
+        (def.kind === 'splitter' && wp.port.role === 'out');
+
+      if (drawSlot) {
+        root.add(
+          buildFlushPortMarker(
+            wp.worldX,
+            floorY + 0.025,
+            wp.worldY,
+            wp.side,
+            wp.enabled,
+            markerOp,
+            palette,
+            isLogistics
+          )
+        );
+      }
+
+      if ((isPriorityIn || isPriorityOut) && wp.enabled) {
+        root.add(
+          buildPortPriorityMarker(
+            wp.worldX,
+            floorY + 0.036,
+            wp.worldY,
+            wp.side,
+            isPriorityIn,
+            markerOp,
+            palette
+          )
+        );
+      }
+
+      if (hasFilter && wp.enabled) {
+        root.add(
+          buildPortFilterPip(
+            wp.worldX,
+            floorY + 0.038,
+            wp.worldY,
+            wp.side,
+            isPriorityIn || isPriorityOut,
+            markerOp,
+            palette
+          )
+        );
+      }
     }
   }
 
@@ -937,10 +1043,18 @@ export function buildStationModuleArt(
   switch (def.id) {
     case 'BPO_StationArmour_01':
     case 'BPO_StationArmour_01B': {
-      // Sleek beveled hull fairing wedge (real 4m height, hugging inner corner with generous open space outside)
-      const mirrored = def.id === 'BPO_StationArmour_01B';
-      roofHeight = 3.4;
-      addSlopedArmourPlate(extrudeGroup, hw * 0.88, hd * 0.84, roofHeight, 0.85, mirrored, fillBase, primaryPts, detailPts);
+      // True-to-game 16x16m upper roof armour cap (01) vs vertically-flipped lower belly armour cap (01B)
+      const isBottomMirror = def.id === 'BPO_StationArmour_01B';
+      roofHeight = addStationArmourCap(
+        extrudeGroup,
+        hw,
+        hd,
+        isBottomMirror,
+        fillBase,
+        fillUpper,
+        primaryPts,
+        detailPts
+      );
       break;
     }
 
@@ -1151,6 +1265,98 @@ export function buildStationModuleArt(
         isGhost ? ghostTint : isSelected ? palette.linePrimary : palette.lineDetail,
         isGhost ? opacity * 0.62 : opacity,
         0.85,
+        'detail'
+      )
+    );
+  }
+
+  root.add(extrudeGroup);
+  return { root, extrudeGroup, roofHeight };
+}
+
+/**
+ * Sculpted architectural 3D/2D gantry & freighter berth structure for BPO_Dock_2 (Industrial Dock 3x2).
+ * Local centered space: X in [-24, +24], Z in [-16, +16].
+ * - West 1x2 indoor factory bay: X in [-24, -8] (handled by slab + floor surface)
+ * - East 2x2 open freighter hangar: X in [-8, +24] (twin overhead gantry arms, clamp pylons, cargo bulkhead, berth centerline)
+ */
+export function buildIndustrialDockGantryArt(
+  mod: PlacedModule,
+  def: StationModuleDef,
+  baseY: number,
+  opacity: number,
+  isSelected: boolean,
+  palette: CadThemePalette = CAD_THEMES['platinum-gold'],
+  ghostTint?: number
+): MachineLineArtResult {
+  const root = new THREE.Group();
+  const [cx, cz] = getModuleCenterM(mod, def);
+  const isGhost = ghostTint !== undefined;
+
+  const extrudeGroup = new THREE.Group();
+  extrudeGroup.position.set(cx, baseY, cz);
+  extrudeGroup.rotation.y = -mod.rotation * (Math.PI / 2);
+
+  const fillBase = createOcclusionMat(
+    isGhost ? ghostTint : isSelected ? palette.bodyFillSelected : palette.bodyFill,
+    opacity,
+    isGhost
+  );
+  const fillUpper = createOcclusionMat(
+    isGhost ? ghostTint : isSelected ? palette.bodyFillSelected : palette.bodyFillUpper,
+    opacity,
+    isGhost
+  );
+
+  const primaryPts: number[] = [];
+  const detailPts: number[] = [];
+  const roofHeight = 5.4;
+
+  // Bulkhead docking interface collar separating west indoor bay (x=-8) from east open freighter berth
+  addRectBlock(extrudeGroup, -7.8, -11.4, 1.1, 3.6, 0, 4.4, fillBase, primaryPts, detailPts);
+  addRectBlock(extrudeGroup, -7.8, 11.4, 1.1, 3.6, 0, 4.4, fillBase, primaryPts, detailPts);
+  // Central airlock transfer threshold along x=-8
+  addRectBlock(extrudeGroup, -7.8, 0, 0.85, 5.2, 0, 1.6, fillUpper, primaryPts, detailPts);
+
+  // Twin long open freighter docking gantry arms extending into open space (+X from -8 to +23.4)
+  for (const sz of [-1, 1]) {
+    const armZ = sz * 13.6;
+    // Lower docking pier deck
+    addRectBlock(extrudeGroup, 7.7, armZ, 15.6, 1.75, 0, 1.4, fillBase, primaryPts, detailPts);
+    // Raised overhead gantry girder beam
+    addRectBlock(extrudeGroup, 6.2, armZ, 13.4, 1.05, 1.4, roofHeight, fillUpper, primaryPts, detailPts);
+    // Forward mooring clamp head at x=+21.2
+    addChamferPrism(extrudeGroup, 2.0, 2.1, 0, 3.8, 0.65, fillUpper, primaryPts, detailPts, {
+      cx: 21.2,
+      cz: armZ - sz * 0.3,
+    });
+    // Mid-berth cargo transfer stanchion ribs
+    for (const bx of [-1.5, 6.5, 14.5]) {
+      pushSeg(detailPts, bx, armZ - sz * 1.75, bx, armZ - sz * 3.1, 1.35, 1.35);
+      pushSeg(detailPts, bx, armZ - sz * 3.1, bx, armZ - sz * 3.1, 0.2, 1.35);
+    }
+  }
+
+  // Subtle open ship-berth approach centerline & docking stop bar inside the empty 32x24m freighter bay
+  pushSeg(detailPts, -5.0, 0, 21.5, 0, 0.08, 0.08);
+  pushSeg(detailPts, -5.0, -5.5, -5.0, 5.5, 0.08, 0.08);
+  pushSeg(detailPts, 7.5, -3.2, 7.5, 3.2, 0.08, 0.08);
+  pushChevron(detailPts, 15.5, 0, 3.2, 0.08);
+  pushChevron(detailPts, 2.5, 0, 3.2, 0.08);
+
+  const primaryColor = isGhost ? ghostTint : isSelected ? palette.lineSelected : palette.linePrimary;
+  if (primaryPts.length > 0) {
+    extrudeGroup.add(
+      buildLineSegments(primaryPts, primaryColor, isGhost ? opacity * 0.94 : opacity, isSelected ? 1.45 : 1.15, 'primary')
+    );
+  }
+  if (detailPts.length > 0) {
+    extrudeGroup.add(
+      buildLineSegments(
+        detailPts,
+        isGhost ? ghostTint : isSelected ? palette.linePrimary : palette.lineDetail,
+        isGhost ? opacity * 0.65 : opacity,
+        0.9,
         'detail'
       )
     );

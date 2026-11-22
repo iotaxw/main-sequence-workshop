@@ -6,12 +6,14 @@ import {
   getModuleBoundsM,
   getModuleSizeUnits,
   normalizeRotation,
+  rotateVec2,
   STATION_UNIT_M,
   validateBuildingPlacement,
   validateModulePlacement,
 } from './geometry';
 import type {
   BlueprintDocument,
+  BuildableDef,
   PlacedBuilding,
   PlacedModule,
   Rotation,
@@ -19,6 +21,44 @@ import type {
   SelectionState,
   ViewMode,
 } from './types';
+
+function cloneBuildingExtras(b: {
+  recipeId?: string;
+  label?: string;
+  disabledPorts?: number[];
+  undergroundMode?: 'in' | 'out';
+  priorityIn?: number;
+  priorityOut?: number;
+  portFilters?: Record<number, string>;
+  filterItems?: string[];
+}): Partial<PlacedBuilding> {
+  const out: Partial<PlacedBuilding> = {};
+  if (b.recipeId) out.recipeId = b.recipeId;
+  if (b.label) out.label = b.label;
+  if (b.disabledPorts && b.disabledPorts.length > 0) out.disabledPorts = [...b.disabledPorts];
+  if (b.undergroundMode) out.undergroundMode = b.undergroundMode;
+  if (b.priorityIn !== undefined) out.priorityIn = b.priorityIn;
+  if (b.priorityOut !== undefined) out.priorityOut = b.priorityOut;
+  if (b.portFilters && Object.keys(b.portFilters).length > 0) out.portFilters = { ...b.portFilters };
+  if (b.filterItems && b.filterItems.length > 0) out.filterItems = [...b.filterItems];
+  return out;
+}
+
+/** Remap a building's local port index when mirroring a blueprint horizontally across world X */
+function remapPortIndexMirrorX(
+  def: BuildableDef | undefined,
+  rot: Rotation,
+  nextRot: Rotation,
+  portIndex: number
+): number {
+  if (!def) return portIndex;
+  const src = def.ports.find((p) => p.index === portIndex);
+  if (!src) return portIndex;
+  const [wx, wy] = rotateVec2(src.hx, src.hy, rot);
+  const [lx, ly] = rotateVec2(-wx, wy, normalizeRotation(4 - nextRot));
+  const hit = def.ports.find((p) => p.hx === lx && p.hy === ly);
+  return hit ? hit.index : portIndex;
+}
 
 let idCounter = 1;
 export function createEntityId(prefix: string): string {
@@ -85,6 +125,10 @@ export function placeBuildingCmd(
     label?: string;
     disabledPorts?: number[];
     undergroundMode?: 'in' | 'out';
+    priorityIn?: number;
+    priorityOut?: number;
+    portFilters?: Record<number, string>;
+    filterItems?: string[];
   },
   options: { allowBeltReplace?: boolean; allowForceReplace?: boolean } = {}
 ): CommandResult {
@@ -115,10 +159,7 @@ export function placeBuildingCmd(
     y: spec.y,
     floor: spec.floor,
     rotation: normalizeRotation(spec.rotation),
-    ...(spec.recipeId ? { recipeId: spec.recipeId } : {}),
-    ...(spec.label ? { label: spec.label } : {}),
-    ...(spec.disabledPorts && spec.disabledPorts.length > 0 ? { disabledPorts: [...spec.disabledPorts] } : {}),
-    ...(spec.undergroundMode ? { undergroundMode: spec.undergroundMode } : {}),
+    ...cloneBuildingExtras(spec),
   };
 
   return {
@@ -191,6 +232,10 @@ export function updateBuildingConfigCmd(
     label?: string | null;
     disabledPorts?: number[];
     undergroundMode?: 'in' | 'out';
+    priorityIn?: number | null;
+    priorityOut?: number | null;
+    portFilters?: Record<number, string> | null;
+    filterItems?: string[] | null;
   }
 ): CommandResult {
   const idSet = new Set(buildingIds);
@@ -214,6 +259,22 @@ export function updateBuildingConfigCmd(
     }
     if (patch.undergroundMode !== undefined) {
       next.undergroundMode = patch.undergroundMode;
+    }
+    if (patch.priorityIn !== undefined) {
+      if (patch.priorityIn === null) delete next.priorityIn;
+      else next.priorityIn = patch.priorityIn;
+    }
+    if (patch.priorityOut !== undefined) {
+      if (patch.priorityOut === null) delete next.priorityOut;
+      else next.priorityOut = patch.priorityOut;
+    }
+    if (patch.portFilters !== undefined) {
+      if (!patch.portFilters || Object.keys(patch.portFilters).length === 0) delete next.portFilters;
+      else next.portFilters = { ...patch.portFilters };
+    }
+    if (patch.filterItems !== undefined) {
+      if (!patch.filterItems || patch.filterItems.length === 0) delete next.filterItems;
+      else next.filterItems = Array.from(new Set(patch.filterItems));
     }
     return next;
   });
@@ -384,7 +445,7 @@ export function extractSelectionAsBlueprint(
         x: b.x - shiftXM,
         y: b.y - shiftYM,
         floor: b.floor - minFloor,
-        ...(b.disabledPorts ? { disabledPorts: [...b.disabledPorts] } : {}),
+        ...cloneBuildingExtras(b),
       })),
     };
   }
@@ -408,7 +469,7 @@ export function extractSelectionAsBlueprint(
       x: b.x - minX,
       y: b.y - minY,
       floor: b.floor - minFloor,
-      ...(b.disabledPorts ? { disabledPorts: [...b.disabledPorts] } : {}),
+      ...cloneBuildingExtras(b),
     })),
   };
 }
@@ -469,7 +530,7 @@ export function rotateBlueprint(bp: BlueprintDocument, delta: 1 | -1): Blueprint
       x: nextX,
       y: nextY,
       rotation: normalizeRotation(b.rotation + delta),
-      ...(b.disabledPorts ? { disabledPorts: [...b.disabledPorts] } : {}),
+      ...cloneBuildingExtras(b),
     };
   });
 
@@ -501,11 +562,22 @@ export function mirrorBlueprintX(bp: BlueprintDocument): BlueprintDocument {
   const buildings: PlacedBuilding[] = bp.buildings.map((b) => {
     const def = getBuildableDef(b.type);
     const [w] = def ? getBuildingSizeCells(def, b.rotation) : [1];
+    const nextRot = flipRotX(b.rotation);
+    const remap = (idx: number) => remapPortIndexMirrorX(def, b.rotation, nextRot, idx);
+    const remappedFilters = b.portFilters
+      ? Object.fromEntries(Object.entries(b.portFilters).map(([k, v]) => [remap(Number(k)), v]))
+      : undefined;
     return {
       ...b,
       x: baseW - (b.x + w),
-      rotation: flipRotX(b.rotation),
-      ...(b.disabledPorts ? { disabledPorts: [...b.disabledPorts] } : {}),
+      rotation: nextRot,
+      ...cloneBuildingExtras(b),
+      ...(b.disabledPorts && b.disabledPorts.length > 0
+        ? { disabledPorts: b.disabledPorts.map(remap).sort((a, z) => a - z) }
+        : {}),
+      ...(b.priorityIn !== undefined ? { priorityIn: remap(b.priorityIn) } : {}),
+      ...(b.priorityOut !== undefined ? { priorityOut: remap(b.priorityOut) } : {}),
+      ...(remappedFilters ? { portFilters: remappedFilters } : {}),
     };
   });
 
@@ -541,7 +613,7 @@ export function computeStampCandidates(
     x: b.x + shiftX,
     y: b.y + shiftY,
     floor: b.floor + anchor.floor,
-    ...(b.disabledPorts ? { disabledPorts: [...b.disabledPorts] } : {}),
+    ...cloneBuildingExtras(b),
   }));
 
   return { modules, buildings };
