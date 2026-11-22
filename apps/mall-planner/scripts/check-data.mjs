@@ -33,13 +33,16 @@ const state = model.createDefaultState();
 const topology = model.computeLevels(state);
 const issues = model.getIssues(state, topology);
 assert(state.version === 3, 'Expected plan schema v3.');
-assert(state.targetItemIds.length === 36, `Expected 36 targets, got ${state.targetItemIds.length}.`);
+assert(state.targetItemIds.length === 39, `Expected 39 targets, got ${state.targetItemIds.length}.`);
 assert(window.MALL_DEFAULTS.manualOnlyItemIds.every(itemId => !state.includedItemIds.includes(itemId) && !state.targetItemIds.includes(itemId)), 'Armoury items must stay outside the default plan.');
-assert(state.externalItemIds.length === 3, `Expected 3 external inputs, got ${state.externalItemIds.length}.`);
-assert(state.includedItemIds.length === 62, `Expected 62 planned items, got ${state.includedItemIds.length}.`);
+assert(state.externalItemIds.length === 4, `Expected 4 external inputs, got ${state.externalItemIds.length}.`);
+assert(state.includedItemIds.length === 63, `Expected 63 planned items, got ${state.includedItemIds.length}.`);
 assert(Math.max(...Object.values(topology.levels)) === 11, 'Expected the default network to reach L11.');
 assert(topology.levels.ITEM_Lonsdaleite === 7, `Expected compact Lonsdaleite placement at L7, got L${topology.levels.ITEM_Lonsdaleite}.`);
-assert(['ITEM_ChitinComposite', 'ITEM_Multisensor', 'ITEM_AdvancedPlates'].every(itemId => state.targetItemIds.includes(itemId)), 'Armoury ingredient targets are missing.');
+assert(topology.levels.ITEM_StrangeMatterCrystal === 0 && topology.levels.ITEM_WarpFuel === 1, `Expected Strange Matter Warp Fuel at L0->L1, got L${topology.levels.ITEM_StrangeMatterCrystal}->L${topology.levels.ITEM_WarpFuel}.`);
+assert(['ITEM_Graphene', 'ITEM_ChitinComposite', 'ITEM_AdvancedPlates'].every(itemId => state.targetItemIds.includes(itemId)), 'Armoury direct ingredient targets are missing.');
+assert(['ITEM_Xenobacteria', 'ITEM_Xenoarchaea', 'ITEM_Xenoeukarya'].every(itemId => state.targetItemIds.includes(itemId)), 'Bio seed backup targets are missing.');
+assert(!state.targetItemIds.includes('ITEM_Multisensor') && state.includedItemIds.includes('ITEM_Multisensor'), 'Multisensor should stay an intermediate item in the closure.');
 let emptyLayers = 0;
 const countedEdges = new Set();
 for (const outputId of state.includedItemIds) {
@@ -54,15 +57,15 @@ for (const outputId of state.includedItemIds) {
     }
   }
 }
-assert(emptyLayers === 57, `Expected 57 empty layers in the full graph after armoury exclusion and compaction, got ${emptyLayers}.`);
+assert(emptyLayers === 54, `Expected 54 empty layers in the full graph after Strange Matter Warp Fuel and compaction, got ${emptyLayers}.`);
 assert(issues.length === 0, `Default plan has issues: ${JSON.stringify(issues)}`);
 const migrated = model.validateImported({ ...state, version: 1, targetItemIds: [...state.targetItemIds, ...window.MALL_DEFAULTS.manualOnlyItemIds] });
-assert(migrated.version === 3 && migrated.targetItemIds.length === 36 && migrated.includedItemIds.length === 62 && migrated.migrationNote, 'V1 armoury migration failed.');
+assert(migrated.version === 3 && migrated.targetItemIds.length === 39 && migrated.includedItemIds.length === 63 && migrated.migrationNote, 'V1 armoury migration failed.');
 const migratedV2 = model.validateImported({
   ...state,
   version: 2,
   includedItemIds: [...state.includedItemIds, ...window.MALL_DEFAULTS.manualOnlyItemIds],
   targetItemIds: [...state.targetItemIds, ...window.MALL_DEFAULTS.manualOnlyItemIds],
 });
-assert(migratedV2.version === 3 && migratedV2.includedItemIds.length === 62 && migratedV2.targetItemIds.length === 36, 'V2 armoury plan migration failed.');
+assert(migratedV2.version === 3 && migratedV2.includedItemIds.length === 63 && migratedV2.targetItemIds.length === 39, 'V2 armoury plan migration failed.');
 console.log(`Checked Build ${data.game.buildId}: ${state.includedItemIds.length} planned items, ${state.targetItemIds.length} targets, L0-L11, ${data.recipes.length} recipes, ${construction.entries.length} construction entries, no default issues.`);

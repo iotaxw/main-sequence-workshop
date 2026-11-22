@@ -19,8 +19,9 @@ import {
   undoHistory,
   updateBuildingConfigCmd,
 } from './commands';
-import { computeUndergroundLinks, isCellBuildable, validateBuildingPlacement } from './geometry';
+import { computeUndergroundLinks, isCellBuildable, validateBuildingPlacement, validateModulePlacement } from './geometry';
 import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
+import { DEFAULT_LIBRARY_PRESETS } from './presets';
 
 describe('Build 26639889 catalog verification', () => {
   it('includes all extracted station modules, buildables, and recipes with binary-verified dimensions', () => {
@@ -277,5 +278,24 @@ describe('Versioned JSON codec safety', () => {
     });
     const res = deserializeBlueprint(newer);
     expect(res.ok).toBe(false);
+  });
+
+  it('validates 100% of built-in default profile blueprints (zero overlaps, zero out-of-floor, valid recipes)', () => {
+    expect(DEFAULT_LIBRARY_PRESETS.length).toBeGreaterThanOrEqual(9);
+    for (const preset of DEFAULT_LIBRARY_PRESETS) {
+      const { doc, path } = preset;
+      expect(doc.modules.length, `${path} modules`).toBeGreaterThan(0);
+      for (const m of doc.modules) {
+        const issue = validateModulePlacement(doc, m, new Set([m.id]));
+        expect(issue, `${path} module ${m.id} (${m.type}) at (${m.gx},${m.gy},L${m.floor})`).toBeNull();
+      }
+      for (const b of doc.buildings) {
+        const issue = validateBuildingPlacement(doc, b, { ignoreBuildingIds: new Set([b.id]) });
+        expect(issue, `${path} building ${b.id} (${b.type}) at (${b.x},${b.y},L${b.floor})`).toBeNull();
+        if (b.recipeId) {
+          expect(getRecipeDef(b.recipeId), `${path} recipeId ${b.recipeId} on ${b.id}`).toBeDefined();
+        }
+      }
+    }
   });
 });

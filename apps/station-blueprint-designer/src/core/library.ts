@@ -1,5 +1,6 @@
 import { deserializeBlueprint, serializeBlueprint, createStarterBlueprint } from './codec';
 import { getDocumentFloorRange } from './geometry';
+import { DEFAULT_LIBRARY_PRESETS } from './presets';
 import type { BlueprintDocument, LibraryFileEntry, LibraryFolderEntry, LibraryNode } from './types';
 
 export interface BlueprintLibraryDriver {
@@ -204,9 +205,20 @@ export class FileSystemFolderDriver implements BlueprintLibraryDriver {
 interface VirtualStoreData {
   folders: string[];
   files: Record<string, { raw: string; updatedAt: number }>;
+  seededPresetPaths?: string[];
 }
 
 const VIRTUAL_LIB_KEY = 'ms-sbd:virtual-library:v2';
+
+function ensureParentFolders(folders: string[], relPath: string): void {
+  const parts = normalizeRelPath(relPath).split('/');
+  parts.pop();
+  let cur = '';
+  for (const seg of parts) {
+    cur = cur ? `${cur}/${seg}` : seg;
+    if (!folders.includes(cur)) folders.push(cur);
+  }
+}
 
 /**
  * Built-in Offline Virtual Folder Driver (persisted in localStorage/IndexedDB)
@@ -216,12 +228,33 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
   readonly mode = 'virtual-idb' as const;
   readonly rootLabel = '本地蓝图库（内置）';
 
+  private syncNewPresets(store: VirtualStoreData): boolean {
+    const seeded = new Set(store.seededPresetPaths ?? []);
+    let changed = !Array.isArray(store.seededPresetPaths);
+    const now = Date.now();
+    for (const preset of DEFAULT_LIBRARY_PRESETS) {
+      const norm = normalizeRelPath(preset.path);
+      if (seeded.has(norm)) continue;
+      seeded.add(norm);
+      if (!store.files[norm]) {
+        ensureParentFolders(store.folders, norm);
+        store.files[norm] = { raw: serializeBlueprint(preset.doc), updatedAt: now };
+      }
+      changed = true;
+    }
+    store.seededPresetPaths = [...seeded];
+    return changed;
+  }
+
   private loadStore(): VirtualStoreData {
     try {
       const raw = localStorage.getItem(VIRTUAL_LIB_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as VirtualStoreData;
         if (parsed && Array.isArray(parsed.folders) && parsed.files && typeof parsed.files === 'object') {
+          if (this.syncNewPresets(parsed)) {
+            this.saveStore(parsed);
+          }
           return parsed;
         }
       }
@@ -252,7 +285,9 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
         '整站方案/双层装配枢纽.json': { raw: serializeBlueprint(starter), updatedAt: Date.now() },
         '产线子蓝图/双精炼标准单元.json': { raw: serializeBlueprint(subLine), updatedAt: Date.now() },
       },
+      seededPresetPaths: [],
     };
+    this.syncNewPresets(seeded);
     this.saveStore(seeded);
     return seeded;
   }
