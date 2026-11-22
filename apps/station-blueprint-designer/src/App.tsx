@@ -52,6 +52,7 @@ import type {
 } from './core/types';
 import { PITCH_SNAP_PRESETS } from './renderer/camera-rig';
 import { CadSceneController } from './renderer/scene-controller';
+import { CAD_THEMES, type CadThemeId, loadSavedTheme, saveTheme } from './renderer/theme';
 import { HelpDrawer } from './ui/HelpDrawer';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { LibrarySidebar } from './ui/LibrarySidebar';
@@ -93,6 +94,7 @@ export const App: React.FC = () => {
   const [lastAutosaveAt, setLastAutosaveAt] = useState<number | null>(initialSession.savedAt || null);
 
   const [viewMode, setViewMode] = useState<ViewMode>('station');
+  const [theme, setTheme] = useState<CadThemeId>(() => loadSavedTheme());
   const [focusFloor, setFocusFloor] = useState(0);
   const [hideAbove, setHideAbove] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -250,6 +252,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     sceneRef.current?.syncState({
       doc,
+      theme,
       viewMode,
       focusFloor,
       hideAbove,
@@ -263,6 +266,7 @@ export const App: React.FC = () => {
     });
   }, [
     doc,
+    theme,
     viewMode,
     focusFloor,
     hideAbove,
@@ -1317,7 +1321,7 @@ export const App: React.FC = () => {
   const folderOptions = useMemo(() => collectFolderPaths(libraryTree), [libraryTree]);
 
   return (
-    <div className="cad-shell">
+    <div className="cad-shell" data-theme={theme}>
       <header className="cad-topbar">
         <div className="topbar-group">
           <span className="brand-mark">MS · CAD</span>
@@ -1442,6 +1446,18 @@ export const App: React.FC = () => {
             title="重做 (Ctrl+Shift+Z)"
           >
             重做
+          </button>
+          <button
+            type="button"
+            className="cad-btn"
+            onClick={() => {
+              const next: CadThemeId = theme === 'platinum-gold' ? 'obsidian-slate' : 'platinum-gold';
+              setTheme(next);
+              saveTheme(next);
+            }}
+            title="切换线条主题（曜石白金·香槟金 / 经典曜石银灰）"
+          >
+            主题 · {CAD_THEMES[theme].nameZh}
           </button>
           <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="保存蓝图 (Ctrl+S)">
             保存

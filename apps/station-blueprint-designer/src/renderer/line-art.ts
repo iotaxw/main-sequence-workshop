@@ -5,38 +5,21 @@ import {
   getBuildingCenterM,
   getBuildingSizeCells,
   getBuildingWorldPorts,
+  getModuleCenterM,
+  getModuleSizeUnits,
   rotationToDelta,
+  STATION_UNIT_M,
 } from './../core/geometry';
-import type { BlueprintDocument, BuildableDef, PlacedBuilding } from './../core/types';
+import type { BlueprintDocument, BuildableDef, PlacedBuilding, PlacedModule, StationModuleDef } from './../core/types';
 import { createCrispLineSegments } from './crisp-lines';
+import { CAD_THEMES, type CadThemePalette } from './theme';
 
 /**
- * Restrained dark-CAD architectural line-art geometry builders.
- * - Vertical top-down view (pitch ~89 deg): extrudeGroup.scale.y -> ~0.01 (pure flat 2D blueprint plan).
- * - Tilted 3D perspectives (work 64 deg / iso 42 deg / low 22 deg): extrudeGroup.scale.y -> 1.0
- *   (sculpted hidden-line dark architectural silhouettes with crisp hairline contours).
+ * Restrained architectural line-art geometry builders (unified across buildings & non-platform station modules).
+ * - Focus-layer primary & detail strokes use pre-baked ink colors at opacity = 1.0 (zero junction dots!).
+ * - Vertical top-down view (pitch ~89 deg): extrudeGroup.scale.y -> ~0.008 (pure flat 2D architectural plan).
+ * - Tilted 3D perspectives (64 / 42 / 22 deg): extrudeGroup.scale.y -> 1.0 (sculpted hidden-line 3D forms).
  */
-
-export const LINE_ART_PALETTE = {
-  baseFill: 0x0c1119,
-  baseFillSelected: 0x121c29,
-  bodyFill: 0x0d131d,
-  bodyFillUpper: 0x101723,
-  bodyFillSelected: 0x142030,
-  linePrimary: 0x768ca6,
-  lineSecondary: 0x3e5168,
-  lineDetail: 0x526882,
-  lineSelected: 0xb2cde6,
-  beltTrackFill: 0x0d141e,
-  beltRailMk1: 0x4e6075,
-  beltRailMk2: 0x6b88a4,
-  beltRailMk3: 0x8ba3be,
-  beltArrow: 0x849db8,
-  portActiveLine: 0x50a87b,   // Restrained sage-emerald hairline slot
-  portDisabledLine: 0x873d42, // Quiet muted crimson hairline slot
-  researchTint: 0x629498,
-  powerTint: 0xa28f58,
-};
 
 export interface MachineLineArtResult {
   root: THREE.Group;
@@ -82,6 +65,31 @@ function pushRect(out: number[], hw: number, hd: number, y = 0, chamfer = 0): vo
   pushLoop(out, getChamferLoop(hw, hd, chamfer), y);
 }
 
+function pushArc(
+  out: number[],
+  cx: number,
+  cz: number,
+  radius: number,
+  startRad: number,
+  endRad: number,
+  steps: number,
+  y = 0
+): void {
+  for (let i = 0; i < steps; i++) {
+    const a0 = startRad + ((endRad - startRad) * i) / steps;
+    const a1 = startRad + ((endRad - startRad) * (i + 1)) / steps;
+    pushSeg(
+      out,
+      cx + Math.cos(a0) * radius,
+      cz + Math.sin(a0) * radius,
+      cx + Math.cos(a1) * radius,
+      cz + Math.sin(a1) * radius,
+      y,
+      y
+    );
+  }
+}
+
 function pushPolygon(out: number[], r: number, sides: number, y = 0, rotOffset = 0, cx = 0, cz = 0): void {
   for (let i = 0; i < sides; i++) {
     const a0 = rotOffset + (i / sides) * Math.PI * 2;
@@ -107,7 +115,7 @@ function buildLineSegments(
   pts: number[],
   color: number,
   opacity: number,
-  widthPx = 1.15,
+  widthPx = 1.1,
   lodTier: 'primary' | 'detail' = 'primary'
 ): THREE.Object3D {
   return createCrispLineSegments(pts, { color, opacity, widthPx, lodTier });
@@ -117,7 +125,7 @@ function createOcclusionMat(color: number, opacity: number, isGhost: boolean): T
   return new THREE.MeshBasicMaterial({
     color,
     transparent: isGhost || opacity < 0.99,
-    opacity: isGhost ? opacity * 0.08 : opacity * 0.96,
+    opacity: isGhost ? opacity * 0.08 : opacity * 0.98,
     polygonOffset: true,
     polygonOffsetFactor: 2,
     polygonOffsetUnits: 3,
@@ -125,9 +133,6 @@ function createOcclusionMat(color: number, opacity: number, isGhost: boolean): T
   });
 }
 
-/**
- * Adds a dark hidden-line matte chamfered architectural prism + crisp wireframe contours.
- */
 function addChamferPrism(
   target: THREE.Group,
   hw: number,
@@ -144,7 +149,6 @@ function addChamferPrism(
   const cz = opts.cz ?? 0;
   const loop = getChamferLoop(hw, hd, chamfer).map(([x, z]) => [x + cx, z + cz] as [number, number]);
 
-  // Matte occlusion solid
   const shape = new THREE.Shape();
   shape.moveTo(loop[0][0], -loop[0][1]);
   for (let i = 1; i < loop.length; i++) {
@@ -158,7 +162,6 @@ function addChamferPrism(
   mesh.position.y = y0;
   target.add(mesh);
 
-  // Crisp top & bottom contours + architectural vertical corner ribs
   pushLoop(primaryPts, loop, y1 + 0.004);
   if (!opts.omitBottom) {
     pushLoop(detailPts, loop, y0 + 0.002);
@@ -169,9 +172,6 @@ function addChamferPrism(
   }
 }
 
-/**
- * Adds a dark hidden-line matte polygonal drum/frustum + clean horizontal rings & sparse architectural ribs.
- */
 function addPolyDrum(
   target: THREE.Group,
   rBottom: number,
@@ -189,7 +189,6 @@ function addPolyDrum(
   const cz = opts.cz ?? 0;
   const h = Math.max(0.01, y1 - y0);
   const geo = new THREE.CylinderGeometry(rTop, rBottom, h, sides, 1, false);
-  // Align CylinderGeometry angle with cos(a), sin(a) convention
   geo.rotateY(Math.PI / 2 - rotOffset);
   const mesh = new THREE.Mesh(geo, fillMat);
   mesh.position.set(cx, y0 + h / 2, cz);
@@ -214,9 +213,6 @@ function addPolyDrum(
   }
 }
 
-/**
- * Adds a clean rectangular architectural block (pylon, server blade, gantry beam).
- */
 function addRectBlock(
   target: THREE.Group,
   cx: number,
@@ -233,8 +229,85 @@ function addRectBlock(
 }
 
 /**
- * Flush elongated rectangular port marker hugging the building perimeter edge!
- * Active = clean sage-emerald hollow slot + thin center bar; Disabled = muted crimson slot + diagonal seal slash.
+ * Adds a sculpted tapered architectural wedge / sloped armour plate.
+ */
+function addSlopedArmourPlate(
+  target: THREE.Group,
+  hw: number,
+  hd: number,
+  hBack: number,
+  hFront: number,
+  mirrored: boolean,
+  fillMat: THREE.Material,
+  primaryPts: number[],
+  detailPts: number[]
+): void {
+  // Base trapezoid in XZ (sloping from back edge -X to narrower beveled nose +X, mirrored across Z for 01B)
+  const s = mirrored ? -1 : 1;
+  const xBack = -hw;
+  const xFront = hw;
+  const zOuter = s * hd;
+  const zInner = -s * hd;
+  const zTaper = s * (hd * 0.25);
+
+  const b0: [number, number, number] = [xBack, 0, zInner];
+  const b1: [number, number, number] = [xFront, 0, zInner];
+  const b2: [number, number, number] = [xFront, 0, zTaper];
+  const b3: [number, number, number] = [xBack, 0, zOuter];
+
+  const t0: [number, number, number] = [xBack, hBack, zInner];
+  const t1: [number, number, number] = [xFront, hFront, zInner];
+  const t2: [number, number, number] = [xFront, hFront * 0.65, zTaper];
+  const t3: [number, number, number] = [xBack, hBack * 0.72, zOuter];
+
+  // Build crisp 6-face matte occlusion prism via BufferGeometry
+  const verts = [
+    // Top face (two tris)
+    ...t0, ...t1, ...t2, ...t0, ...t2, ...t3,
+    // Bottom face
+    ...b0, ...b2, ...b1, ...b0, ...b3, ...b2,
+    // Side walls
+    ...b0, ...b1, ...t1, ...b0, ...t1, ...t0,
+    ...b1, ...b2, ...t2, ...b1, ...t2, ...t1,
+    ...b2, ...b3, ...t3, ...b2, ...t3, ...t2,
+    ...b3, ...b0, ...t0, ...b3, ...t0, ...t3,
+  ];
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.computeVertexNormals();
+  target.add(new THREE.Mesh(geo, fillMat));
+
+  // Primary silhouette edges
+  const topLoop = [t0, t1, t2, t3];
+  const botLoop = [b0, b1, b2, b3];
+  for (let i = 0; i < 4; i++) {
+    const a = topLoop[i];
+    const b = topLoop[(i + 1) % 4];
+    pushSeg(primaryPts, a[0], a[2], b[0], b[2], a[1], b[1]);
+    const ba = botLoop[i];
+    const bb = botLoop[(i + 1) % 4];
+    pushSeg(detailPts, ba[0], ba[2], bb[0], bb[2], ba[1], bb[1]);
+    pushSeg(detailPts, ba[0], ba[2], a[0], a[2], ba[1], a[1]);
+  }
+  // Armored rib creases along the sloped deck
+  const midZ1 = (zInner + zOuter) * 0.5;
+  const midZ2 = (zInner + zTaper) * 0.5;
+  const midY1 = (hBack + hBack * 0.72) * 0.5;
+  const midY2 = (hFront + hFront * 0.65) * 0.5;
+  pushSeg(detailPts, xBack, midZ1, xFront, midZ2, midY1 + 0.02, midY2 + 0.02);
+  pushSeg(
+    detailPts,
+    (xBack + xFront) * 0.5,
+    zInner,
+    (xBack + xFront) * 0.5,
+    (zOuter + zTaper) * 0.5,
+    (hBack + hFront) * 0.5 + 0.02,
+    (hBack * 0.72 + hFront * 0.65) * 0.5 + 0.02
+  );
+}
+
+/**
+ * Flush elongated rectangular port marker hugging the building perimeter edge.
  */
 function buildFlushPortMarker(
   wx: number,
@@ -242,13 +315,12 @@ function buildFlushPortMarker(
   wz: number,
   side: 'N' | 'E' | 'S' | 'W',
   enabled: boolean,
-  opacity: number
+  opacity: number,
+  palette: CadThemePalette
 ): THREE.Object3D {
   const pts: number[] = [];
-  // Oriented flush along the wall edge
-  const along = 0.27; // half-length along wall (0.54m total)
-  const thick = 0.068; // half-depth perpendicular to wall (0.136m total)
-  // Slight inward tuck so the slim bar sits flush against the building's inset edge
+  const along = 0.27;
+  const thick = 0.068;
   let offX = 0;
   let offZ = 0;
   let hx = along;
@@ -256,12 +328,8 @@ function buildFlushPortMarker(
 
   if (side === 'N') {
     offZ = 0.08;
-    hx = along;
-    hz = thick;
   } else if (side === 'S') {
     offZ = -0.08;
-    hx = along;
-    hz = thick;
   } else if (side === 'E') {
     offX = -0.08;
     hx = thick;
@@ -272,36 +340,54 @@ function buildFlushPortMarker(
     hz = along;
   }
 
-  // Outer elongated slim rectangle
   pushRect(pts, hx, hz, 0, 0);
 
   if (enabled) {
-    // Crisp thin inner parallel line (open architectural slot)
     if (side === 'N' || side === 'S') {
-      pushSeg(pts, -hx * 0.62, 0, hx * 0.62, 0, 0, 0);
+      pushSeg(pts, -hx * 0.6, 0, hx * 0.6, 0, 0, 0);
     } else {
-      pushSeg(pts, 0, -hz * 0.62, 0, hz * 0.62, 0, 0);
+      pushSeg(pts, 0, -hz * 0.6, 0, hz * 0.6, 0, 0);
     }
   } else {
-    // Subtle diagonal seal slashes (closed/disabled slot)
-    pushSeg(pts, -hx * 0.82, -hz * 0.82, hx * 0.82, hz * 0.82, 0, 0);
-    pushSeg(pts, hx * 0.82, -hz * 0.82, -hx * 0.82, hz * 0.82, 0, 0);
+    pushSeg(pts, -hx * 0.8, -hz * 0.8, hx * 0.8, hz * 0.8, 0, 0);
+    pushSeg(pts, hx * 0.8, -hz * 0.8, -hx * 0.8, hz * 0.8, 0, 0);
   }
 
   const segs = buildLineSegments(
     pts,
-    enabled ? LINE_ART_PALETTE.portActiveLine : LINE_ART_PALETTE.portDisabledLine,
-    opacity * (enabled ? 0.94 : 0.72),
-    1.1,
+    enabled ? palette.portActiveLine : palette.portDisabledLine,
+    opacity,
+    1.05,
     'detail'
   );
   segs.position.set(wx + offX, y, wz + offZ);
   return segs;
 }
 
+/** Check whether a neighbor cell outputs logistics flow into `(targetX, targetY)` */
+function doesNeighborFeedCell(
+  doc: BlueprintDocument,
+  nbX: number,
+  nbY: number,
+  floor: number,
+  dxFromTarget: number,
+  dyFromTarget: number
+): boolean {
+  const nb = findBuildingAtCell(doc, nbX, nbY, floor);
+  if (!nb) return false;
+  const nbDef = getBuildableDef(nb.type);
+  if (!nbDef || !['belt', 'splitter', 'balancer', 'underground'].includes(nbDef.kind)) return false;
+  // Underground IN swallows items underground -> never feeds forward onto the surface tile!
+  if (nbDef.kind === 'underground' && nb.undergroundMode !== 'out') return false;
+  const [nbOutDx, nbOutDy] = rotationToDelta(nb.rotation);
+  return nbOutDx === -dxFromTarget && nbOutDy === -dyFromTarget;
+}
+
 /**
  * Minimalist continuous conveyor belt line-art:
- * Two clean parallel rails (zero tile divider seams) + seamless mitered L-turns + tier chevrons.
+ * - Straight-behind flow always takes priority over side merges (never breaks straight lines at T-junctions!).
+ * - True C1-tangent circular quarter-arcs on L-turns (zero missing short segments, silky corner curves!).
+ * - Solid pre-baked ink at opacity = 1.0 on focus floor (zero dotty tile joints!).
  */
 export function buildBeltLineArt(
   doc: BlueprintDocument,
@@ -309,7 +395,8 @@ export function buildBeltLineArt(
   def: BuildableDef,
   baseY: number,
   opacity: number,
-  isSelected: boolean
+  isSelected: boolean,
+  palette: CadThemePalette = CAD_THEMES['platinum-gold']
 ): THREE.Group {
   const group = new THREE.Group();
   const cx = b.x + 0.5;
@@ -317,18 +404,22 @@ export function buildBeltLineArt(
   const y = baseY + 0.04;
 
   const [outDx, outDy] = rotationToDelta(b.rotation);
+
+  // 1. Check straight-behind FIRST so straight runs are never hijacked by side merges!
   let inDir: [number, number] | null = null;
-  const dirs: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  for (const [dx, dy] of dirs) {
-    if (dx === outDx && dy === outDy) continue;
-    const nb = findBuildingAtCell(doc, b.x + dx, b.y + dy, b.floor);
-    if (!nb) continue;
-    const nbDef = getBuildableDef(nb.type);
-    if (!nbDef || !['belt', 'splitter', 'balancer', 'underground'].includes(nbDef.kind)) continue;
-    const [nbOutDx, nbOutDy] = rotationToDelta(nb.rotation);
-    if (nbOutDx === -dx && nbOutDy === -dy) {
-      inDir = [-dx, -dy];
-      break;
+  if (doesNeighborFeedCell(doc, b.x - outDx, b.y - outDy, b.floor, -outDx, -outDy)) {
+    inDir = [outDx, outDy];
+  } else {
+    // 2. Otherwise inspect the two perpendicular sides for a clean L-turn
+    const perpDirs: Array<[number, number]> = [
+      [-outDy, outDx],
+      [outDy, -outDx],
+    ];
+    for (const [dx, dy] of perpDirs) {
+      if (doesNeighborFeedCell(doc, b.x + dx, b.y + dy, b.floor, dx, dy)) {
+        inDir = [-dx, -dy];
+        break;
+      }
     }
   }
 
@@ -342,12 +433,12 @@ export function buildBeltLineArt(
   const bedGeo =
     localTurn === 'straight'
       ? new THREE.PlaneGeometry(0.98, 0.54)
-      : new THREE.PlaneGeometry(0.76, 0.76);
+      : new THREE.PlaneGeometry(0.78, 0.78);
   bedGeo.rotateX(-Math.PI / 2);
   const bedMat = new THREE.MeshBasicMaterial({
-    color: isSelected ? LINE_ART_PALETTE.baseFillSelected : LINE_ART_PALETTE.beltTrackFill,
-    transparent: true,
-    opacity: opacity * 0.85,
+    color: isSelected ? palette.baseFillSelected : palette.beltTrackFill,
+    transparent: opacity < 0.99,
+    opacity: opacity * 0.92,
     depthWrite: false,
   });
   const bed = new THREE.Mesh(bedGeo, bedMat);
@@ -362,28 +453,24 @@ export function buildBeltLineArt(
     pushSeg(railPts, -0.5, -r, 0.5, -r, 0);
     pushSeg(railPts, -0.5, r, 0.5, r, 0);
   } else if (localTurn === 'right') {
-    pushSeg(railPts, -r, 0.5, -r, -r * 0.45, 0);
-    pushSeg(railPts, -r, -r * 0.45, -r * 0.45, -r, 0);
-    pushSeg(railPts, -r * 0.45, -r, 0.5, -r, 0);
-    pushSeg(railPts, r, 0.5, r, r, 0);
-    pushSeg(railPts, r, r, 0.5, r, 0);
+    // Clockwise turn: entering +Z (South) -> exiting +X (East); pivot at (+0.5, +0.5)
+    pushArc(railPts, 0.5, 0.5, 0.5 + r, Math.PI, Math.PI * 1.5, 6, 0);
+    pushArc(railPts, 0.5, 0.5, 0.5 - r, Math.PI, Math.PI * 1.5, 4, 0);
   } else {
-    pushSeg(railPts, -r, -0.5, -r, r * 0.45, 0);
-    pushSeg(railPts, -r, r * 0.45, -r * 0.45, r, 0);
-    pushSeg(railPts, -r * 0.45, r, 0.5, r, 0);
-    pushSeg(railPts, r, -0.5, r, -r, 0);
-    pushSeg(railPts, r, -r, 0.5, -r, 0);
+    // Counter-clockwise turn: entering -Z (North) -> exiting +X (East); pivot at (+0.5, -0.5)
+    pushArc(railPts, 0.5, -0.5, 0.5 + r, Math.PI, Math.PI * 0.5, 6, 0);
+    pushArc(railPts, 0.5, -0.5, 0.5 - r, Math.PI, Math.PI * 0.5, 4, 0);
   }
 
   const railColor = isSelected
-    ? LINE_ART_PALETTE.lineSelected
+    ? palette.lineSelected
     : def.tier === 3
-      ? LINE_ART_PALETTE.beltRailMk3
+      ? palette.beltRailMk3
       : def.tier === 2
-        ? LINE_ART_PALETTE.beltRailMk2
-        : LINE_ART_PALETTE.beltRailMk1;
+        ? palette.beltRailMk2
+        : palette.beltRailMk1;
 
-  const railLines = buildLineSegments(railPts, railColor, opacity * (isSelected ? 1.0 : 0.84), 1.05, 'primary');
+  const railLines = buildLineSegments(railPts, railColor, opacity, isSelected ? 1.25 : 1.05, 'primary');
   railLines.position.set(cx, y + 0.01, cz);
   railLines.rotation.y = -b.rotation * (Math.PI / 2);
   group.add(railLines);
@@ -401,8 +488,8 @@ export function buildBeltLineArt(
   }
   const chevLines = buildLineSegments(
     chevPts,
-    isSelected ? 0xdbeafe : LINE_ART_PALETTE.beltArrow,
-    opacity * (isSelected ? 1.0 : 0.76),
+    isSelected ? palette.lineSelected : palette.beltArrow,
+    opacity,
     0.9,
     'detail'
   );
@@ -414,10 +501,7 @@ export function buildBeltLineArt(
 }
 
 /**
- * Build pitch-responsive sculpted architectural line-art for any non-belt building/machine.
- * - Baseplate & flush rectangular wall ports remain anchored to baseY.
- * - Sculpted 3D architectural mass lives inside `extrudeGroup` (local Y in [0, roofHeight])
- *   so SceneController smoothly flattens it to 2D in pure vertical top-down view and rises it in 3D angles!
+ * Pitch-responsive sculpted architectural line-art for any non-belt interior building/machine.
  */
 export function buildMachineLineArt(
   b: PlacedBuilding,
@@ -425,6 +509,7 @@ export function buildMachineLineArt(
   baseY: number,
   opacity: number,
   isSelected: boolean,
+  palette: CadThemePalette = CAD_THEMES['platinum-gold'],
   ghostTint?: number
 ): MachineLineArtResult {
   const root = new THREE.Group();
@@ -440,31 +525,29 @@ export function buildMachineLineArt(
   const minH = Math.min(hw, hd);
   const isGhost = ghostTint !== undefined;
 
-  // 1. Flat floor baseplate (anchored at floorY, never scaled)
   const plateGeo = new THREE.PlaneGeometry(w - inset * 2, d - inset * 2);
   plateGeo.rotateX(-Math.PI / 2);
   const plateMat = new THREE.MeshBasicMaterial({
-    color: isGhost ? ghostTint : isSelected ? LINE_ART_PALETTE.baseFillSelected : LINE_ART_PALETTE.baseFill,
-    transparent: true,
-    opacity: isGhost ? opacity * 0.08 : opacity * 0.94,
+    color: isGhost ? ghostTint : isSelected ? palette.baseFillSelected : palette.baseFill,
+    transparent: isGhost || opacity < 0.99,
+    opacity: isGhost ? opacity * 0.08 : opacity * 0.98,
     depthWrite: false,
   });
   const plate = new THREE.Mesh(plateGeo, plateMat);
   plate.position.set(cx, floorY, cz);
   root.add(plate);
 
-  // 2. Sculpted 3D Architectural Volume (scales smoothly on Y with camera pitch!)
   const extrudeGroup = new THREE.Group();
   extrudeGroup.position.set(cx, floorY + 0.005, cz);
   extrudeGroup.rotation.y = -b.rotation * (Math.PI / 2);
 
   const fillBase = createOcclusionMat(
-    isGhost ? ghostTint : isSelected ? LINE_ART_PALETTE.bodyFillSelected : LINE_ART_PALETTE.bodyFill,
+    isGhost ? ghostTint : isSelected ? palette.bodyFillSelected : palette.bodyFill,
     opacity,
     isGhost
   );
   const fillUpper = createOcclusionMat(
-    isGhost ? ghostTint : isSelected ? LINE_ART_PALETTE.bodyFillSelected : LINE_ART_PALETTE.bodyFillUpper,
+    isGhost ? ghostTint : isSelected ? palette.bodyFillSelected : palette.bodyFillUpper,
     opacity,
     isGhost
   );
@@ -476,16 +559,15 @@ export function buildMachineLineArt(
   const primaryColor = isGhost
     ? ghostTint
     : isSelected
-      ? LINE_ART_PALETTE.lineSelected
+      ? palette.lineSelected
       : def.kind === 'research'
-        ? LINE_ART_PALETTE.researchTint
+        ? palette.researchTint
         : def.kind === 'reactor'
-          ? LINE_ART_PALETTE.powerTint
-          : LINE_ART_PALETTE.linePrimary;
+          ? palette.powerTint
+          : palette.linePrimary;
 
   switch (def.id) {
     case 'DAT_Refinery': {
-      // Tiered octagonal thermal plinth + tapered cylindrical furnace core + top flue collar + 4 diagonal buttresses
       roofHeight = 1.48;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.54, 0.34, fillBase, primaryPts, detailPts);
       addPolyDrum(extrudeGroup, minH * 0.62, minH * 0.54, 16, 0.54, 1.26, 0, fillUpper, primaryPts, detailPts, {
@@ -494,7 +576,6 @@ export function buildMachineLineArt(
       addPolyDrum(extrudeGroup, minH * 0.32, minH * 0.28, 8, 1.26, roofHeight, Math.PI / 8, fillBase, primaryPts, detailPts, {
         ribCount: 4,
       });
-      // 4 diagonal structural fins from plinth deck to drum shoulder
       const r0 = minH * 0.56;
       const r1 = minH * 0.92;
       for (let i = 0; i < 4; i++) {
@@ -505,15 +586,12 @@ export function buildMachineLineArt(
     }
 
     case 'DAT_Assembler': {
-      // Chamfered industrial hall + stepped inner gantry deck + twin side bridge walls + elevated central diamond core
       roofHeight = 1.85;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.72, 0.38, fillBase, primaryPts, detailPts);
       addChamferPrism(extrudeGroup, hw * 0.72, hd * 0.72, 0.72, 1.38, 0.18, fillUpper, primaryPts, detailPts);
-      // Central elevated diamond precision turret
       addPolyDrum(extrudeGroup, minH * 0.36, minH * 0.34, 4, 1.38, roofHeight, 0, fillBase, primaryPts, detailPts, {
         ribCount: 4,
       });
-      // Orthogonal gantry rail ticks across upper deck
       pushSeg(detailPts, -hw * 0.72, 0, -minH * 0.36, 0, 1.39, 1.39);
       pushSeg(detailPts, minH * 0.36, 0, hw * 0.72, 0, 1.39, 1.39);
       pushSeg(detailPts, 0, -hd * 0.72, 0, -minH * 0.36, 1.39, 1.39);
@@ -522,7 +600,6 @@ export function buildMachineLineArt(
     }
 
     case 'DAT_AdvancedAssembler': {
-      // Grand 9x9 double-terraced assembly complex + 4 quadrant bay wings + elevated diamond nexus spire
       roofHeight = 2.65;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.92, 0.58, fillBase, primaryPts, detailPts);
       addChamferPrism(extrudeGroup, hw * 0.82, hd * 0.82, 0.92, 1.78, 0.32, fillUpper, primaryPts, detailPts);
@@ -536,7 +613,6 @@ export function buildMachineLineArt(
     }
 
     case 'DAT_EnrichmentChamber': {
-      // 9x9 stepped octagonal pedestal + 3 telescoping concentric centrifuge drums
       roofHeight = 2.75;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.78, 0.72, fillBase, primaryPts, detailPts);
       addPolyDrum(extrudeGroup, minH * 0.78, minH * 0.74, 24, 0.78, 1.56, 0, fillUpper, primaryPts, detailPts, {
@@ -552,7 +628,6 @@ export function buildMachineLineArt(
     }
 
     case 'DAT_Supercomputer': {
-      // 7x7 plinth + 5 tall parallel vertical blade-server fin slabs + elevated transverse optical bus bar
       roofHeight = 2.32;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.48, 0.38, fillBase, primaryPts, detailPts);
       const bladeCount = 5;
@@ -561,13 +636,11 @@ export function buildMachineLineArt(
         const x = -spanX / 2 + (spanX * i) / (bladeCount - 1);
         addRectBlock(extrudeGroup, x, 0, 0.2, hd * 0.72, 0.48, 2.08, fillUpper, primaryPts, detailPts);
       }
-      // Elevated central optical bus bridge spanning all 5 blades
       addRectBlock(extrudeGroup, 0, 0, hw * 0.86, 0.26, 2.08, roofHeight, fillBase, primaryPts, detailPts);
       break;
     }
 
     case 'DAT_GrowthChamber': {
-      // 7x7 chamfered hydroponic base + hexagonal geodesic conservatory pavilion + tapered cupola
       roofHeight = 2.45;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.68, 0.68, fillBase, primaryPts, detailPts);
       addPolyDrum(extrudeGroup, minH * 0.76, minH * 0.7, 6, 0.68, 1.88, Math.PI / 6, fillUpper, primaryPts, detailPts, {
@@ -580,20 +653,17 @@ export function buildMachineLineArt(
     }
 
     case 'DAT_RelicSynthesizer': {
-      // 9x9 diamond altar + 4 corner architectural obelisk pylons + central floating prism core
       roofHeight = 2.85;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.82, 0.9, fillBase, primaryPts, detailPts);
       addPolyDrum(extrudeGroup, minH * 0.68, minH * 0.6, 4, 0.82, 1.65, 0, fillUpper, primaryPts, detailPts, {
         ribCount: 4,
       });
-      // 4 tall corner obelisks
       const pOff = minH * 0.64;
       for (const sx of [-1, 1]) {
         for (const sz of [-1, 1]) {
           addRectBlock(extrudeGroup, sx * pOff, sz * pOff, 0.42, 0.42, 0.82, 2.38, fillBase, primaryPts, detailPts);
         }
       }
-      // Central synthesized crystal column
       addPolyDrum(extrudeGroup, minH * 0.24, minH * 0.14, 8, 1.65, roofHeight, Math.PI / 8, fillUpper, primaryPts, detailPts, {
         ribCount: 4,
       });
@@ -601,13 +671,11 @@ export function buildMachineLineArt(
     }
 
     case 'DAT_ReactorMachine': {
-      // 6x6 octagonal heavy containment base + central plasma core column + 3 radial cooling fins
       roofHeight = 2.55;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.88, 0.62, fillBase, primaryPts, detailPts);
       addPolyDrum(extrudeGroup, minH * 0.44, minH * 0.36, 12, 0.88, roofHeight, 0, fillUpper, primaryPts, detailPts, {
         ribCount: 6,
       });
-      // 3 radial cooling fin ribs
       for (let i = 0; i < 3; i++) {
         const a = (i * Math.PI * 2) / 3 - Math.PI / 2;
         const rIn = minH * 0.44;
@@ -621,7 +689,6 @@ export function buildMachineLineArt(
 
     case 'DAT_Container':
     case 'DAT_Container_2': {
-      // Clean ribbed industrial storage vault with stepped beveled cap
       const isLarge = def.id === 'DAT_Container_2';
       roofHeight = isLarge ? 1.68 : 1.08;
       addChamferPrism(extrudeGroup, hw, hd, 0, roofHeight * 0.78, isLarge ? 0.28 : 0.16, fillBase, primaryPts, detailPts);
@@ -636,7 +703,6 @@ export function buildMachineLineArt(
         primaryPts,
         detailPts
       );
-      // Clean structural top bay dividers
       const divs = isLarge ? 3 : 2;
       for (let i = 1; i < divs; i++) {
         const t = -1 + (2 * i) / divs;
@@ -649,7 +715,6 @@ export function buildMachineLineArt(
     case 'DAT_Splitter':
     case 'DAT_Splitter_2':
     case 'DAT_Splitter_3': {
-      // Sleek low-profile arched splitter housing with crisp top flow cross + chevron
       roofHeight = 0.46;
       addChamferPrism(extrudeGroup, hw, hd, 0, roofHeight, 0.12, fillBase, primaryPts, detailPts);
       pushSeg(primaryPts, -hw * 0.72, 0, hw * 0.72, 0, roofHeight + 0.006, roofHeight + 0.006);
@@ -661,7 +726,6 @@ export function buildMachineLineArt(
     case 'DAT_BeltBalancer_01':
     case 'DAT_BeltBalancer_02':
     case 'DAT_BeltBalancer_03': {
-      // Sleek 1x2 arched dual-lane transfer bridge with X-routing schematic on roof
       roofHeight = 0.56;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.34, 0.12, fillBase, primaryPts, detailPts);
       addChamferPrism(extrudeGroup, hw * 0.78, hd * 0.82, 0.34, roofHeight, 0.08, fillUpper, primaryPts, detailPts);
@@ -675,7 +739,6 @@ export function buildMachineLineArt(
     case 'DAT_UndergroundBelt':
     case 'DAT_UndergroundBelt_2':
     case 'DAT_UndergroundBelt_3': {
-      // Iconic low hooded tunnel portal (raised hood on tunnel end, low ramp on belt end)
       roofHeight = 0.44;
       const isOut = b.undergroundMode === 'out';
       const hoodCenter = isOut ? -hw * 0.22 : hw * 0.22;
@@ -685,7 +748,6 @@ export function buildMachineLineArt(
     }
 
     case 'DAT_Teleporter': {
-      // 4x4 stepped triple-concentric portal rings
       roofHeight = 1.48;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.42, 0.52, fillBase, primaryPts, detailPts);
       addPolyDrum(extrudeGroup, minH * 0.78, minH * 0.72, 20, 0.42, 0.96, 0, fillUpper, primaryPts, detailPts, {
@@ -707,12 +769,10 @@ export function buildMachineLineArt(
 
     default: {
       if (def.kind === 'research') {
-        // Distinct sculpted laboratory forms scaled cleanly by size (3x3 / 5x5 / 9x9)
         roofHeight = lw >= 9 ? 2.65 : lw >= 5 ? 1.92 : 1.52;
         addChamferPrism(extrudeGroup, hw, hd, 0, roofHeight * 0.42, Math.min(0.45, minH * 0.24), fillBase, primaryPts, detailPts);
 
         if (def.id === 'DAT_QuantumSciLab') {
-          // Tiered circular base + central quantum core + crossed high rings
           addPolyDrum(extrudeGroup, minH * 0.72, minH * 0.64, 24, roofHeight * 0.42, roofHeight * 0.76, 0, fillUpper, primaryPts, detailPts, {
             ribCount: 8,
           });
@@ -720,7 +780,6 @@ export function buildMachineLineArt(
             ribCount: 6,
           });
         } else if (def.id === 'DAT_AstroSciLab') {
-          // Faceted observatory dome
           addPolyDrum(extrudeGroup, minH * 0.76, minH * 0.62, 12, roofHeight * 0.42, roofHeight * 0.78, 0, fillUpper, primaryPts, detailPts, {
             ribCount: 6,
           });
@@ -728,7 +787,6 @@ export function buildMachineLineArt(
             ribCount: 6,
           });
         } else if (def.id === 'DAT_XenoSciLab') {
-          // Hexagonal bio-prism chamber
           addPolyDrum(extrudeGroup, minH * 0.72, minH * 0.62, 6, roofHeight * 0.42, roofHeight * 0.84, Math.PI / 6, fillUpper, primaryPts, detailPts, {
             ribCount: 6,
           });
@@ -736,7 +794,6 @@ export function buildMachineLineArt(
             ribCount: 3,
           });
         } else if (def.id === 'DAT_ElectroSciLab') {
-          // Diamond electromagnetic coil cage
           addPolyDrum(extrudeGroup, minH * 0.74, minH * 0.64, 4, roofHeight * 0.42, roofHeight * 0.84, 0, fillUpper, primaryPts, detailPts, {
             ribCount: 4,
           });
@@ -744,19 +801,15 @@ export function buildMachineLineArt(
             ribCount: 4,
           });
         } else if (def.id === 'DAT_CompSciLab') {
-          // Stepped cubic computation core
           addChamferPrism(extrudeGroup, hw * 0.62, hd * 0.62, roofHeight * 0.42, roofHeight, 0.14, fillUpper, primaryPts, detailPts);
         } else {
-          // MatSciLab / RelicAnalyzer: clean concentric optical drum
           addPolyDrum(extrudeGroup, minH * 0.68, minH * 0.58, 16, roofHeight * 0.42, roofHeight, 0, fillUpper, primaryPts, detailPts, {
             ribCount: 8,
           });
         }
-        // Subtle roof crosshairs
         pushSeg(detailPts, -minH * 0.68, 0, minH * 0.68, 0, roofHeight + 0.005, roofHeight + 0.005);
         pushSeg(detailPts, 0, -minH * 0.68, 0, minH * 0.68, roofHeight + 0.005, roofHeight + 0.005);
       } else {
-        // Decorations (SignWall, Chair, CoffeeTable, Plant)
         roofHeight = def.id === 'DAT_SignWall' ? 1.1 : 0.62;
         addChamferPrism(extrudeGroup, hw * 0.82, hd * 0.82, 0, roofHeight, 0.08, fillBase, primaryPts, detailPts);
       }
@@ -764,13 +817,14 @@ export function buildMachineLineArt(
     }
   }
 
+  // Solid pre-baked ink at opacity = 1.0 on focus floor (zero overlapping vertex dots!)
   if (primaryPts.length > 0) {
     extrudeGroup.add(
       buildLineSegments(
         primaryPts,
         primaryColor,
-        opacity * (isGhost ? 0.96 : isSelected ? 1.0 : 0.9),
-        isSelected ? 1.45 : 1.18,
+        isGhost ? opacity * 0.94 : opacity,
+        isSelected ? 1.45 : 1.12,
         'primary'
       )
     );
@@ -779,8 +833,8 @@ export function buildMachineLineArt(
     extrudeGroup.add(
       buildLineSegments(
         detailPts,
-        isGhost ? ghostTint : isSelected ? LINE_ART_PALETTE.linePrimary : LINE_ART_PALETTE.lineDetail,
-        opacity * (isGhost ? 0.62 : isSelected ? 0.86 : 0.6),
+        isGhost ? ghostTint : isSelected ? palette.linePrimary : palette.lineDetail,
+        isGhost ? opacity * 0.62 : opacity,
         0.85,
         'detail'
       )
@@ -789,7 +843,6 @@ export function buildMachineLineArt(
 
   root.add(extrudeGroup);
 
-  // 3. Flush elongated rectangular wall ports anchored to the floor perimeter!
   if (def.configurablePorts) {
     const worldPorts = getBuildingWorldPorts(b, def);
     for (const wp of worldPorts) {
@@ -800,11 +853,263 @@ export function buildMachineLineArt(
           wp.worldY,
           wp.side,
           wp.enabled,
-          opacity * (isGhost ? 0.78 : 1)
+          isGhost ? opacity * 0.82 : opacity,
+          palette
         )
       );
     }
   }
 
+  return { root, extrudeGroup, roofHeight };
+}
+
+/**
+ * Unified pitch-responsive architectural 3D/2D line-art for ALL non-factory-floor station modules
+ * (Armour A/B, Plasma Turret, Solar Panels I/II/III, Mining Bays I/II, Command, Dock, Scanner,
+ *  Deep Space Observatory, Shipyard Core I/II & Side).
+ */
+export function buildStationModuleArt(
+  mod: PlacedModule,
+  def: StationModuleDef,
+  baseY: number,
+  opacity: number,
+  isSelected: boolean,
+  palette: CadThemePalette = CAD_THEMES['platinum-gold'],
+  ghostTint?: number
+): MachineLineArtResult {
+  const root = new THREE.Group();
+  const [cx, cz] = getModuleCenterM(mod, def);
+  const [wu, du] = getModuleSizeUnits(def, mod.rotation);
+  const floorY = baseY;
+  const isGhost = ghostTint !== undefined;
+
+  // Local unrotated dimensions (meters)
+  const lw = def.sizeUnits[0] * STATION_UNIT_M;
+  const ld = def.sizeUnits[1] * STATION_UNIT_M;
+  const hw = lw / 2 - 0.35;
+  const hd = ld / 2 - 0.35;
+  const minH = Math.min(hw, hd);
+
+  // Subtle flat anchor deck (keeps footprints clear in 2D top-down)
+  const wM = wu * STATION_UNIT_M;
+  const dM = du * STATION_UNIT_M;
+  const deckGeo = new THREE.PlaneGeometry(wM - 0.25, dM - 0.25);
+  deckGeo.rotateX(-Math.PI / 2);
+  const deckMat = new THREE.MeshBasicMaterial({
+    color: isGhost ? ghostTint : isSelected ? palette.baseFillSelected : palette.slabFill,
+    transparent: isGhost || opacity < 0.99,
+    opacity: isGhost ? opacity * 0.06 : opacity * 0.86,
+    depthWrite: false,
+  });
+  const deck = new THREE.Mesh(deckGeo, deckMat);
+  deck.position.set(cx, floorY - 0.02, cz);
+  root.add(deck);
+
+  const extrudeGroup = new THREE.Group();
+  extrudeGroup.position.set(cx, floorY, cz);
+  extrudeGroup.rotation.y = -mod.rotation * (Math.PI / 2);
+
+  const fillBase = createOcclusionMat(
+    isGhost ? ghostTint : isSelected ? palette.bodyFillSelected : palette.bodyFill,
+    opacity,
+    isGhost
+  );
+  const fillUpper = createOcclusionMat(
+    isGhost ? ghostTint : isSelected ? palette.bodyFillSelected : palette.bodyFillUpper,
+    opacity,
+    isGhost
+  );
+
+  const primaryPts: number[] = [];
+  const detailPts: number[] = [];
+  let roofHeight = 3.2;
+
+  let accentColor = palette.linePrimary;
+  if (def.id.includes('Armour')) accentColor = palette.armourTint;
+  else if (def.id.includes('Turret')) accentColor = palette.turretTint;
+  else if (def.id.includes('Solar')) accentColor = palette.solarTint;
+  else if (def.id.includes('Observatory') || def.id.includes('Scanner')) accentColor = palette.researchTint;
+  else if (def.id.includes('Command')) accentColor = palette.powerTint;
+
+  const primaryColor = isGhost ? ghostTint : isSelected ? palette.lineSelected : accentColor;
+
+  switch (def.id) {
+    case 'BPO_StationArmour_01':
+    case 'BPO_StationArmour_01B': {
+      // Sculpted sloped wedge armour hull (01B is exact mirrored orientation!)
+      const mirrored = def.id === 'BPO_StationArmour_01B';
+      roofHeight = 3.6;
+      addSlopedArmourPlate(extrudeGroup, hw * 0.94, hd * 0.94, roofHeight, 1.15, mirrored, fillBase, primaryPts, detailPts);
+      break;
+    }
+
+    case 'BPO_StationTurretBlock_01': {
+      // Octagonal armored gun pedestal + rotating cylindrical turret + twin parallel plasma barrels (+X)
+      roofHeight = 4.4;
+      addChamferPrism(extrudeGroup, hw * 0.86, hd * 0.86, 0, 1.65, 2.2, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.56, minH * 0.48, 8, 1.65, 3.35, Math.PI / 8, fillUpper, primaryPts, detailPts, {
+        ribCount: 8,
+      });
+      addChamferPrism(extrudeGroup, 2.6, 2.2, 3.35, roofHeight, 0.6, fillBase, primaryPts, detailPts, { cx: -0.4 });
+      // Twin long plasma cannon barrels extending toward +X
+      addRectBlock(extrudeGroup, 3.8, -1.1, 3.4, 0.42, 2.65, 3.45, fillUpper, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, 3.8, 1.1, 3.4, 0.42, 2.65, 3.45, fillUpper, primaryPts, detailPts);
+      break;
+    }
+
+    case 'BPO_SolarPanelBlock':
+    case 'BPO_SolarPanelBlock_02':
+    case 'BPO_SolarPanelBlock_03': {
+      // Structural central truss spine + sleek cantilevered solar wing arrays with photovoltaic grid lines
+      const tier = def.id.endsWith('03') ? 3 : def.id.endsWith('02') ? 2 : 1;
+      roofHeight = tier >= 2 ? 4.2 : 2.6;
+      const wingY = roofHeight * 0.72;
+      // Central mounting spine
+      addChamferPrism(extrudeGroup, hw * 0.24, hd * 0.9, 0, roofHeight, 0.5, fillBase, primaryPts, detailPts);
+      // Left & right thin photovoltaic wing slabs
+      const wingX = hw * 0.6;
+      const wingHx = hw * 0.34;
+      const wingHz = hd * 0.88;
+      addRectBlock(extrudeGroup, -wingX, 0, wingHx, wingHz, wingY - 0.16, wingY + 0.16, fillUpper, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, wingX, 0, wingHx, wingHz, wingY - 0.16, wingY + 0.16, fillUpper, primaryPts, detailPts);
+      // Clean photovoltaic cell ribs
+      const rows = tier === 3 ? 6 : 4;
+      for (let i = 1; i < rows; i++) {
+        const z = -wingHz + (2 * wingHz * i) / rows;
+        pushSeg(detailPts, -wingX - wingHx, z, -wingX + wingHx, z, wingY + 0.18, wingY + 0.18);
+        pushSeg(detailPts, wingX - wingHx, z, wingX + wingHx, z, wingY + 0.18, wingY + 0.18);
+      }
+      break;
+    }
+
+    case 'BPO_MiningDroneBayBlock':
+    case 'BPO_MiningDroneBayBlock_2': {
+      // Armored industrial hangar + twin (Mk.1) / quad (Mk.2) launch hatches & guide rails
+      const mk2 = def.id.endsWith('_2');
+      roofHeight = mk2 ? 4.4 : 3.4;
+      addChamferPrism(extrudeGroup, hw * 0.92, hd * 0.92, 0, 1.8, 1.4, fillBase, primaryPts, detailPts);
+      addChamferPrism(extrudeGroup, hw * 0.72, hd * 0.72, 1.8, roofHeight, 0.9, fillUpper, primaryPts, detailPts);
+      // Launch bay recessed hatches on top deck
+      if (mk2) {
+        for (const sx of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            pushRect(primaryPts, hw * 0.24, hd * 0.24, roofHeight + 0.02, 0.2);
+            pushSeg(detailPts, sx * hw * 0.34, sz * hd * 0.1, sx * hw * 0.34, sz * hd * 0.56, roofHeight + 0.02);
+          }
+        }
+        pushSeg(primaryPts, -hw * 0.68, 0, hw * 0.68, 0, roofHeight + 0.02);
+        pushSeg(primaryPts, 0, -hd * 0.68, 0, hd * 0.68, roofHeight + 0.02);
+      } else {
+        pushSeg(primaryPts, 0, -hd * 0.66, 0, hd * 0.66, roofHeight + 0.02);
+        pushRect(detailPts, hw * 0.54, hd * 0.54, roofHeight + 0.02, 0.3);
+      }
+      break;
+    }
+
+    case 'BPO_CommandModule': {
+      // Tiered hexagonal command superstructure + elevated bridge crown + dual comms masts
+      roofHeight = 5.4;
+      addChamferPrism(extrudeGroup, hw * 0.88, hd * 0.88, 0, 1.8, 2.2, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.68, minH * 0.56, 6, 1.8, 3.7, Math.PI / 6, fillUpper, primaryPts, detailPts, {
+        ribCount: 6,
+      });
+      addPolyDrum(extrudeGroup, minH * 0.34, minH * 0.26, 6, 3.7, 4.6, Math.PI / 6, fillBase, primaryPts, detailPts, {
+        ribCount: 6,
+      });
+      // Dual delicate comms spires
+      pushSeg(primaryPts, -1.2, 0, -1.2, 0, 4.6, roofHeight);
+      pushSeg(primaryPts, 1.2, 0, 1.2, 0, 4.6, roofHeight - 0.5);
+      break;
+    }
+
+    case 'BPO_Dock': {
+      // Precision docking collar + twin alignment clamp arms
+      roofHeight = 3.2;
+      addChamferPrism(extrudeGroup, hw * 0.88, hd * 0.88, 0, 1.4, 1.6, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.52, minH * 0.46, 16, 1.4, roofHeight, 0, fillUpper, primaryPts, detailPts, {
+        ribCount: 8,
+      });
+      // Docking clamp rails extending outward
+      addRectBlock(extrudeGroup, hw * 0.55, -hd * 0.52, hw * 0.32, 0.75, 0, 2.2, fillBase, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, hw * 0.55, hd * 0.52, hw * 0.32, 0.75, 0, 2.2, fillBase, primaryPts, detailPts);
+      break;
+    }
+
+    case 'BPO_ScannerModule': {
+      // Octagonal pedestal + parabolic sensor dish + central emitter mast
+      roofHeight = 5.2;
+      addChamferPrism(extrudeGroup, hw * 0.84, hd * 0.84, 0, 1.5, 2.0, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.34, minH * 0.76, 16, 1.5, 3.6, 0, fillUpper, primaryPts, detailPts, {
+        ribCount: 8,
+      });
+      pushSeg(primaryPts, 0, 0, 0, 0, 3.6, roofHeight);
+      pushPolygon(primaryPts, minH * 0.2, 8, roofHeight - 0.4, 0);
+      break;
+    }
+
+    case 'BPO_DeepSpaceObservatory': {
+      // Grand 2x2 geodesic observatory dome + stepped ring plinth + telescope slit
+      roofHeight = 7.4;
+      addChamferPrism(extrudeGroup, hw * 0.92, hd * 0.92, 0, 2.0, 4.2, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.78, minH * 0.7, 16, 2.0, 5.2, 0, fillUpper, primaryPts, detailPts, {
+        ribCount: 8,
+      });
+      addPolyDrum(extrudeGroup, minH * 0.7, minH * 0.28, 16, 5.2, roofHeight, 0, fillBase, primaryPts, detailPts, {
+        ribCount: 8,
+      });
+      // Telescope aperture slit
+      pushSeg(primaryPts, -1.2, -minH * 0.68, -1.2, minH * 0.68, 5.3, 5.3);
+      pushSeg(primaryPts, 1.2, -minH * 0.68, 1.2, minH * 0.68, 5.3, 5.3);
+      break;
+    }
+
+    case 'BPO_ShipyardCore':
+    case 'BPO_ShipyardCore_02':
+    case 'BPO_ShipyardSide': {
+      // Heavy orbital drydock gantry bay with parallel structural arms & overhead truss arches
+      const isBig = def.id === 'BPO_ShipyardCore_02';
+      roofHeight = isBig ? 6.2 : 4.6;
+      const armT = isBig ? 2.4 : 1.6;
+      addRectBlock(extrudeGroup, 0, -hd + armT, hw * 0.92, armT, 0, roofHeight, fillBase, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, 0, hd - armT, hw * 0.92, armT, 0, roofHeight, fillBase, primaryPts, detailPts);
+      // Transverse overhead gantry bridges
+      const bridges = isBig ? [-hw * 0.55, 0, hw * 0.55] : [-hw * 0.42, hw * 0.42];
+      for (const bx of bridges) {
+        addRectBlock(extrudeGroup, bx, 0, armT * 0.55, hd - armT * 2, roofHeight - 1.1, roofHeight, fillUpper, primaryPts, detailPts);
+      }
+      break;
+    }
+
+    default: {
+      roofHeight = 3.2;
+      addChamferPrism(extrudeGroup, hw * 0.88, hd * 0.88, 0, roofHeight, 1.4, fillBase, primaryPts, detailPts);
+      break;
+    }
+  }
+
+  if (primaryPts.length > 0) {
+    extrudeGroup.add(
+      buildLineSegments(
+        primaryPts,
+        primaryColor,
+        isGhost ? opacity * 0.94 : opacity,
+        isSelected ? 1.5 : 1.15,
+        'primary'
+      )
+    );
+  }
+  if (detailPts.length > 0) {
+    extrudeGroup.add(
+      buildLineSegments(
+        detailPts,
+        isGhost ? ghostTint : isSelected ? palette.linePrimary : palette.lineDetail,
+        isGhost ? opacity * 0.62 : opacity,
+        0.85,
+        'detail'
+      )
+    );
+  }
+
+  root.add(extrudeGroup);
   return { root, extrudeGroup, roofHeight };
 }

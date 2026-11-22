@@ -4,9 +4,15 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 
 /**
- * Analytical screen-space anti-aliased line renderer (moiré-free replacement for aliased GL_LINES).
- * Uses Three.js LineSegments2 + patched LineMaterial with exact SDF sub-pixel edge coverage
- * and a safe zero-length projection guard for top-down flattened vertical ribs.
+ * Razor-sharp, zero-moiré, zero-junction-dot analytical SDF line renderer.
+ *
+ * Root-cause invariants:
+ * 1. Computes screen-space width derivative `fwidth(vUv.x)` BEFORE any branch — eliminates GPU
+ *    quad derivative explosions that made short segments (belt turns, small chamfers) vanish.
+ * 2. Trims protruding bulbous endcaps cleanly (`_cap > 0.16` discarded) and tightens the AA
+ *    feather skirt (`+0.72px`) so lines render with solid architectural-ink crispness.
+ * 3. Focus-layer lines use pre-baked ink colors at `opacity = 1.0`, making overlapping vertex
+ *    brightening (`2a - a^2`) mathematically impossible!
  */
 
 const GLOBAL_LINE_RESOLUTION = new THREE.Vector2(1280, 720);
@@ -18,7 +24,7 @@ export function setLineViewportResolution(width: number, height: number): void {
 export interface CrispLineOptions {
   color: number;
   opacity?: number;
-  /** Desired visual core stroke width in CSS pixels (typically 0.85 .. 1.65) */
+  /** Desired crisp visual core stroke width in CSS pixels (typically 0.85 .. 1.5) */
   widthPx?: number;
   dashed?: boolean;
   dashSize?: number;
@@ -27,9 +33,9 @@ export interface CrispLineOptions {
 }
 
 export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
-  const coreWidth = opts.widthPx ?? 1.15;
-  // Expand ribbon quad slightly so the analytical SDF feather has ~0.65px smooth AA skirt on each side
-  const quadWidth = coreWidth + 1.3;
+  const coreWidth = opts.widthPx ?? 1.1;
+  // Tight analytical AA skirt (~0.38px per side) for razor-sharp ink edges without haze
+  const quadWidth = coreWidth + 0.76;
   const opacity = opts.opacity ?? 1.0;
 
   const mat = new LineMaterial({
@@ -47,14 +53,12 @@ export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
     fog: true,
   });
 
-  // Share one live resolution vector across all materials so resize() updates every line instantly!
   mat.uniforms.resolution.value = GLOBAL_LINE_RESOLUTION;
   mat.userData.baseOpacity = opacity;
   mat.userData.lodTier = opts.lodTier ?? 'primary';
 
   mat.onBeforeCompile = (shader) => {
-    // 1. Safe zero-length guard: when a vertical rib flattens to 0px in top-down 89° view,
-    //    never divide by zero (NaN) and collapse both body & endcaps cleanly to 0px!
+    // 1. Safe zero-length guard for vertical ribs collapsing to 0px in top-down 89° view
     shader.vertexShader = shader.vertexShader.replace(
       'dir = normalize( dir );',
       `float _dirLen = length( dir );
@@ -65,7 +69,7 @@ export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
       'offset *= ( _dirLen > 1e-5 ) ? linewidth : 0.0;'
     );
 
-    // 2. True analytical sub-pixel SDF anti-aliasing across BOTH side edges (vUv.x) and rounded endcaps!
+    // 2. Continuous-derivative SDF anti-aliasing + flush micro-bevel caps (zero vertex dots, zero vanished short segments!)
     shader.fragmentShader = shader.fragmentShader.replace(
       `if ( abs( vUv.y ) > 1.0 ) {
 
@@ -76,16 +80,16 @@ export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
 						if ( len2 > 1.0 ) discard;
 
 					}`,
-      `float _dist = ( abs( vUv.y ) > 1.0 )
-						? length( vec2( vUv.x, ( vUv.y > 0.0 ) ? ( vUv.y - 1.0 ) : ( vUv.y + 1.0 ) ) )
-						: abs( vUv.x );
-					float _aa = max( fwidth( _dist ), 0.02 );
-					float _cov = 1.0 - smoothstep( max( 0.0, 1.0 - _aa * 1.15 ), 1.0, _dist );
-					if ( _cov <= 0.004 ) discard;
+      `float _aa = max( fwidth( vUv.x ), 0.02 );
+					float _cap = max( 0.0, abs( vUv.y ) - 1.0 );
+					if ( _cap > 0.16 ) discard;
+					float _dist = abs( vUv.x );
+					float _cov = 1.0 - smoothstep( max( 0.0, 1.0 - _aa * 0.92 ), 1.0, _dist );
+					if ( _cov <= 0.005 ) discard;
 					alpha *= _cov;`
     );
   };
-  mat.customProgramCacheKey = () => (opts.dashed ? 'crisp-cad-line-dashed-v1' : 'crisp-cad-line-v1');
+  mat.customProgramCacheKey = () => (opts.dashed ? 'crisp-cad-line-dashed-v2' : 'crisp-cad-line-v2');
 
   return mat;
 }

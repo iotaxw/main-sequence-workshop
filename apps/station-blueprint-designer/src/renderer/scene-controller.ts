@@ -29,32 +29,13 @@ import type {
 } from '../core/types';
 import { CadCameraRig } from './camera-rig';
 import { createCrispLineSegments, setLineViewportResolution } from './crisp-lines';
-import { buildBeltLineArt, buildMachineLineArt } from './line-art';
+import { buildBeltLineArt, buildMachineLineArt, buildStationModuleArt } from './line-art';
 import { createRoundedGridOverlay } from './rounded-grid-shader';
-
-// Restrained Dark Precision CAD Line-Art Palette (zero loud neon / cheap color fills!)
-const COLORS = {
-  bg: 0x080b10,
-  slabFill: 0x0c1119,
-  slabEdge: 0x263244,
-  slabEdgeSelected: 0x90aec8,
-  floorFill: 0x0f1620,
-  floorBalconyFill: 0x121c29,
-  floorEdge: 0x243142,
-  floorBalconyEdge: 0x3f556e,
-  connLarge: 0x4b637c,
-  connXLarge: 0x4e7378,
-  connVertical: 0x675f85,
-  validGhost: 0x9ec0de,
-  invalidGhost: 0xc95b61,
-  selectOutline: 0x9ab8d4,
-  heightFrame: 0x222e3e,
-  refAxis: 0x182332,
-  undergroundLink: 0x4c637a,
-};
+import { CAD_THEMES, type CadThemeId, type CadThemePalette } from './theme';
 
 export interface SceneRenderState {
   doc: BlueprintDocument;
+  theme: CadThemeId;
   viewMode: ViewMode;
   focusFloor: number;
   hideAbove: boolean;
@@ -69,12 +50,16 @@ export interface SceneRenderState {
 
 const labelTextureCache = new Map<string, THREE.CanvasTexture>();
 
-function getLabelTexture(title: string, subtitle: string | null, maxAniso = 16): THREE.CanvasTexture {
-  const key = `${title}||${subtitle ?? ''}`;
+function getLabelTexture(
+  title: string,
+  subtitle: string | null,
+  palette: CadThemePalette,
+  maxAniso = 16
+): THREE.CanvasTexture {
+  const key = `${palette.id}||${title}||${subtitle ?? ''}`;
   const cached = labelTextureCache.get(key);
   if (cached) return cached;
 
-  // High-resolution 1024x384 oversampled canvas so text stays razor-sharp at maximum zoom!
   const canvas = document.createElement('canvas');
   canvas.width = 1024;
   canvas.height = 384;
@@ -83,13 +68,13 @@ function getLabelTexture(title: string, subtitle: string | null, maxAniso = 16):
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#b4c9dd';
+  ctx.fillStyle = palette.labelTitleHex;
   ctx.font = '500 84px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
   const yTitle = subtitle ? 132 : 192;
   ctx.fillText(title.slice(0, 10), 512, yTitle, 940);
 
   if (subtitle) {
-    ctx.fillStyle = '#7e97b2';
+    ctx.fillStyle = palette.labelSubHex;
     ctx.font = '400 66px "JetBrains Mono", Consolas, "Microsoft YaHei", monospace';
     ctx.fillText(subtitle.slice(0, 14), 512, 266, 940);
   }
@@ -160,7 +145,6 @@ function createDirectionalChevron(size: number, color: number, opacity: number):
   return createCrispLineSegments(pts, { color, opacity, widthPx: 1.2 });
 }
 
-/** Hollow technical bracket for station connector (analytical crisp SDF lines!) */
 function createHollowConnectorBracket(span: number, color: number, opacity: number): THREE.Object3D {
   const hs = span / 2;
   const d = 0.28;
@@ -172,6 +156,13 @@ function createHollowConnectorBracket(span: number, color: number, opacity: numb
     -d * 1.4, 0, 0, d * 1.4, 0, 0,
   ];
   return createCrispLineSegments(pts, { color, opacity, widthPx: 1.05 });
+}
+
+interface ExtrudeTarget {
+  group: THREE.Group;
+  baseY: number;
+  roofHeight: number;
+  labelMesh?: THREE.Object3D;
 }
 
 export class CadSceneController {
@@ -194,13 +185,11 @@ export class CadSceneController {
 
   private keysDown = new Set<string>();
   private lastState: SceneRenderState | null = null;
+  private activePalette: CadThemePalette = CAD_THEMES['platinum-gold'];
   private maxAniso = 16;
-  private extrudeTargets: Array<{
-    group: THREE.Group;
-    baseY: number;
-    roofHeight: number;
-    labelMesh?: THREE.Object3D;
-  }> = [];
+
+  private moduleExtrudeTargets: ExtrudeTarget[] = [];
+  private buildingExtrudeTargets: ExtrudeTarget[] = [];
   private ghostExtrudeTargets: THREE.Group[] = [];
   private detailLineMaterials: LineMaterial[] = [];
 
@@ -215,7 +204,7 @@ export class CadSceneController {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.setClearColor(COLORS.bg, 1);
+    this.renderer.setClearColor(this.activePalette.bg, 1);
     const initW = container.clientWidth || 800;
     const initH = container.clientHeight || 600;
     this.renderer.setSize(initW, initH);
@@ -224,16 +213,13 @@ export class CadSceneController {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    // Subtle dark depth attenuation so peripheral areas stay calm while focal lines stay razor-sharp
-    this.scene.fog = new THREE.FogExp2(COLORS.bg, 0.00135);
+    // Ultra-light distant depth attenuation (keeps working view crystalline and zero-haze!)
+    this.scene.fog = new THREE.FogExp2(this.activePalette.bg, 0.00055);
 
-    const hemi = new THREE.HemisphereLight(0x9fb3c8, 0x080b10, 0.9);
+    const hemi = new THREE.HemisphereLight(0xb8cade, this.activePalette.bg, 0.9);
     this.scene.add(hemi);
 
-    this.rig = new CadCameraRig(
-      (container.clientWidth || 800) / Math.max(1, container.clientHeight || 600),
-      callbacks
-    );
+    this.rig = new CadCameraRig(initW / Math.max(1, initH), callbacks);
 
     this.roundedGrid = createRoundedGridOverlay();
     this.scene.add(this.referenceGroup);
@@ -244,12 +230,13 @@ export class CadSceneController {
     this.scene.add(this.previewGroup);
     this.scene.add(this.boxSelectGroup);
 
-    this.buildMinimalReferenceAxes();
+    this.buildMinimalReferenceAxes(this.activePalette);
     this.lastTime = performance.now();
     this.tick(this.lastTime);
   }
 
-  private buildMinimalReferenceAxes(): void {
+  private buildMinimalReferenceAxes(palette: CadThemePalette): void {
+    this.clearGroup(this.referenceGroup);
     const pts: number[] = [];
     const extent = 16 * 12;
     pts.push(-extent, 0, 0, extent, 0, 0);
@@ -266,11 +253,22 @@ export class CadSceneController {
     }
     this.referenceGroup.add(
       createCrispLineSegments(pts, {
-        color: COLORS.refAxis,
-        opacity: 0.42,
+        color: palette.refAxis,
+        opacity: 1.0,
         widthPx: 0.9,
       })
     );
+  }
+
+  private applyThemeToScene(palette: CadThemePalette): void {
+    this.activePalette = palette;
+    this.renderer.setClearColor(palette.bg, 1);
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.color.setHex(palette.bg);
+    }
+    this.roundedGrid.uniforms.uLineColor.value.set(palette.gridLineHex);
+    this.roundedGrid.uniforms.uFillColor.value.set(palette.gridFillHex);
+    this.buildMinimalReferenceAxes(palette);
   }
 
   resize(): void {
@@ -294,10 +292,17 @@ export class CadSceneController {
     const prev = this.lastState;
     this.lastState = state;
 
+    const palette = CAD_THEMES[state.theme];
+    const themeChanged = !prev || prev.theme !== state.theme;
+    if (themeChanged) {
+      this.applyThemeToScene(palette);
+    }
+
     this.rig.setFocusFloor(state.focusFloor);
     this.referenceGroup.position.y = state.focusFloor * FLOOR_VISUAL_SPACING - 0.06;
 
     const rebuildWorld =
+      themeChanged ||
       !prev ||
       prev.doc !== state.doc ||
       prev.focusFloor !== state.focusFloor ||
@@ -306,14 +311,14 @@ export class CadSceneController {
       prev.selection !== state.selection;
 
     if (rebuildWorld) {
-      this.rebuildModules(state);
-      this.rebuildBuildings(state);
+      this.rebuildModules(state, palette);
+      this.rebuildBuildings(state, palette);
       this.collectDetailLineMaterials();
     }
 
     this.updateRoundedGrid(state);
-    this.rebuildPreview(state);
-    this.rebuildBoxSelect(state);
+    this.rebuildPreview(state, palette);
+    this.rebuildBoxSelect(state, palette);
   }
 
   private clearGroup(group: THREE.Group): void {
@@ -337,12 +342,14 @@ export class CadSceneController {
     if (floor > focusFloor) return hideAbove ? 0 : 0.14;
     if (floor === focusFloor) return 1.0;
     const dist = focusFloor - floor;
-    return Math.max(0.2, 0.48 - dist * 0.12);
+    return Math.max(0.22, 0.48 - dist * 0.12);
   }
 
-  private rebuildModules(state: SceneRenderState): void {
+  private rebuildModules(state: SceneRenderState, palette: CadThemePalette): void {
     this.clearGroup(this.modulesGroup);
+    this.moduleExtrudeTargets = [];
     const selectedMods = new Set(state.selection.moduleIds);
+    const yScale = this.getCurrentExtrusionScale();
 
     for (const mod of state.doc.modules) {
       const def = getModuleDef(mod.type);
@@ -355,7 +362,9 @@ export class CadSceneController {
       if (effectiveOpacity <= 0.01) continue;
 
       const isSelected = selectedMods.has(mod.id);
-      this.modulesGroup.add(this.buildStationPlatformMesh(mod, def, state, effectiveOpacity, isSelected));
+      this.modulesGroup.add(
+        this.buildStationPlatformMesh(mod, def, state, effectiveOpacity, isSelected, palette, yScale)
+      );
     }
   }
 
@@ -364,7 +373,9 @@ export class CadSceneController {
     def: StationModuleDef,
     state: SceneRenderState,
     opacity: number,
-    isSelected: boolean
+    isSelected: boolean,
+    palette: CadThemePalette,
+    yScale: number
   ): THREE.Group {
     const group = new THREE.Group();
     const [cx, cy] = getModuleCenterM(mod, def);
@@ -372,122 +383,134 @@ export class CadSceneController {
     const wM = wu * STATION_UNIT_M;
     const dM = du * STATION_UNIT_M;
     const baseY = mod.floor * FLOOR_VISUAL_SPACING;
-    const slabThickness = 0.28;
-    const isTransparent = opacity < 0.99;
 
-    // 1. Sleek ultra-flat platform slab (single crisp top perimeter -> eliminates stacked parallel edge moiré!)
-    const slabW = wM - 0.1;
-    const slabD = dM - 0.1;
-    const slabGeo = new THREE.BoxGeometry(slabW, slabThickness, slabD);
-    const slabMat = new THREE.MeshBasicMaterial({
-      color: def.hasFactoryFloor ? COLORS.slabFill : 0x0a0f16,
-      transparent: isTransparent,
-      opacity: opacity * 0.96,
-    });
-    const slab = new THREE.Mesh(slabGeo, slabMat);
-    slab.position.set(cx, baseY - slabThickness / 2 - 0.02, cy);
-    group.add(slab);
+    let labelRoofHeight = 0.02;
+    let extrudeGroupRef: THREE.Group | null = null;
 
-    const shw = slabW / 2;
-    const shd = slabD / 2;
-    const topRimY = baseY - 0.015;
-    const slabTopPts = [
-      cx - shw, topRimY, cy - shd, cx + shw, topRimY, cy - shd,
-      cx + shw, topRimY, cy - shd, cx + shw, topRimY, cy + shd,
-      cx + shw, topRimY, cy + shd, cx - shw, topRimY, cy + shd,
-      cx - shw, topRimY, cy + shd, cx - shw, topRimY, cy - shd,
-    ];
-    group.add(
-      createCrispLineSegments(slabTopPts, {
-        color: isSelected ? COLORS.slabEdgeSelected : COLORS.slabEdge,
-        opacity: opacity * (isSelected ? 1.0 : 0.85),
-        widthPx: isSelected ? 1.45 : 1.05,
-      })
-    );
-
-    // 2. Buildable floor surface(s)
-    for (const surf of def.floors) {
-      const surfFloor = mod.floor + surf.floorOffset;
-      const surfOpacity = this.layerOpacityFor(surfFloor, state.focusFloor, state.hideAbove);
-      if (surfOpacity <= 0.01) continue;
-      const surfY = surfFloor * FLOOR_VISUAL_SPACING;
-
-      const floorGeo = createFloorShapeGeometry(surf);
-      const floorMat = new THREE.MeshBasicMaterial({
-        color: surf.floorOffset > 0 ? COLORS.floorBalconyFill : COLORS.floorFill,
-        transparent: surfOpacity < 0.99 || surf.floorOffset > 0,
-        opacity: surfOpacity * (surf.floorOffset > 0 ? 0.9 : 0.96),
-        side: THREE.DoubleSide,
+    if (!def.hasFactoryFloor) {
+      // Unified sculpted 3D/2D architectural line-art for ALL non-platform modules
+      // (Armour A/B, Plasma Turret, Solar Panels, Mining Bays, Command, Dock, Scanner, Observatory, Shipyards)
+      const art = buildStationModuleArt(mod, def, baseY, opacity, isSelected, palette);
+      art.extrudeGroup.scale.y = yScale;
+      extrudeGroupRef = art.extrudeGroup;
+      labelRoofHeight = art.roofHeight;
+      group.add(art.root);
+    } else {
+      // Factory-floor module: sleek ultra-flat platform slab with single crisp top perimeter
+      const slabThickness = 0.28;
+      const isTransparent = opacity < 0.99;
+      const slabW = wM - 0.1;
+      const slabD = dM - 0.1;
+      const slabGeo = new THREE.BoxGeometry(slabW, slabThickness, slabD);
+      const slabMat = new THREE.MeshBasicMaterial({
+        color: palette.slabFill,
+        transparent: isTransparent,
+        opacity: opacity * 0.98,
       });
-      const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-      floorMesh.position.set(cx, surfY + 0.005, cy);
-      floorMesh.rotation.y = -mod.rotation * (Math.PI / 2);
-      group.add(floorMesh);
+      const slab = new THREE.Mesh(slabGeo, slabMat);
+      slab.position.set(cx, baseY - slabThickness / 2 - 0.02, cy);
+      group.add(slab);
 
-      const borderPts = edgesToPositions(new THREE.EdgesGeometry(floorGeo));
-      const borderLine = createCrispLineSegments(borderPts, {
-        color: surf.floorOffset > 0 ? COLORS.floorBalconyEdge : COLORS.floorEdge,
-        opacity: surfOpacity * (surf.floorOffset > 0 ? 0.8 : 0.48),
-        widthPx: 0.9,
-        lodTier: surf.floorOffset > 0 ? 'primary' : 'detail',
-      });
-      borderLine.position.copy(floorMesh.position);
-      borderLine.rotation.copy(floorMesh.rotation);
-      group.add(borderLine);
+      const shw = slabW / 2;
+      const shd = slabD / 2;
+      const topRimY = baseY - 0.015;
+      const slabTopPts = [
+        cx - shw, topRimY, cy - shd, cx + shw, topRimY, cy - shd,
+        cx + shw, topRimY, cy - shd, cx + shw, topRimY, cy + shd,
+        cx + shw, topRimY, cy + shd, cx - shw, topRimY, cy + shd,
+        cx - shw, topRimY, cy + shd, cx - shw, topRimY, cy - shd,
+      ];
+      group.add(
+        createCrispLineSegments(slabTopPts, {
+          color: isSelected ? palette.slabEdgeSelected : palette.slabEdge,
+          opacity,
+          widthPx: isSelected ? 1.45 : 1.05,
+        })
+      );
 
-      // Subtle hairline doorway threshold indicators (unfilled lines!)
-      for (const dw of surf.doorways) {
-        const span = dw.end - dw.start;
-        const halfW = (def.sizeUnits[0] * STATION_UNIT_M) / 2;
-        const halfD = (def.sizeUnits[1] * STATION_UNIT_M) / 2;
-        const pts: number[] = [];
-        if (dw.side === 'E') pts.push(halfW - 0.12, 0, dw.start, halfW - 0.12, 0, dw.end);
-        else if (dw.side === 'W') pts.push(-halfW + 0.12, 0, dw.start, -halfW + 0.12, 0, dw.end);
-        else if (dw.side === 'S') pts.push(dw.start, 0, halfD - 0.12, dw.end, 0, halfD - 0.12);
-        else pts.push(dw.start, 0, -halfD + 0.12, dw.end, 0, -halfD + 0.12);
+      // Buildable floor surface(s)
+      for (const surf of def.floors) {
+        const surfFloor = mod.floor + surf.floorOffset;
+        const surfOpacity = this.layerOpacityFor(surfFloor, state.focusFloor, state.hideAbove);
+        if (surfOpacity <= 0.01) continue;
+        const surfY = surfFloor * FLOOR_VISUAL_SPACING;
 
-        const dwLine = createCrispLineSegments(pts, {
-          color: span > 10 ? COLORS.connXLarge : COLORS.connLarge,
-          opacity: surfOpacity * 0.62,
-          widthPx: 1.0,
+        const floorGeo = createFloorShapeGeometry(surf);
+        const floorMat = new THREE.MeshBasicMaterial({
+          color: surf.floorOffset > 0 ? palette.floorBalconyFill : palette.floorFill,
+          transparent: surfOpacity < 0.99 || surf.floorOffset > 0,
+          opacity: surfOpacity * (surf.floorOffset > 0 ? 0.92 : 0.98),
+          side: THREE.DoubleSide,
         });
-        const holder = new THREE.Group();
-        holder.position.set(cx, surfY + 0.02, cy);
-        holder.rotation.y = -mod.rotation * (Math.PI / 2);
-        holder.add(dwLine);
-        group.add(holder);
+        const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+        floorMesh.position.set(cx, surfY + 0.005, cy);
+        floorMesh.rotation.y = -mod.rotation * (Math.PI / 2);
+        group.add(floorMesh);
+
+        const borderPts = edgesToPositions(new THREE.EdgesGeometry(floorGeo));
+        const borderLine = createCrispLineSegments(borderPts, {
+          color: surf.floorOffset > 0 ? palette.floorBalconyEdge : palette.floorEdge,
+          opacity: surfOpacity,
+          widthPx: 0.9,
+          lodTier: surf.floorOffset > 0 ? 'primary' : 'detail',
+        });
+        borderLine.position.copy(floorMesh.position);
+        borderLine.rotation.copy(floorMesh.rotation);
+        group.add(borderLine);
+
+        for (const dw of surf.doorways) {
+          const span = dw.end - dw.start;
+          const halfW = (def.sizeUnits[0] * STATION_UNIT_M) / 2;
+          const halfD = (def.sizeUnits[1] * STATION_UNIT_M) / 2;
+          const pts: number[] = [];
+          if (dw.side === 'E') pts.push(halfW - 0.12, 0, dw.start, halfW - 0.12, 0, dw.end);
+          else if (dw.side === 'W') pts.push(-halfW + 0.12, 0, dw.start, -halfW + 0.12, 0, dw.end);
+          else if (dw.side === 'S') pts.push(dw.start, 0, halfD - 0.12, dw.end, 0, halfD - 0.12);
+          else pts.push(dw.start, 0, -halfD + 0.12, dw.end, 0, -halfD + 0.12);
+
+          const dwLine = createCrispLineSegments(pts, {
+            color: span > 10 ? palette.connXLarge : palette.connLarge,
+            opacity: surfOpacity,
+            widthPx: 1.0,
+          });
+          const holder = new THREE.Group();
+          holder.position.set(cx, surfY + 0.02, cy);
+          holder.rotation.y = -mod.rotation * (Math.PI / 2);
+          holder.add(dwLine);
+          group.add(holder);
+        }
+      }
+
+      // Double-height ultra-thin corner wireframe guides for tall factory halls
+      if (hu > 1) {
+        const topY = (mod.floor + hu - 1) * FLOOR_VISUAL_SPACING;
+        const topOpacity = this.layerOpacityFor(mod.floor + hu - 1, state.focusFloor, state.hideAbove);
+        const guideOpacity = Math.max(opacity * 0.25, topOpacity * 0.45);
+        if (guideOpacity > 0.03) {
+          const hw = wM / 2 - 0.25;
+          const hd = dM / 2 - 0.25;
+          const pts = [
+            cx - hw, baseY, cy - hd, cx - hw, topY, cy - hd,
+            cx + hw, baseY, cy - hd, cx + hw, topY, cy - hd,
+            cx + hw, baseY, cy + hd, cx + hw, topY, cy + hd,
+            cx - hw, baseY, cy + hd, cx - hw, topY, cy + hd,
+            cx - hw, topY, cy - hd, cx + hw, topY, cy - hd,
+            cx + hw, topY, cy - hd, cx + hw, topY, cy + hd,
+            cx + hw, topY, cy + hd, cx - hw, topY, cy + hd,
+            cx - hw, topY, cy + hd, cx - hw, topY, cy - hd,
+          ];
+          group.add(
+            createCrispLineSegments(pts, {
+              color: isSelected ? palette.slabEdgeSelected : palette.heightFrame,
+              opacity: guideOpacity,
+              widthPx: 0.9,
+            })
+          );
+        }
       }
     }
 
-    // 3. Double-height ultra-thin corner wireframe guides
-    if (hu > 1) {
-      const topY = (mod.floor + hu - 1) * FLOOR_VISUAL_SPACING;
-      const topOpacity = this.layerOpacityFor(mod.floor + hu - 1, state.focusFloor, state.hideAbove);
-      const guideOpacity = Math.max(opacity * 0.25, topOpacity * 0.45);
-      if (guideOpacity > 0.03) {
-        const hw = wM / 2 - 0.25;
-        const hd = dM / 2 - 0.25;
-        const pts = [
-          cx - hw, baseY, cy - hd, cx - hw, topY, cy - hd,
-          cx + hw, baseY, cy - hd, cx + hw, topY, cy - hd,
-          cx + hw, baseY, cy + hd, cx + hw, topY, cy + hd,
-          cx - hw, baseY, cy + hd, cx - hw, topY, cy + hd,
-          cx - hw, topY, cy - hd, cx + hw, topY, cy - hd,
-          cx + hw, topY, cy - hd, cx + hw, topY, cy + hd,
-          cx + hw, topY, cy + hd, cx - hw, topY, cy + hd,
-          cx - hw, topY, cy + hd, cx - hw, topY, cy - hd,
-        ];
-        group.add(
-          createCrispLineSegments(pts, {
-            color: isSelected ? COLORS.slabEdgeSelected : COLORS.heightFrame,
-            opacity: guideOpacity,
-            widthPx: 0.9,
-          })
-        );
-      }
-    }
-
-    // 4. Hollow line-art Station Connectors (zero cheap solid bars!)
+    // Hollow line-art Station Connectors (applies to both platform & non-platform modules)
     const worldConns = getModuleWorldConnectors(mod, def);
     for (const c of worldConns) {
       const cOpacity = this.layerOpacityFor(c.floor, state.focusFloor, state.hideAbove);
@@ -504,19 +527,19 @@ export class CadSceneController {
         ];
         group.add(
           createCrispLineSegments(pts, {
-            color: COLORS.connVertical,
-            opacity: cOpacity * 0.72,
+            color: palette.connVertical,
+            opacity: cOpacity,
             widthPx: 1.05,
           })
         );
       } else {
         const isXL = c.type === 'XLarge';
         const span = isXL ? 18 : 5.2;
-        const col = isXL ? COLORS.connXLarge : COLORS.connLarge;
+        const col = isXL ? palette.connXLarge : palette.connLarge;
         const bracket = createHollowConnectorBracket(
           span,
           col,
-          cOpacity * (state.viewMode === 'station' ? 0.78 : 0.38)
+          cOpacity * (state.viewMode === 'station' ? 0.92 : 0.45)
         );
         bracket.position.set(c.x, cyWorld, c.y);
         bracket.rotation.y = -c.rotation * (Math.PI / 2);
@@ -524,29 +547,34 @@ export class CadSceneController {
       }
     }
 
-    // 5. Minimal Station Overview caption
+    // Minimal Station Overview caption (rides atop roof smoothly for sculpted non-platform modules!)
+    let labelMesh: THREE.Object3D | undefined;
     if (state.viewMode === 'station' && opacity >= 0.5) {
       const shortName = getShortLabel(def.id, def.nameZh);
-      const tex = getLabelTexture(shortName, mod.label || null, this.maxAniso);
+      const tex = getLabelTexture(shortName, mod.label || null, palette, this.maxAniso);
       const labelW = Math.min(wM * 0.58, 12);
       const labelGeo = new THREE.PlaneGeometry(labelW, labelW * 0.375);
       labelGeo.rotateX(-Math.PI / 2);
-      const labelMesh = new THREE.Mesh(
+      labelMesh = new THREE.Mesh(
         labelGeo,
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opacity * 0.82, depthWrite: false })
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opacity * 0.88, depthWrite: false })
       );
-      labelMesh.position.set(cx, baseY + 0.06, cy);
+      labelMesh.position.set(cx, baseY + 0.06 + labelRoofHeight * yScale, cy);
       group.add(labelMesh);
+    }
+
+    if (extrudeGroupRef) {
+      this.moduleExtrudeTargets.push({
+        group: extrudeGroupRef,
+        baseY,
+        roofHeight: labelRoofHeight,
+        labelMesh,
+      });
     }
 
     return group;
   }
 
-  /**
-   * Computes smooth 3D architectural extrusion factor from current camera pitch:
-   * - Vertical top-down (正俯 ~89 deg, > 86.5 deg) -> 0.008 (pure flat 2D architectural plan)
-   * - Tilted 3D views (工作 64 deg / 轴测 42 deg / 低角 22 deg, <= 77 deg) -> 1.0 (full 3D sculpted massing)
-   */
   private getCurrentExtrusionScale(): number {
     const pitchDeg = THREE.MathUtils.radToDeg(this.rig.currentPitchRad);
     const t = THREE.MathUtils.clamp((86.5 - pitchDeg) / (86.5 - 77.0), 0, 1);
@@ -555,7 +583,13 @@ export class CadSceneController {
   }
 
   private applyExtrusionScale(yScale: number): void {
-    for (const item of this.extrudeTargets) {
+    for (const item of this.moduleExtrudeTargets) {
+      item.group.scale.y = yScale;
+      if (item.labelMesh) {
+        item.labelMesh.position.y = item.baseY + 0.06 + item.roofHeight * yScale;
+      }
+    }
+    for (const item of this.buildingExtrudeTargets) {
       item.group.scale.y = yScale;
       if (item.labelMesh) {
         item.labelMesh.position.y = item.baseY + 0.04 + item.roofHeight * yScale + 0.05;
@@ -566,10 +600,10 @@ export class CadSceneController {
     }
   }
 
-  private rebuildBuildings(state: SceneRenderState): void {
+  private rebuildBuildings(state: SceneRenderState, palette: CadThemePalette): void {
     this.clearGroup(this.buildingsGroup);
     this.clearGroup(this.undergroundGroup);
-    this.extrudeTargets = [];
+    this.buildingExtrudeTargets = [];
     const selectedBlds = new Set(state.selection.buildingIds);
     const yScale = this.getCurrentExtrusionScale();
 
@@ -582,37 +616,35 @@ export class CadSceneController {
       const baseY = b.floor * FLOOR_VISUAL_SPACING;
 
       if (def.kind === 'belt') {
-        this.buildingsGroup.add(buildBeltLineArt(state.doc, b, def, baseY, opacity, isSelected));
+        this.buildingsGroup.add(buildBeltLineArt(state.doc, b, def, baseY, opacity, isSelected, palette));
         continue;
       }
 
-      const { root, extrudeGroup, roofHeight } = buildMachineLineArt(b, def, baseY, opacity, isSelected);
+      const { root, extrudeGroup, roofHeight } = buildMachineLineArt(b, def, baseY, opacity, isSelected, palette);
       extrudeGroup.scale.y = yScale;
 
-      // Subtle flat top caption ONLY when a recipe or custom label is configured (rides atop roof smoothly!)
       let labelMesh: THREE.Object3D | undefined;
       const recipe = b.recipeId ? getRecipeDef(b.recipeId) : null;
       const caption = b.label || recipe?.nameZh || null;
       const [w, d] = getBuildingSizeCells(def, b.rotation);
       if (state.viewMode === 'building' && caption && Math.min(w, d) >= 2 && opacity >= 0.45) {
         const [cx, cz] = getBuildingCenterM(b, def);
-        const tex = getLabelTexture(caption, null, this.maxAniso);
+        const tex = getLabelTexture(caption, null, palette, this.maxAniso);
         const labelW = Math.min(w - 0.35, 3.8);
         const labelGeo = new THREE.PlaneGeometry(labelW, labelW * 0.375);
         labelGeo.rotateX(-Math.PI / 2);
         labelMesh = new THREE.Mesh(
           labelGeo,
-          new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opacity * 0.9, depthWrite: false })
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opacity * 0.94, depthWrite: false })
         );
         labelMesh.position.set(cx, baseY + 0.04 + roofHeight * yScale + 0.05, cz);
         root.add(labelMesh);
       }
 
-      this.extrudeTargets.push({ group: extrudeGroup, baseY, roofHeight, labelMesh });
+      this.buildingExtrudeTargets.push({ group: extrudeGroup, baseY, roofHeight, labelMesh });
       this.buildingsGroup.add(root);
     }
 
-    // Fine dashed subterranean links for paired underground belts
     const links = computeUndergroundLinks(state.doc);
     for (const link of links) {
       const opacity = this.layerOpacityFor(link.floor, state.focusFloor, state.hideAbove);
@@ -620,8 +652,8 @@ export class CadSceneController {
       const y = link.floor * FLOOR_VISUAL_SPACING + 0.05;
       this.undergroundGroup.add(
         createCrispLineSegments([link.x1, y, link.y1, link.x2, y, link.y2], {
-          color: COLORS.undergroundLink,
-          opacity: opacity * 0.68,
+          color: palette.undergroundLink,
+          opacity: opacity * 0.8,
           widthPx: 1.0,
           dashed: true,
           dashSize: 0.32,
@@ -647,12 +679,11 @@ export class CadSceneController {
     this.applyDistanceLod();
   }
 
-  /** Smoothly attenuates dense fine secondary linework when zoomed far out to prevent sub-pixel moiré */
   private applyDistanceLod(): void {
     const dist = this.rig.currentDistance;
-    const lod = THREE.MathUtils.clamp(1.0 - (dist - 42) / 52, 0.22, 1.0);
+    const lod = THREE.MathUtils.clamp(1.0 - (dist - 46) / 58, 0.28, 1.0);
     for (const mat of this.detailLineMaterials) {
-      const base = (mat.userData.baseOpacity as number) ?? 0.6;
+      const base = (mat.userData.baseOpacity as number) ?? 1.0;
       mat.opacity = base * lod;
     }
   }
@@ -671,7 +702,7 @@ export class CadSceneController {
     if (state.cursorWorld) {
       u.uCursorWorld.value.set(state.cursorWorld.x, state.cursorWorld.y);
       u.uCursorActive.value = 1.0;
-      u.uOpacity.value = showForTool ? 0.62 : (isStation ? 0.3 : 0.42);
+      u.uOpacity.value = showForTool ? 0.64 : isStation ? 0.3 : 0.42;
     } else {
       u.uCursorActive.value = 0.0;
     }
@@ -724,7 +755,7 @@ export class CadSceneController {
     }
   }
 
-  private addFlatRectGhost(x0: number, z0: number, x1: number, z1: number, y: number, color: number, opacity = 0.85): void {
+  private addFlatRectGhost(x0: number, z0: number, x1: number, z1: number, y: number, color: number, opacity = 0.88): void {
     const pts = [
       x0, y, z0, x1, y, z0,
       x1, y, z0, x1, y, z1,
@@ -734,12 +765,11 @@ export class CadSceneController {
     this.previewGroup.add(createCrispLineSegments(pts, { color, opacity, widthPx: 1.25 }));
   }
 
-  private rebuildPreview(state: SceneRenderState): void {
+  private rebuildPreview(state: SceneRenderState, palette: CadThemePalette): void {
     this.clearGroup(this.previewGroup);
     this.ghostExtrudeTargets = [];
     const yScale = this.getCurrentExtrusionScale();
 
-    // 1. Active belt drag / Belt Planner preview (minimal hairline rails + chevrons)
     if (state.beltPreview.length > 0 && state.activeTool.kind === 'place-building') {
       const beltType = state.activeTool.buildingType;
       const baseY = state.focusFloor * FLOOR_VISUAL_SPACING + 0.07;
@@ -749,9 +779,9 @@ export class CadSceneController {
           { type: beltType, x: seg.x, y: seg.y, floor: state.focusFloor, rotation: seg.rotation },
           { allowBeltReplace: true }
         );
-        const col = issue ? COLORS.invalidGhost : COLORS.validGhost;
-        this.addFlatRectGhost(seg.x + 0.14, seg.y + 0.14, seg.x + 0.86, seg.y + 0.86, baseY, col, 0.55);
-        const chev = createDirectionalChevron(0.28, col, 0.92);
+        const col = issue ? palette.invalidGhost : palette.validGhost;
+        this.addFlatRectGhost(seg.x + 0.14, seg.y + 0.14, seg.x + 0.86, seg.y + 0.86, baseY, col, 0.6);
+        const chev = createDirectionalChevron(0.28, col, 0.94);
         chev.position.set(seg.x + 0.5, baseY + 0.01, seg.y + 0.5);
         chev.rotation.y = -seg.rotation * (Math.PI / 2);
         this.previewGroup.add(chev);
@@ -762,7 +792,7 @@ export class CadSceneController {
     if (!state.cursorWorld) return;
     const baseY = state.focusFloor * FLOOR_VISUAL_SPACING;
 
-    // 2. Single Station Module placement ghost
+    // 2. Single Station Module placement ghost (non-platform modules render their real sculpted line-art!)
     if (state.activeTool.kind === 'place-module') {
       const def = getModuleDef(state.activeTool.moduleType);
       if (!def) return;
@@ -776,19 +806,35 @@ export class CadSceneController {
         floor: state.focusFloor,
         rotation: state.activeTool.rotation,
       });
-      const col = issue ? COLORS.invalidGhost : COLORS.validGhost;
+      const col = issue ? palette.invalidGhost : palette.validGhost;
       const x0 = gx * STATION_UNIT_M + 0.12;
       const z0 = gy * STATION_UNIT_M + 0.12;
       const x1 = (gx + wu) * STATION_UNIT_M - 0.12;
       const z1 = (gy + du) * STATION_UNIT_M - 0.12;
-      this.addFlatRectGhost(x0, z0, x1, z1, baseY + 0.08, col, 0.92);
-      if (hu > 1) {
-        this.addFlatRectGhost(x0, z0, x1, z1, baseY + FLOOR_VISUAL_SPACING + 0.08, col, 0.48);
+
+      if (!def.hasFactoryFloor) {
+        const ghostMod: PlacedModule = {
+          id: '__ghost_mod',
+          type: def.id,
+          gx,
+          gy,
+          floor: state.focusFloor,
+          rotation: state.activeTool.rotation,
+          label: state.activeTool.label,
+        };
+        const ghostArt = buildStationModuleArt(ghostMod, def, baseY + 0.04, 0.96, false, palette, col);
+        ghostArt.extrudeGroup.scale.y = yScale;
+        this.ghostExtrudeTargets.push(ghostArt.extrudeGroup);
+        this.previewGroup.add(ghostArt.root);
+      }
+      this.addFlatRectGhost(x0, z0, x1, z1, baseY + 0.08, col, def.hasFactoryFloor ? 0.94 : 0.65);
+      if (hu > 1 && def.hasFactoryFloor) {
+        this.addFlatRectGhost(x0, z0, x1, z1, baseY + FLOOR_VISUAL_SPACING + 0.08, col, 0.5);
       }
       return;
     }
 
-    // 3. Single Building placement ghost (renders actual planar line-art silhouette + ports!)
+    // 3. Single Building placement ghost
     if (state.activeTool.kind === 'place-building') {
       const def = getBuildableDef(state.activeTool.buildingType);
       if (!def) return;
@@ -800,9 +846,9 @@ export class CadSceneController {
         { type: def.id, x: bx, y: by, floor: state.focusFloor, rotation: state.activeTool.rotation },
         { allowBeltReplace: def.kind === 'belt', allowForceReplace: state.forceReplaceHeld }
       );
-      const col = issue ? COLORS.invalidGhost : COLORS.validGhost;
+      const col = issue ? palette.invalidGhost : palette.validGhost;
       if (def.kind === 'belt') {
-        this.addFlatRectGhost(bx + 0.14, by + 0.14, bx + 0.86, by + 0.86, baseY + 0.09, col, 0.85);
+        this.addFlatRectGhost(bx + 0.14, by + 0.14, bx + 0.86, by + 0.86, baseY + 0.09, col, 0.88);
         const chev = createDirectionalChevron(0.32, col, 0.96);
         chev.position.set(bx + 0.5, baseY + 0.1, by + 0.5);
         chev.rotation.y = -state.activeTool.rotation * (Math.PI / 2);
@@ -820,7 +866,7 @@ export class CadSceneController {
           label: state.activeTool.label,
           disabledPorts: state.activeTool.disabledPorts,
         };
-        const ghostArt = buildMachineLineArt(ghostBld, def, baseY + 0.05, 0.96, false, col);
+        const ghostArt = buildMachineLineArt(ghostBld, def, baseY + 0.05, 0.96, false, palette, col);
         ghostArt.extrudeGroup.scale.y = yScale;
         this.ghostExtrudeTargets.push(ghostArt.extrudeGroup);
         this.previewGroup.add(ghostArt.root);
@@ -835,14 +881,14 @@ export class CadSceneController {
         this.previewGroup.add(
           createCrispLineSegments(
             [bx + 0.5, baseY + 0.1, by + 0.5, bx + 0.5 + dx * dirSign * maxLen, baseY + 0.1, by + 0.5 + dy * dirSign * maxLen],
-            { color: col, opacity: 0.78, widthPx: 1.1, dashed: true, dashSize: 0.35, gapSize: 0.25 }
+            { color: col, opacity: 0.8, widthPx: 1.1, dashed: true, dashSize: 0.35, gapSize: 0.25 }
           )
         );
       }
       return;
     }
 
-    // 4. Blueprint Stamp Ghost (crisp planar line-art outlines)
+    // 4. Blueprint Stamp Ghost
     if (state.activeTool.kind === 'stamp-blueprint') {
       const anchorX = Math.floor(state.cursorWorld.x);
       const anchorY = Math.floor(state.cursorWorld.y);
@@ -862,9 +908,9 @@ export class CadSceneController {
         const def = getModuleDef(m.type);
         if (!def) continue;
         const issue = validateModulePlacement(state.doc, m);
-        const col = issue && !state.forceReplaceHeld ? COLORS.invalidGhost : COLORS.validGhost;
+        const col = issue && !state.forceReplaceHeld ? palette.invalidGhost : palette.validGhost;
         const [minX, minY, maxX, maxY] = getModuleBoundsM(m, def);
-        this.addFlatRectGhost(minX + 0.15, minY + 0.15, maxX - 0.15, maxY - 0.15, m.floor * FLOOR_VISUAL_SPACING + 0.08, col, 0.85);
+        this.addFlatRectGhost(minX + 0.15, minY + 0.15, maxX - 0.15, maxY - 0.15, m.floor * FLOOR_VISUAL_SPACING + 0.08, col, 0.88);
       }
 
       for (const b of buildings) {
@@ -874,14 +920,14 @@ export class CadSceneController {
           allowBeltReplace: true,
           allowForceReplace: state.forceReplaceHeld,
         });
-        const col = issue ? COLORS.invalidGhost : COLORS.validGhost;
+        const col = issue ? palette.invalidGhost : palette.validGhost;
         const [w, d] = getBuildingSizeCells(def, b.rotation);
-        this.addFlatRectGhost(b.x + 0.1, b.y + 0.1, b.x + w - 0.1, b.y + d - 0.1, b.floor * FLOOR_VISUAL_SPACING + 0.09, col, 0.85);
+        this.addFlatRectGhost(b.x + 0.1, b.y + 0.1, b.x + w - 0.1, b.y + d - 0.1, b.floor * FLOOR_VISUAL_SPACING + 0.09, col, 0.88);
       }
     }
   }
 
-  private rebuildBoxSelect(state: SceneRenderState): void {
+  private rebuildBoxSelect(state: SceneRenderState, palette: CadThemePalette): void {
     this.clearGroup(this.boxSelectGroup);
     if (!state.boxSelectRect) return;
     const { minX, minY, maxX, maxY } = state.boxSelectRect;
@@ -907,14 +953,14 @@ export class CadSceneController {
     const geo = new THREE.BoxGeometry(w, h, d);
     const fill = new THREE.Mesh(
       geo,
-      new THREE.MeshBasicMaterial({ color: COLORS.selectOutline, transparent: true, opacity: 0.05, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: palette.selectOutline, transparent: true, opacity: 0.05, depthWrite: false })
     );
     fill.position.set(cx, (y0 + y1) / 2, cy);
     this.boxSelectGroup.add(fill);
 
     const edges = createCrispLineSegments(edgesToPositions(new THREE.EdgesGeometry(geo)), {
-      color: COLORS.selectOutline,
-      opacity: 0.78,
+      color: palette.selectOutline,
+      opacity: 0.84,
       widthPx: 1.2,
     });
     edges.position.copy(fill.position);

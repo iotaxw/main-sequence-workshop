@@ -1223,6 +1223,33 @@
       "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationArmour_01"
     },
     {
+      "id": "BPO_StationArmour_01B",
+      "nameEn": "Station Armour (Mirror)",
+      "nameZh": "空间站装甲（镜像）",
+      "descriptionZh": "用于保护空间站模块的大型装甲部件。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": -4,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 0
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationArmour_01B"
+    },
+    {
       "id": "BPO_Dock",
       "nameEn": "Dock",
       "nameZh": "对接口",

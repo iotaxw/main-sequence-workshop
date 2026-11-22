@@ -25,7 +25,8 @@ import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } f
 describe('Build 26639889 catalog verification', () => {
   it('includes all extracted station modules, buildables, and recipes with binary-verified dimensions', () => {
     expect(CATALOG.game.buildId).toBe('26639889');
-    expect(CATALOG.stationModules.length).toBeGreaterThanOrEqual(24);
+    expect(CATALOG.stationModules.length).toBeGreaterThanOrEqual(27);
+    expect(getModuleDef('BPO_StationArmour_01B')?.blockBoundsM?.minZ).toBeLessThan(0);
     expect(CATALOG.buildables.length).toBeGreaterThanOrEqual(33);
     expect(CATALOG.recipes.length).toBeGreaterThanOrEqual(80);
 

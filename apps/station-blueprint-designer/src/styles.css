@@ -1,23 +1,32 @@
 :root {
+  --bg-canvas: #06080c;
+  --bg-panel: rgba(9, 12, 18, 0.88);
+  --bg-panel-solid: #0a0e15;
+  --bg-surface: rgba(15, 20, 29, 0.8);
+  --bg-surface-hover: rgba(23, 30, 42, 0.88);
+  --bg-surface-active: rgba(27, 34, 46, 0.92);
+  --border-hairline: #171f2c;
+  --border-subtle: #222c3c;
+  --border-mid: #344357;
+  --border-focus: #8f7b5c;
+  --text-bright: #e2eaf4;
+  --text-main: #c1cddb;
+  --text-dim: #7f91a6;
+  --text-muted: #526378;
+  --line-active: #56ba88;
+  --line-disabled: #96444a;
+  --line-warn: #a69062;
+  --font-sans: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+.cad-shell[data-theme='obsidian-slate'] {
   --bg-canvas: #080b10;
   --bg-panel: rgba(11, 15, 22, 0.86);
   --bg-panel-solid: #0c1018;
-  --bg-surface: rgba(16, 22, 32, 0.78);
-  --bg-surface-hover: rgba(24, 33, 47, 0.86);
-  --bg-surface-active: rgba(31, 43, 61, 0.9);
-  --border-hairline: #18212f;
-  --border-subtle: #212d3f;
-  --border-mid: #314258;
   --border-focus: #4a617d;
   --text-bright: #dce5f0;
   --text-main: #bac7d6;
-  --text-dim: #798ca3;
-  --text-muted: #506278;
-  --line-active: #5a8f75;
-  --line-disabled: #7d3e43;
-  --line-warn: #8c7b52;
-  --font-sans: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 }
 
 * {
@@ -339,17 +348,17 @@ body,
   cursor: not-allowed;
 }
 
-/* Soft edge attenuation so only the central focal region draws the eye */
+/* Subtle peripheral vignette that keeps center architectural ink bright and crystalline */
 .cad-focal-vignette {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 6;
   background: radial-gradient(
-    ellipse 58% 54% at 50% 48%,
-    transparent 34%,
-    rgba(6, 9, 14, 0.28) 72%,
-    rgba(4, 6, 10, 0.62) 100%
+    ellipse 64% 60% at 50% 48%,
+    transparent 46%,
+    rgba(5, 7, 11, 0.18) 78%,
+    rgba(3, 5, 8, 0.42) 100%
   );
 }
 

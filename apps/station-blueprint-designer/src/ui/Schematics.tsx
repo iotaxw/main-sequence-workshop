@@ -325,6 +325,96 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
         </>
       );
     }
+    if (id === 'BPO_StationArmour_01') {
+      // Sloped armour wedge A
+      return (
+        <>
+          <polygon points="4,18 4,6 19,6 13,18" {...s} />
+          <line x1="4" y1="12" x2="16" y2="12" {...dim} />
+        </>
+      );
+    }
+    if (id === 'BPO_StationArmour_01B') {
+      // Mirrored sloped armour wedge B
+      return (
+        <>
+          <polygon points="20,18 20,6 5,6 11,18" {...s} />
+          <line x1="20" y1="12" x2="8" y2="12" {...dim} />
+        </>
+      );
+    }
+    if (id === 'BPO_StationTurretBlock_01') {
+      // Octagonal turret base + twin plasma barrels
+      return (
+        <>
+          <polygon points="7,7 14,7 16.5,9.5 16.5,14.5 14,17 7,17 4.5,14.5 4.5,9.5" {...dim} />
+          <circle cx="10.5" cy="12" r="3" {...s} />
+          <line x1="13.5" y1="10.5" x2="20.5" y2="10.5" {...s} />
+          <line x1="13.5" y1="13.5" x2="20.5" y2="13.5" {...s} />
+        </>
+      );
+    }
+    if (id === 'BPO_CommandModule') {
+      return (
+        <>
+          <polygon points="12,3.5 19.5,8 19.5,16 12,20.5 4.5,16 4.5,8" {...s} />
+          <circle cx="12" cy="12" r="3" {...dim} />
+          <line x1="12" y1="6.5" x2="12" y2="9" {...s} />
+        </>
+      );
+    }
+    if (id === 'BPO_Dock' || id === 'BPO_Dock_2') {
+      return (
+        <>
+          <rect x="4" y="5" width="16" height="14" rx="2" {...dim} />
+          <circle cx="12" cy="12" r="3.8" {...s} />
+          <line x1="15.8" y1="12" x2="20" y2="12" {...s} />
+        </>
+      );
+    }
+    if (id === 'BPO_ScannerModule') {
+      return (
+        <>
+          <circle cx="12" cy="12" r="7.5" {...dim} />
+          <path d="M7.5,14.5 A6,6 0 0,1 16.5,9.5" {...s} />
+          <circle cx="12" cy="12" r="1.5" {...s} />
+        </>
+      );
+    }
+    if (id.includes('MiningDrone')) {
+      const mk2 = id.endsWith('_2');
+      return (
+        <>
+          <rect x="4" y="4.5" width="16" height="15" rx="2" {...s} />
+          <rect x="7.5" y="8" width="9" height="8" rx="1" {...dim} />
+          {mk2 ? (
+            <>
+              <line x1="12" y1="8" x2="12" y2="16" {...s} />
+              <line x1="7.5" y1="12" x2="16.5" y2="12" {...s} />
+            </>
+          ) : (
+            <line x1="12" y1="8.5" x2="12" y2="15.5" {...s} />
+          )}
+        </>
+      );
+    }
+    if (id === 'BPO_DeepSpaceObservatory') {
+      return (
+        <>
+          <circle cx="12" cy="12" r="7.6" {...s} />
+          <line x1="12" y1="4.4" x2="12" y2="19.6" {...dim} />
+          <circle cx="12" cy="12" r="3" {...dim} />
+        </>
+      );
+    }
+    if (id.includes('Shipyard')) {
+      return (
+        <>
+          <path d="M4,6 H20 M4,18 H20 M6,6 V18 M18,6 V18" {...s} />
+          <line x1="12" y1="6" x2="12" y2="18" {...dim} />
+        </>
+      );
+    }
 
     // Default clean architectural square
     return (

@@ -134,8 +134,9 @@ export const STATION_GROUPS: PaletteGroupDef[] = [
       'BPO_ShipyardCore_02',
       // 深空设施
       'BPO_DeepSpaceObservatory',
-      // 防御与装甲（低→高）
+      // 防御与装甲（低→高，含镜像斜甲）
       'BPO_StationArmour_01',
+      'BPO_StationArmour_01B',
       'BPO_StationTurretBlock_01',
     ],
   },
@@ -223,7 +224,8 @@ const SHORT_LABELS: Record<string, string> = {
   BPO_ShipyardSide: '船坞侧',
   BPO_DeepSpaceObservatory: '天文台',
   BPO_StationTurretBlock_01: '炮塔',
-  BPO_StationArmour_01: '装甲',
+  BPO_StationArmour_01: '装甲 A',
+  BPO_StationArmour_01B: '装甲 B',
 };
 
 export function getShortLabel(id: string, fallback?: string): string {
