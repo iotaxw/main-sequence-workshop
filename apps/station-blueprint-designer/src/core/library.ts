@@ -210,7 +210,7 @@ interface VirtualStoreData {
 }
 
 const VIRTUAL_LIB_KEY = 'ms-sbd:virtual-library:v2';
-const CURRENT_PRESET_REVISION = 4;
+const CURRENT_PRESET_REVISION = 5;
 const SUPERSEDED_PRESET_PATHS = [
   '星穹总线超市/标准生产细胞/Cell-7S-超算9台满铺舱.json',
   '星穹总线超市/标准枢纽/B1-中央7x8井字立交.json',
