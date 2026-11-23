@@ -143,19 +143,23 @@ export function MachineCard({ machine, machines }: {
   );
 }
 
-export function RecipeCard({ row, index, activeForkItemId, onSwitch }: {
+export function RecipeCard({ row, index, targetItemId, activeForkItemId, onSwitch, onMarkExternal }: {
   row: RecipeRow;
   index: DatasetIndex;
+  targetItemId: string | null;
   activeForkItemId?: string | null;
   onSwitch: (itemId: string, anchor: HTMLElement) => void;
+  onMarkExternal: (itemId: string) => void;
 }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const recipe = index.recipes.get(row.recipeId)!;
   const machine = index.machines.get(row.machineId)!;
   const primaryOutput = recipe.outputs.find(output => !output.isByproduct) ?? recipe.outputs[0]!;
   const alternatives = index.recipesByOutput.get(primaryOutput.itemId) ?? [];
   const hasAlternatives = alternatives.length > 1;
+  const canMarkExternal = primaryOutput.itemId !== targetItemId;
   const isOpen = hasAlternatives && activeForkItemId === primaryOutput.itemId;
+  const primaryName = entityName(index.items.get(primaryOutput.itemId)!, language);
   return (
     <article className={`recipe-card${isOpen ? ' recipe-card--editing' : ''}`} aria-label={recipe.id}>
       <div className="recipe-card__recipe">
@@ -177,17 +181,29 @@ export function RecipeCard({ row, index, activeForkItemId, onSwitch }: {
               <span>{alternatives.length}</span>
             </button>
           )}
+          {canMarkExternal && (
+            <button
+              className="recipe-card__external"
+              onClick={() => onMarkExternal(primaryOutput.itemId)}
+              aria-label={`${primaryName}：${t('setExternalInput')}`}
+              title={`${primaryName}：${t('setExternalInput')}`}
+            >
+              <UiIcon name="input" size={12} />
+            </button>
+          )}
         </span>
       </div>
     </article>
   );
 }
 
-export function RecipeGrid({ rows, index, activeForkItemId, onSwitch }: {
+export function RecipeGrid({ rows, index, targetItemId, activeForkItemId, onSwitch, onMarkExternal }: {
   rows: RecipeRow[];
   index: DatasetIndex;
+  targetItemId: string | null;
   activeForkItemId?: string | null;
   onSwitch: (itemId: string, anchor: HTMLElement) => void;
+  onMarkExternal: (itemId: string) => void;
 }) {
   const { t } = useLanguage();
   const groups = useMemo(() => {
@@ -239,7 +255,17 @@ export function RecipeGrid({ rows, index, activeForkItemId, onSwitch }: {
             {tier === '↻' ? <UiIcon name="recycle" /> : <span>{tier.padStart(2, '0')}</span>}
           </div>
           <div className="card-grid">
-            {group.map(row => <RecipeCard key={row.recipeId} row={row} index={index} activeForkItemId={activeForkItemId} onSwitch={onSwitch} />)}
+            {group.map(row => (
+              <RecipeCard
+                key={row.recipeId}
+                row={row}
+                index={index}
+                targetItemId={targetItemId}
+                activeForkItemId={activeForkItemId}
+                onSwitch={onSwitch}
+                onMarkExternal={onMarkExternal}
+              />
+            ))}
           </div>
         </section>
       ))}
@@ -247,10 +273,10 @@ export function RecipeGrid({ rows, index, activeForkItemId, onSwitch }: {
   );
 }
 
-export function ForkPopover({ fork, index, activeRecipeIds, anchorEl, onSelect, onRemoveRecycle, onClose }: {
+export function ForkPopover({ fork, index, activeRecipeId, anchorEl, onSelect, onRemoveRecycle, onClose }: {
   fork: Fork;
   index: DatasetIndex;
-  activeRecipeIds: string[];
+  activeRecipeId?: string;
   anchorEl: HTMLElement | null;
   onSelect: (recipeId: string) => void;
   onRemoveRecycle?: () => void;
@@ -259,7 +285,6 @@ export function ForkPopover({ fork, index, activeRecipeIds, anchorEl, onSelect, 
   const { language, t } = useLanguage();
   const item = index.items.get(fork.itemId)!;
   const heading = t(fork.kind === 'recycle' ? 'selectRecycle' : 'selectProduce');
-  const activeSet = useMemo(() => new Set(activeRecipeIds), [activeRecipeIds]);
   const panelRef = useRef<HTMLElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
@@ -342,20 +367,29 @@ export function ForkPopover({ fork, index, activeRecipeIds, anchorEl, onSelect, 
         <ItemGlyph item={item} role={fork.kind === 'recycle' ? 'byproduct' : 'target'} size="small" />
         <span className="fork-picker__item">{entityName(item, language)}</span>
         <span className="fork-popover__spacer" />
-        {fork.kind === 'recycle' && onRemoveRecycle && (
-          <button className="fork-popover__clear" onClick={onRemoveRecycle}>
-            {t('removeRecycle')}
-          </button>
-        )}
         <button className="icon-button fork-popover__close" onClick={onClose} aria-label={t('close')} title={t('close')}>
           <UiIcon name="close" size={12} />
         </button>
       </header>
       <div className="card-grid fork-popover__grid" role="radiogroup" aria-label={heading}>
+        {fork.kind === 'recycle' && onRemoveRecycle && (
+          <button
+            className={`recipe-card recipe-option recipe-option--none${!activeRecipeId ? ' recipe-option--active' : ''}`}
+            onClick={onRemoveRecycle}
+            role="radio"
+            aria-checked={!activeRecipeId}
+          >
+            <span className="recipe-option__none-body">
+              <ItemGlyph item={item} role="byproduct" size="medium" />
+              <span className="recipe-option__none-label">{t('keepByproductSurplus')}</span>
+              {!activeRecipeId && <span className="recipe-option__dot" aria-hidden="true" />}
+            </span>
+          </button>
+        )}
         {fork.recipeIds.map(recipeId => {
           const recipe = index.recipes.get(recipeId)!;
           const machine = index.machines.get(recipe.machineId)!;
-          const selected = activeSet.has(recipeId);
+          const selected = recipeId === activeRecipeId;
           return (
             <button
               className={`recipe-card recipe-option${selected ? ' recipe-option--active' : ''}`}
@@ -475,22 +509,32 @@ export function SummaryStrip({ plan, index, activeRecycleItemId, onOpenRecycle }
               );
             })}
             {balancedByproductIds.map(itemId => {
-              const isOpen = activeRecycleItemId === itemId;
+              const explicit = plan.recycleByItem[itemId] !== undefined;
+              const isOpen = explicit && activeRecycleItemId === itemId;
+              const internalNote = language === 'en'
+                ? 'Consumed internally by upstream recipes (0/min net). Add seeds to External Inputs to supply externally.'
+                : '已由产线内上游配方完全消耗（净剩余 0/min）；如需外部供给种子，请在「外部输入」添加。';
               return (
-                <span className={`flow-chip flow-chip--byproduct flow-chip--balanced${isOpen ? ' flow-chip--editing' : ''}`} key={itemId}>
+                <span
+                  className={`flow-chip flow-chip--byproduct ${explicit ? 'flow-chip--balanced' : 'flow-chip--internal'}${isOpen ? ' flow-chip--editing' : ''}`}
+                  key={itemId}
+                  title={explicit ? undefined : internalNote}
+                >
                   <ItemGlyph item={index.items.get(itemId)!} role="byproduct" size="small" />
                   <RateValue value="0" />
-                  <button
-                    className={`recycle-toggle recycle-toggle--on${isOpen ? ' recycle-toggle--open' : ''}`}
-                    onClick={event => onOpenRecycle(itemId, event.currentTarget)}
-                    title={t('selectRecycle')}
-                    aria-label={t('selectRecycle')}
-                    aria-pressed="true"
-                    aria-expanded={isOpen}
-                    aria-haspopup="dialog"
-                  >
-                    <UiIcon name="recycle" size={12} />
-                  </button>
+                  {explicit && (
+                    <button
+                      className={`recycle-toggle recycle-toggle--on${isOpen ? ' recycle-toggle--open' : ''}`}
+                      onClick={event => onOpenRecycle(itemId, event.currentTarget)}
+                      title={t('selectRecycle')}
+                      aria-label={t('selectRecycle')}
+                      aria-pressed="true"
+                      aria-expanded={isOpen}
+                      aria-haspopup="dialog"
+                    >
+                      <UiIcon name="recycle" size={12} />
+                    </button>
+                  )}
                 </span>
               );
             })}

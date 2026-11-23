@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import datasetJson from '../data/main-sequence-26639889.dataset.json';
-import { indexDataset } from './core/dataset';
+import { defaultExternalInputItemIds, indexDataset } from './core/dataset';
 import { Rational } from './core/rational';
 import { solvePlan } from './core/solver';
 import type { Dataset, Fork, InvalidPlan, Issue, Language, PlanResult } from './core/types';
@@ -20,6 +20,8 @@ import { entityName, label, LanguageContext, type LabelKey } from './ui/language
 
 const dataset = datasetJson as Dataset;
 const index = indexDataset(dataset);
+const defaultInputs = defaultExternalInputItemIds(dataset);
+const defaultInputKey = [...defaultInputs].sort().join(',');
 const itemOrder = new Map(dataset.items.map((item, order) => [item.id, order]));
 
 interface OpenForkState {
@@ -193,31 +195,31 @@ export default function App() {
     setOpenFork(null);
   }
 
-  function updateInputs(nextInputs: string[]) {
+  function updateInputs(nextInputs: string[], resetRecycles = false) {
+    const nextRecycleIds = resetRecycles ? [] : recycleItemIds;
+    const nextRecycles = resetRecycles ? {} : recycleByItem;
     setInputItemIds(nextInputs);
-    applyResolvedRecipes(targetItemId, nextInputs, recipeByItem);
+    if (resetRecycles) {
+      setRecycleItemIds([]);
+      setRecycleByItem({});
+    }
+    applyResolvedRecipes(targetItemId, nextInputs, recipeByItem, nextRecycleIds, nextRecycles);
     setOpenFork(null);
   }
 
+  function markExternalInput(itemId: string) {
+    if (itemId === targetItemId || inputItemIds.includes(itemId)) return;
+    updateInputs([...inputItemIds, itemId]);
+  }
+
+  const isDefaultInputs = [...inputItemIds].sort().join(',') === defaultInputKey;
+
   const t = (key: LabelKey) => label(key, language);
-  const activeForkRecipeIds = useMemo(() => {
-    if (!activeForkState) return [];
-    const { fork } = activeForkState;
-    if (fork.kind === 'produce') {
-      const id = effectiveRecipes[fork.itemId];
-      return id ? [id] : [];
-    }
-    const ids = new Set<string>();
-    if (effectiveRecycles[fork.itemId]) ids.add(effectiveRecycles[fork.itemId]!);
-    if (plan?.status === 'solved') {
-      for (const row of plan.rows) {
-        if (row.inputs.some(input => input.itemId === fork.itemId)) ids.add(row.recipeId);
-      }
-    }
-    return [...ids];
-  }, [activeForkState, effectiveRecipes, effectiveRecycles, plan]);
-  const hasExplicitRecycle = activeForkState?.fork.kind === 'recycle'
-    && effectiveRecycles[activeForkState.fork.itemId] !== undefined;
+  const activeForkRecipeId = activeForkState
+    ? (activeForkState.fork.kind === 'produce'
+      ? effectiveRecipes[activeForkState.fork.itemId]
+      : effectiveRecycles[activeForkState.fork.itemId])
+    : undefined;
 
   return (
     <LanguageContext.Provider value={{ language, t }}>
@@ -251,7 +253,20 @@ export default function App() {
             </div>
           </div>
           <div className="control__inputs">
-            <span className="field-label">{t('externalInputs')}</span>
+            <div className="control__inputs-head">
+              <span className="field-label">{t('externalInputs')}</span>
+              {!isDefaultInputs && (
+                <button
+                  className="reset-inputs"
+                  onClick={() => updateInputs(defaultInputs, true)}
+                  title={t('resetInputs')}
+                  aria-label={t('resetInputs')}
+                >
+                  <UiIcon name="recycle" size={12} />
+                  <span>{t('resetInputs')}</span>
+                </button>
+              )}
+            </div>
             <div className="input-set">
               {[...inputItemIds].sort((left, right) => (itemOrder.get(left) ?? -1) - (itemOrder.get(right) ?? -1)).map(itemId => {
                 const item = index.items.get(itemId)!;
@@ -289,8 +304,10 @@ export default function App() {
             <RecipeGrid
               rows={plan.rows}
               index={index}
+              targetItemId={targetItemId}
               activeForkItemId={openFork?.fork.kind === 'produce' ? openFork.fork.itemId : null}
               onSwitch={openProduceFork}
+              onMarkExternal={markExternalInput}
             />
           </div>
         )}
@@ -299,10 +316,10 @@ export default function App() {
           <ForkPopover
             fork={activeForkState.fork}
             index={index}
-            activeRecipeIds={activeForkRecipeIds}
+            activeRecipeId={activeForkRecipeId}
             anchorEl={activeForkState.anchorEl}
             onSelect={selectFork}
-            onRemoveRecycle={hasExplicitRecycle ? () => removeRecycle(activeForkState.fork.itemId) : undefined}
+            onRemoveRecycle={activeForkState.fork.kind === 'recycle' ? () => removeRecycle(activeForkState.fork.itemId) : undefined}
             onClose={() => setOpenFork(null)}
           />
         )}
