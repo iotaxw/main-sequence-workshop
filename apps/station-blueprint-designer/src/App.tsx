@@ -35,10 +35,14 @@ import {
 } from './core/geometry';
 import {
   BlueprintLibraryDriver,
+  clearSavedGitHubConfig,
   FileSystemFolderDriver,
+  GitHubPrivateRepoDriver,
+  loadSavedGitHubConfig,
   loadWorkspaceAutosave,
   normalizeRelPath,
   sanitizeFileName,
+  saveGitHubConfig,
   saveWorkspaceAutosave,
   VirtualFolderDriver,
 } from './core/library';
@@ -119,8 +123,19 @@ export const App: React.FC = () => {
   const [helpOpen, setHelpOpen] = useState(false);
   const [simOpen, setSimOpen] = useState(false);
   const [activeSimIssueId, setActiveSimIssueId] = useState<string | null>(null);
-  const [driver, setDriver] = useState<BlueprintLibraryDriver>(() => new VirtualFolderDriver());
+  const [driver, setDriver] = useState<BlueprintLibraryDriver>(() => {
+    const savedGh = loadSavedGitHubConfig();
+    return savedGh ? new GitHubPrivateRepoDriver(savedGh) : new VirtualFolderDriver();
+  });
   const [libraryTree, setLibraryTree] = useState<LibraryNode[]>([]);
+  const [ghModal, setGhModal] = useState<{
+    repoSlug: string;
+    branch: string;
+    basePath: string;
+    token: string;
+    busy: boolean;
+    error: string | null;
+  } | null>(null);
 
   const simReport = useMemo(() => (simOpen ? simulateBlueprint(doc) : null), [doc, simOpen]);
   const simOverlayIssues = useMemo(
@@ -1417,6 +1432,68 @@ export const App: React.FC = () => {
     }
   };
 
+  const openGitHubConnectModal = () => {
+    const existing = driver instanceof GitHubPrivateRepoDriver ? driver.config : loadSavedGitHubConfig();
+    setGhModal({
+      repoSlug: existing ? `${existing.owner}/${existing.repo}` : '',
+      branch: existing?.branch || 'main',
+      basePath: existing?.basePath || '',
+      token: existing?.token || '',
+      busy: false,
+      error: null,
+    });
+  };
+
+  const handleConnectGitHubRepo = async () => {
+    if (!ghModal) return;
+    const parts = ghModal.repoSlug
+      .trim()
+      .replace(/^https?:\/\/github\.com\//i, '')
+      .replace(/\.git$/i, '')
+      .split('/')
+      .filter(Boolean);
+    if (parts.length < 2) {
+      setGhModal({ ...ghModal, error: '请填写仓库格式 owner/repo（例如 iotaxw/main-sequence-blueprints-private）。' });
+      return;
+    }
+    if (!ghModal.token.trim()) {
+      setGhModal({ ...ghModal, error: '请填写仅授权该私有仓库 Contents 读写的 Fine-grained Token。' });
+      return;
+    }
+    setGhModal({ ...ghModal, busy: true, error: null });
+    const cfg = {
+      owner: parts[0],
+      repo: parts[1],
+      branch: ghModal.branch.trim() || 'main',
+      basePath: ghModal.basePath.trim(),
+      token: ghModal.token.trim(),
+    };
+    const nextDriver = new GitHubPrivateRepoDriver(cfg);
+    try {
+      const nodes = await nextDriver.listTree();
+      saveGitHubConfig(cfg);
+      setDriver(nextDriver);
+      setLibraryTree(nodes);
+      setGhModal(null);
+      showToast(`已连接 GitHub 私有蓝图库：${cfg.owner}/${cfg.repo}`);
+    } catch (err) {
+      setGhModal({
+        ...ghModal,
+        busy: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const handleDisconnectGitHubRepo = async () => {
+    clearSavedGitHubConfig();
+    const fallback = new VirtualFolderDriver();
+    setDriver(fallback);
+    setGhModal(null);
+    await refreshLibrary(fallback);
+    showToast('已断开 GitHub 私有库并清除浏览器本地 Token，已切回内置蓝图库');
+  };
+
   const handleExportNativeSav = async (mode: 'station' | 'preset' = 'station', targetDoc: BlueprintDocument = doc) => {
     try {
       const { bytes, report } = await exportNativeSav(targetDoc, mode);
@@ -1679,6 +1756,7 @@ export const App: React.FC = () => {
             onExportNativeSav={(mode) => void handleExportNativeSav(mode)}
             onExportCanonicalJson={handleExportCanonicalJson}
             onMountLocalFolder={handleMountLocalFolder}
+            onOpenGitHubConnect={openGitHubConnectModal}
           />
           <button
             type="button"
@@ -1702,6 +1780,7 @@ export const App: React.FC = () => {
           activeSourcePath={activeSourcePath}
           stampingPath={stampingLibPath}
           onMountLocalFolder={handleMountLocalFolder}
+          onOpenGitHubConnect={openGitHubConnectModal}
           onRefresh={() => void refreshLibrary()}
           onNewBlueprint={handleNewBlueprint}
           onCreateFolder={handleCreateFolder}
@@ -1838,6 +1917,100 @@ export const App: React.FC = () => {
       </div>
 
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {ghModal && (
+        <div className="cad-modal-overlay" onClick={() => !ghModal.busy && setGhModal(null)}>
+          <div className="cad-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="panel-header">
+              <div className="panel-title-wrap">
+                <span className="panel-tag">PRIVATE CLOUD</span>
+                <span className="panel-title">连接个人 GitHub 私有蓝图库</span>
+              </div>
+              <button type="button" className="icon-btn" onClick={() => !ghModal.busy && setGhModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="modal-sub">
+                直接使用当前公开网页（代码永久同步），仅凭您本机浏览器内的 Fine-grained PAT 直连您的 GitHub 私有仓库读写私人蓝图，无需 GitHub Pro，也绝不暴露给其他访客。
+              </div>
+              <label className="field-label">
+                <span>私有仓库（owner/repo）</span>
+                <input
+                  type="text"
+                  className="cad-input"
+                  placeholder="例如：iotaxw/main-sequence-blueprints-private"
+                  value={ghModal.repoSlug}
+                  onChange={(e) => setGhModal({ ...ghModal, repoSlug: e.target.value })}
+                />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 8 }}>
+                <label className="field-label">
+                  <span>分支</span>
+                  <input
+                    type="text"
+                    className="cad-input"
+                    value={ghModal.branch}
+                    onChange={(e) => setGhModal({ ...ghModal, branch: e.target.value })}
+                  />
+                </label>
+                <label className="field-label">
+                  <span>子目录（留空为仓库根目录）</span>
+                  <input
+                    type="text"
+                    className="cad-input"
+                    placeholder="例如：blueprints"
+                    value={ghModal.basePath}
+                    onChange={(e) => setGhModal({ ...ghModal, basePath: e.target.value })}
+                  />
+                </label>
+              </div>
+              <label className="field-label">
+                <span>GitHub Fine-grained PAT（仅需该私有仓库 Contents 读写权限）</span>
+                <input
+                  type="password"
+                  className="cad-input"
+                  placeholder="github_pat_..."
+                  value={ghModal.token}
+                  onChange={(e) => setGhModal({ ...ghModal, token: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !ghModal.busy) void handleConnectGitHubRepo();
+                  }}
+                />
+              </label>
+              <div className="modal-sub">
+                安全说明：Token 仅存在当前浏览器 localStorage，仅发往官方 api.github.com；在公共设备用完点「断开并清除」即可立刻抹除。
+              </div>
+              {ghModal.error && (
+                <div className="modal-sub" style={{ color: 'var(--line-disabled)' }}>
+                  {ghModal.error}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              {(driver.mode === 'github-private' || loadSavedGitHubConfig()) && (
+                <button
+                  type="button"
+                  className="cad-btn danger"
+                  disabled={ghModal.busy}
+                  onClick={() => void handleDisconnectGitHubRepo()}
+                >
+                  断开并清除 Token
+                </button>
+              )}
+              <button type="button" className="cad-btn" disabled={ghModal.busy} onClick={() => setGhModal(null)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="cad-btn accent"
+                disabled={ghModal.busy}
+                onClick={() => void handleConnectGitHubRepo()}
+              >
+                {ghModal.busy ? '连接校验中...' : '测试并连接'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {saveDialog && (
         <div className="cad-modal-overlay" onClick={() => setSaveDialog(null)}>

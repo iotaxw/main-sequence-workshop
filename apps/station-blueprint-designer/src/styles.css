@@ -1718,3 +1718,14 @@ body,
   line-height: 1.5;
   color: var(--text-dim);
 }
+
+.status-dot.amber {
+  background: #e8b84b;
+  box-shadow: 0 0 6px rgba(232, 184, 75, 0.55);
+}
+
+.interop-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

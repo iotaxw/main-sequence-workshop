@@ -27,7 +27,15 @@ import {
   validateModulePlacement,
 } from './geometry';
 import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
-import { loadWorkspaceAutosave, saveWorkspaceAutosave, VirtualFolderDriver } from './library';
+import {
+  clearSavedGitHubConfig,
+  GitHubPrivateRepoDriver,
+  loadSavedGitHubConfig,
+  loadWorkspaceAutosave,
+  saveGitHubConfig,
+  saveWorkspaceAutosave,
+  VirtualFolderDriver,
+} from './library';
 import { exportNativeSav, importNativeSav } from './native-codec';
 import { DEFAULT_LIBRARY_PRESETS, HAS_PRIVATE_PRESETS } from './presets';
 import { simulateBlueprint } from './simulation';
@@ -1217,5 +1225,90 @@ describe('Shared Rust/WASM native .sav <-> Canonical Blueprint JSON codec', () =
     const presetBack = await importNativeSav(presetSav.bytes);
     expect(presetBack.doc.modules.length).toBe(starter.modules.length);
     expect(presetBack.doc.buildings.length).toBe(starter.buildings.length);
+  });
+});
+
+describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () => {
+  it('lists recursive UTF-8 Chinese folders, reads large blobs by SHA, writes/deletes with SHA tracking, and wipes token cleanly', async () => {
+    const starter = createStarterBlueprint();
+    starter.name = '私有星穹主站';
+    const b64Content = Buffer.from(serializeBlueprint(starter), 'utf8').toString('base64');
+
+    const calls: Array<{ url: string; method: string; body?: string }> = [];
+    const prevFetch = globalThis.fetch;
+    const prevStorage = (globalThis as { localStorage?: unknown }).localStorage;
+    const mem = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => mem.set(k, v),
+      removeItem: (k: string) => mem.delete(k),
+      clear: () => mem.clear(),
+    };
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      calls.push({ url, method, body: typeof init?.body === 'string' ? init.body : undefined });
+
+      if (url.includes('/git/trees/main?recursive=1')) {
+        return new Response(
+          JSON.stringify({
+            tree: [
+              { path: 'blueprints/星穹总线超市', type: 'tree', sha: 't1' },
+              { path: 'blueprints/星穹总线超市/主站.json', type: 'blob', sha: 'sha_main_1' },
+              { path: 'blueprints/README.md', type: 'blob', sha: 'sha_readme' },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/git/blobs/sha_main_1')) {
+        return new Response(JSON.stringify({ encoding: 'base64', content: b64Content }), { status: 200 });
+      }
+      if (method === 'PUT' && url.includes('/contents/')) {
+        return new Response(JSON.stringify({ content: { sha: 'sha_main_2' } }), { status: 200 });
+      }
+      if (method === 'DELETE' && url.includes('/contents/')) {
+        return new Response(JSON.stringify({ commit: { sha: 'c_del' } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const cfg = { owner: 'iotaxw', repo: 'ms-private-bps', branch: 'main', basePath: 'blueprints', token: 'ghp_test_token' };
+      saveGitHubConfig(cfg);
+      expect(loadSavedGitHubConfig()).toEqual(cfg);
+
+      const drv = new GitHubPrivateRepoDriver(cfg);
+      const tree = await drv.listTree();
+      expect(tree.length).toBe(1);
+      expect(tree[0].kind).toBe('folder');
+      if (tree[0].kind === 'folder') {
+        expect(tree[0].name).toBe('星穹总线超市');
+        expect(tree[0].children.length).toBe(1);
+        expect(tree[0].children[0].path).toBe('星穹总线超市/主站.json');
+      }
+
+      const { doc } = await drv.readBlueprint('星穹总线超市/主站.json');
+      expect(doc.name).toBe('私有星穹主站');
+      expect(doc.modules.length).toBe(starter.modules.length);
+
+      // Updating existing file sends cached sha_main_1 and updates cache to sha_main_2
+      doc.name = '私有星穹主站-已修改';
+      await drv.writeBlueprint('星穹总线超市/主站.json', doc);
+      const putCall = calls.find((c) => c.method === 'PUT')!;
+      expect(JSON.parse(putCall.body!).sha).toBe('sha_main_1');
+
+      // Deleting uses updated sha_main_2
+      await drv.deleteEntry('星穹总线超市/主站.json');
+      const delCall = calls.find((c) => c.method === 'DELETE')!;
+      expect(JSON.parse(delCall.body!).sha).toBe('sha_main_2');
+
+      clearSavedGitHubConfig();
+      expect(loadSavedGitHubConfig()).toBeNull();
+    } finally {
+      globalThis.fetch = prevFetch;
+      (globalThis as { localStorage?: unknown }).localStorage = prevStorage;
+    }
   });
 });

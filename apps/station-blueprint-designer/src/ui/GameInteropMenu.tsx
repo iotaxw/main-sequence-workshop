@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 interface GameInteropMenuProps {
-  driverMode: 'fs-local' | 'virtual-idb';
+  driverMode: 'fs-local' | 'virtual-idb' | 'github-private';
   rootLabel: string;
   fsSupported: boolean;
   onImportFile: (file: File) => void;
   onExportNativeSav: (mode: 'station' | 'preset') => void;
   onExportCanonicalJson: () => void;
   onMountLocalFolder: () => void;
+  onOpenGitHubConnect: () => void;
 }
 
 export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
@@ -18,6 +19,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
   onExportNativeSav,
   onExportCanonicalJson,
   onMountLocalFolder,
+  onOpenGitHubConnect,
 }) => {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -125,33 +127,53 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
           </div>
 
           <div className="interop-section">
-            <div className="interop-section-title">3. 与未来游戏内 Mod 共享蓝图库</div>
-            <div className={`interop-sync-card ${driverMode === 'fs-local' ? 'mounted' : ''}`}>
+            <div className="interop-section-title">3. 与 Mod / 个人私有云蓝图库同步</div>
+            <div className={`interop-sync-card ${driverMode !== 'virtual-idb' ? 'mounted' : ''}`}>
               <div className="interop-sync-status">
-                <span className={`status-dot ${driverMode === 'fs-local' ? 'green' : 'blue'}`} />
+                <span
+                  className={`status-dot ${
+                    driverMode === 'fs-local' ? 'green' : driverMode === 'github-private' ? 'amber' : 'blue'
+                  }`}
+                />
                 <span>
                   {driverMode === 'fs-local'
-                    ? `已挂载共享文件夹：${rootLabel}`
-                    : '当前使用浏览器内置库（未挂载本地磁盘目录）'}
+                    ? `已挂载本地共享目录：${rootLabel}`
+                    : driverMode === 'github-private'
+                      ? `已连接私有云库：${rootLabel}`
+                      : '当前使用浏览器内置库'}
                 </span>
               </div>
               <div className="interop-sync-desc">
                 {driverMode === 'fs-local'
-                  ? '工作台保存的规范 .json 直接落盘，未来游戏内蓝图增强 Mod 指向同一目录即可自动共用，无需反复导出导入。'
-                  : '挂载本地蓝图文件夹后，浏览器工作台与未来游戏内 Mod 将共享同一套规范 JSON 蓝图库。'}
+                  ? '规范 .json 直接落盘，未来游戏内蓝图增强 Mod 指向同一目录即可自动共用。'
+                  : driverMode === 'github-private'
+                    ? '直接在公开网页读写个人 GitHub 私有仓库蓝图，代码与公开站永久同步且绝不暴露私有蓝图。'
+                    : '可挂载本地文件夹与游戏内 Mod 共用，或连接个人 GitHub 私有库跨设备云端访问私有蓝图。'}
               </div>
-              {fsSupported && (
+              <div className="interop-sync-actions">
+                {fsSupported && (
+                  <button
+                    type="button"
+                    className="cad-btn"
+                    onClick={() => {
+                      setOpen(false);
+                      onMountLocalFolder();
+                    }}
+                  >
+                    {driverMode === 'fs-local' ? '切换本地目录' : '挂载本地目录'}
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="cad-btn"
+                  className="cad-btn accent"
                   onClick={() => {
                     setOpen(false);
-                    onMountLocalFolder();
+                    onOpenGitHubConnect();
                   }}
                 >
-                  {driverMode === 'fs-local' ? '切换本地共享文件夹' : '挂载本地共享文件夹'}
+                  {driverMode === 'github-private' ? '管理 GitHub 私有库' : '连接 GitHub 私有库'}
                 </button>
-              )}
+              </div>
             </div>
           </div>
         </div>

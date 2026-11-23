@@ -4,13 +4,14 @@ import type { LibraryFileEntry, LibraryFolderEntry, LibraryNode } from '../core/
 interface LibrarySidebarProps {
   open: boolean;
   onToggleOpen: () => void;
-  driverMode: 'fs-local' | 'virtual-idb';
+  driverMode: 'fs-local' | 'virtual-idb' | 'github-private';
   rootLabel: string;
   fsSupported: boolean;
   tree: LibraryNode[];
   activeSourcePath: string | null;
   stampingPath: string | null;
   onMountLocalFolder: () => void;
+  onOpenGitHubConnect: () => void;
   onRefresh: () => void;
   onNewBlueprint: () => void;
   onCreateFolder: (parentFolder: string) => void;
@@ -52,6 +53,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
   activeSourcePath,
   stampingPath,
   onMountLocalFolder,
+  onOpenGitHubConnect,
   onRefresh,
   onNewBlueprint,
   onCreateFolder,
@@ -159,7 +161,9 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
         <div className="lib-file-meta">
           <div className="lib-name">{file.blueprintName || file.name}</div>
           <div className="lib-sub">
-            {file.moduleCount}模 · {file.buildingCount}建 · {file.floorSpan}层
+            {driverMode === 'github-private' && file.moduleCount === 0 && file.buildingCount === 0
+              ? '私有云蓝图 · 点击按需加载'
+              : `${file.moduleCount}模 · ${file.buildingCount}建 · ${file.floorSpan}层`}
           </div>
         </div>
         <span className="lib-actions" onClick={(e) => e.stopPropagation()}>
@@ -214,15 +218,27 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
 
       <div className="lib-mount-bar">
         <div className="lib-root-info">
-          <span className={`status-dot ${driverMode === 'fs-local' ? 'green' : 'blue'}`} />
+          <span
+            className={`status-dot ${
+              driverMode === 'fs-local' ? 'green' : driverMode === 'github-private' ? 'amber' : 'blue'
+            }`}
+          />
           <span className="lib-root-name" title={rootLabel}>{rootLabel}</span>
         </div>
         <div className="lib-mount-btns">
           {fsSupported && (
-            <button type="button" className="cad-btn accent" onClick={onMountLocalFolder}>
-              {driverMode === 'fs-local' ? '切换本地目录' : '挂载本地文件夹'}
+            <button type="button" className="cad-btn accent" onClick={onMountLocalFolder} title="挂载本机蓝图文件夹（可与未来游戏内 Mod 共享）">
+              {driverMode === 'fs-local' ? '换目录' : '本地目录'}
             </button>
           )}
+          <button
+            type="button"
+            className={`cad-btn ${driverMode === 'github-private' ? 'accent' : ''}`}
+            onClick={onOpenGitHubConnect}
+            title="连接个人 GitHub 私有蓝图仓库，在公开网页跨设备同步访问私有蓝图"
+          >
+            {driverMode === 'github-private' ? '私有云 ✓' : '私有云库'}
+          </button>
           <button type="button" className="cad-btn" onClick={onRefresh} title="刷新目录">
             刷新
           </button>
