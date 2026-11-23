@@ -932,6 +932,57 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     // Terminal storage Container counts cleanly in netOutputs!
     expect(repRun.netOutputs.find((o) => o.itemId === 'ITEM_TitaniumPlates')?.ratePerSec).toBeCloseTo(1 / 3, 2);
   });
+
+  it('links stacked 2x2 elevator shafts across floors at matching (wx, wy) columns (Build 26639889 ElevatorObject::ItemColumns)', () => {
+    let doc = createEmptyBlueprint();
+    // 3-deck vertical stack of BPO_ElevatorBlock_02A at (0,0) on L0, L2, L4 + adjacent L0/L2/L4 rooms at (-2,0)
+    for (const fl of [0, 2, 4]) {
+      doc = placeModuleCmd(doc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: fl, rotation: 0 }).doc;
+      doc = placeModuleCmd(doc, { type: 'BPO_Station_03', gx: -2, gy: 0, floor: fl, rotation: 0 }).doc;
+    }
+    // L0: RelicSynthesizer at (-13, 6) outputs Protomatter (1.0/s) East -> pushes straight into West shaft port (7, 10, L0)!
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_RelicSynthesizer',
+      x: -13,
+      y: 6,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_Protomatter',
+      disabledPorts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], // only E port [0] at (-4, 10)? Wait: 9x9 E center [0] is y+4=10!
+    }).doc;
+    for (let x = -4; x <= 6; x++) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x, y: 10, floor: 0, rotation: 0 }).doc;
+    }
+    // L2: pulls Protomatter West from matching shaft port (7, 10, L2) -> feeds EnrichmentChamber (REC_TitaniumSynthesis, 0.5/s TiOre) -> pushes TiOre East into shaft port (7, 11, L2)!
+    for (let x = 6; x >= -4; x--) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x, y: 10, floor: 2, rotation: 2 }).doc;
+    }
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_EnrichmentChamber',
+      x: -13,
+      y: 6,
+      floor: 2,
+      rotation: 0,
+      recipeId: 'REC_TitaniumSynthesis',
+      disabledPorts: [1, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    }).doc;
+    // Output from E[2] (hy=+4 => y+6=12) -> turn North to y=11 -> East straight into (7, 11, L2)!
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: -4, y: 12, floor: 2, rotation: 3 }).doc;
+    for (let x = -4; x <= 6; x++) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x, y: 11, floor: 2, rotation: 0 }).doc;
+    }
+    // L4: pulls TitaniumOre West from matching shaft port (7, 11, L4) -> straight into Container_2 at (-8, 9)!
+    for (let x = 6; x >= -4; x--) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x, y: 11, floor: 4, rotation: 2 }).doc;
+    }
+    doc = placeBuildingCmd(doc, { type: 'DAT_Container_2', x: -8, y: 9, floor: 4, rotation: 0 }).doc;
+
+    const rep = simulateBlueprint(doc);
+    expect(rep.errorCount).toBe(0);
+    expect(rep.avgEfficiency).toBe(1);
+    expect(rep.netInputs.length).toBe(0); // 100% self-contained from L0 Protomatter!
+    expect(rep.netOutputs.find((o) => o.itemId === 'ITEM_TitaniumOre')?.ratePerSec).toBeCloseTo(0.5, 2);
+  });
 });
 
 describe('VirtualFolderDriver copy-on-write overlay & 5 MB localStorage quota safety', () => {

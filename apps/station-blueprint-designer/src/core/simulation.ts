@@ -422,6 +422,20 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   };
 
   // 2. Build directed logistics graph + detect structural/port anomalies
+  // Track elevator column (wx, wy) entries and exits across floors (matches Build 26639889 ElevatorObject::ItemColumns!)
+  interface ElevTap {
+    bid: string;
+    floor: number;
+    speed: number;
+  }
+  const elevInByCol = new Map<string, ElevTap[]>();
+  const elevOutByCol = new Map<string, ElevTap[]>();
+  const pushElev = (map: Map<string, ElevTap[]>, colKey: string, rec: ElevTap) => {
+    const arr = map.get(colKey);
+    if (arr) arr.push(rec);
+    else map.set(colKey, [rec]);
+  };
+
   for (const b of doc.buildings) {
     const def = defById.get(b.id);
     if (!def) continue;
@@ -436,6 +450,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
 
       if (elevatorPorts.has(cellKey(b.floor, bx, by))) {
         entrySourceKind.set(b.id, 'elevator');
+        pushElev(elevOutByCol, `${bx},${by}`, { bid: b.id, floor: b.floor, speed });
       } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, bx, by, b.floor)) {
         entrySourceKind.set(b.id, 'doorway');
       }
@@ -458,6 +473,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       } else if (elevatorPorts.has(cellKey(b.floor, fx, fy))) {
         exitSinkKind.set(b.id, 'elevator');
         boundaryExits.add(b.id);
+        pushElev(elevInByCol, `${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
       } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, fx, fy, b.floor)) {
         exitSinkKind.set(b.id, 'doorway');
         boundaryExits.add(b.id);
@@ -683,6 +699,26 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           const acc = canLogisticsAcceptFrom(nb, nbDef, sideDir, ax, ay);
           if (acc.ok) addEdge(b.id, nb.id, getTierSpeed(nbDef.tier), wp.port.index, acc.inPortIndex);
         }
+      }
+    }
+  }
+
+  // 2B. Link stacked cross-floor elevator shafts at matching (wx, wy) coordinates (Build 26639889 ElevatorObject::ItemColumns)
+  //     Any belt pushing into shaft column (wx, wy) on floor F1 feeds belts pulling from the same (wx, wy) on any other floor F2 != F1!
+  for (const [colKey, ins] of elevInByCol.entries()) {
+    const outs = elevOutByCol.get(colKey);
+    if (!outs || outs.length === 0) continue;
+    for (const inRec of ins) {
+      let linkedAny = false;
+      for (const outRec of outs) {
+        if (outRec.floor === inRec.floor) continue;
+        addEdge(inRec.bid, outRec.bid, Math.min(inRec.speed, outRec.speed));
+        entrySourceKind.delete(outRec.bid);
+        linkedAny = true;
+      }
+      if (linkedAny) {
+        boundaryExits.delete(inRec.bid);
+        exitSinkKind.delete(inRec.bid);
       }
     }
   }
@@ -1405,12 +1441,48 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
 
       if (def.kind === 'belt' || def.kind === 'underground') {
         const inFlow = getNodeInFlow(b.id);
-        const oe = outs[0];
-        const total = sumFlow(inFlow);
-        const scale = total > oe.capacity ? oe.capacity / total : 1;
-        const fm: FlowMap = new Map();
-        for (const [it, r] of inFlow.entries()) addFlow(fm, it, r * scale);
-        setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
+        if (outs.length === 1) {
+          const oe = outs[0];
+          const total = sumFlow(inFlow);
+          const scale = total > oe.capacity ? oe.capacity / total : 1;
+          const fm: FlowMap = new Map();
+          for (const [it, r] of inFlow.entries()) addFlow(fm, it, r * scale);
+          setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
+        } else {
+          // Cross-floor elevator belt feeding multiple destination floors on the same vertical shaft column:
+          // distribute by downstream demand water-filling within belt speed limit!
+          const beltCap = getTierSpeed(def.tier);
+          const total = sumFlow(inFlow);
+          const capScale = total > beltCap ? beltCap / total : 1;
+          const outMaps = new Map<OutEdge, FlowMap>();
+          for (const oe of outs) outMaps.set(oe, new Map());
+          for (const [itemId, rawRate] of inFlow.entries()) {
+            let rem = rawRate * capScale;
+            if (rem <= 1e-9) continue;
+            let active = outs.slice();
+            while (rem > 1e-9 && active.length > 0) {
+              const share = rem / active.length;
+              const nextActive: OutEdge[] = [];
+              let sentAny = false;
+              for (const oe of active) {
+                const om = outMaps.get(oe)!;
+                const effCap = getEdgeEffectiveCap(oe, itemId);
+                const free = Math.max(0, Math.min(oe.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
+                if (free <= 1e-9) continue;
+                const give = Math.min(share, free);
+                addFlow(om, itemId, give);
+                rem -= give;
+                sentAny = true;
+                if (free - give > 1e-9) nextActive.push(oe);
+              }
+              if (!sentAny) break;
+              active = nextActive;
+            }
+          }
+          for (const oe of outs) {
+            setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), outMaps.get(oe)!);
+          }
+        }
         continue;
       }
 
