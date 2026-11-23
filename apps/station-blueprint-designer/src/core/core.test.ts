@@ -307,14 +307,26 @@ describe('Versioned JSON codec safety', () => {
     }
   });
 
-  it('enforces zero splitter leakage, zero orphan belts, clean belt connectivity, and strict vertical mirror symmetry on standard cells and B1 hubs', () => {
+  it('enforces zero splitter leakage, zero orphan belts, clean belt connectivity, and strict symmetry on standard cells and B1/F1 hubs', () => {
     const delta = (r: number): [number, number] => (r === 0 ? [1, 0] : r === 1 ? [0, 1] : r === 2 ? [-1, 0] : [0, -1]);
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
-      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-')
+      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-')
     );
-    expect(targets.length).toBe(14);
+    expect(targets.length).toBe(17);
     for (const { doc, path } of targets) {
       const cellMap = new Map<string, (typeof doc.buildings)[number]>();
+      const elevPortCells = new Set<string>();
+      for (const m of doc.modules) {
+        const mDef = getModuleDef(m.type);
+        if (!mDef) continue;
+        const cx = m.gx * 16 + (mDef.sizeUnits[0] * 16) / 2;
+        const cy = m.gy * 16 + (mDef.sizeUnits[1] * 16) / 2;
+        for (const fl of mDef.floors) {
+          for (const ep of fl.elevatorPorts ?? []) {
+            elevPortCells.add(`${Math.floor(cx + ep.x)},${Math.floor(cy + ep.y)}`);
+          }
+        }
+      }
       for (const b of doc.buildings) {
         const def = getBuildableDef(b.type)!;
         const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
@@ -334,8 +346,14 @@ describe('Versioned JSON codec safety', () => {
         const def = getBuildableDef(b.type)!;
         if (b.type === 'DAT_ConveyorBelt3') {
           const [dx, dy] = delta(b.rotation);
-          // Doorway edge entries (x=0/31 or y=0/31 entering inward) are valid external sources
-          if ((b.x === 0 && b.rotation === 0) || (b.x === 31 && b.rotation === 2) || (b.y === 0 && b.rotation === 1) || (b.y === 31 && b.rotation === 3)) {
+          // Doorway edge entries (x=0/31 or y=0/31 entering inward) and elevator shaft port exits are valid sources
+          if (
+            (b.x === 0 && b.rotation === 0) ||
+            (b.x === 31 && b.rotation === 2) ||
+            (b.y === 0 && b.rotation === 1) ||
+            (b.y === 31 && b.rotation === 3) ||
+            elevPortCells.has(`${b.x - dx},${b.y - dy}`)
+          ) {
             markFed(b.x, b.y);
           }
           markFed(b.x + dx, b.y + dy);
@@ -400,7 +418,7 @@ describe('Versioned JSON codec safety', () => {
           const [dx, dy] = delta(b.rotation);
           const nx = b.x + dx;
           const ny = b.y + dy;
-          if (nx < 0 || nx > 31 || ny < 0 || ny > 31) continue;
+          if (nx < 0 || nx > 31 || ny < 0 || ny > 31 || elevPortCells.has(`${nx},${ny}`)) continue;
           const nb = cellMap.get(`${nx},${ny}`);
           expect(nb, `${path} belt (${b.x},${b.y},r${b.rotation}) must not dead-end`).toBeDefined();
           if (nb?.type === 'DAT_ConveyorBelt3') {
@@ -408,7 +426,7 @@ describe('Versioned JSON codec safety', () => {
           }
         }
       }
-      if (!path.includes('Cell-9P') && !path.includes('角落稳压母库') && !path.includes('矿石母箱')) {
+      if (!path.includes('Cell-9P') && !path.includes('角落稳压母库') && !path.includes('矿石母箱') && !path.includes('翼内小总线')) {
         const keys = new Set(
           doc.buildings.map((b) => {
             const def = getBuildableDef(b.type)!;
@@ -423,6 +441,24 @@ describe('Versioned JSON codec safety', () => {
           expect(
             keys.has(`${b.type}:${b.x},${my},${w},${d}`),
             `${path} ${b.type} at (${b.x},${b.y}) missing exact mirror at (${b.x},${my})`
+          ).toBe(true);
+        }
+      }
+      if (path.includes('翼内小总线') || path.includes('电梯24口')) {
+        const keys = new Set(
+          doc.buildings.map((b) => {
+            const def = getBuildableDef(b.type)!;
+            const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
+            return `${b.type}:${b.x},${b.y},${w},${d}`;
+          })
+        );
+        for (const b of doc.buildings) {
+          const def = getBuildableDef(b.type)!;
+          const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
+          const mx = 32 - b.x - w;
+          expect(
+            keys.has(`${b.type}:${mx},${b.y},${w},${d}`),
+            `${path} ${b.type} at (${b.x},${b.y}) missing exact horizontal mirror at (${mx},${b.y})`
           ).toBe(true);
         }
       }
@@ -564,11 +600,11 @@ describe('Station module asymmetric alignment & corner symmetry', () => {
 });
 
 describe('General-purpose production-line simulation, flow rates, and zero-anomaly audit', () => {
-  it('verifies 0 simulation errors, strict anti-diagonal symmetry on Corner Vault, and exact flow rates across all Star-Citadel cells & B1 hubs', () => {
+  it('verifies 0 simulation errors, strict symmetries, and exact flow rates across all 17 Star-Citadel cells & B1/F1 hubs', () => {
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
-      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-')
+      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-')
     );
-    expect(targets.length).toBe(14);
+    expect(targets.length).toBe(17);
     for (const { doc, path } of targets) {
       const report = simulateBlueprint(doc);
       expect(
@@ -577,6 +613,23 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
       ).toEqual([]);
       expect(report.passed, `${path} must pass simulation`).toBe(true);
     }
+
+    // Verify B1 2:1 Hydrogen->Deuterium Fuel cell runs at 100% efficiency, 0 errors, exact 0.667/s Deuterium output!
+    const b1Fuel = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('氢氘燃料直连舱'))!.doc;
+    const rFuel = simulateBlueprint(b1Fuel);
+    expect(rFuel.errorCount).toBe(0);
+    expect(rFuel.anomalyWarnCount).toBe(0);
+    expect(rFuel.avgEfficiency).toBe(1);
+    expect(rFuel.netInputs.map((i) => i.itemId)).toEqual(['ITEM_WaterIce']);
+    expect(rFuel.netOutputs.find((o) => o.itemId === 'ITEM_EnrichedFuel')?.ratePerSec).toBeCloseTo(2 / 3, 2);
+
+    // Verify 2x2 Elevator 24-Port template connects all 12 elevator entries + 12 elevator exits with 0 errors!
+    const elev24 = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('电梯24口'))!.doc;
+    const rElev = simulateBlueprint(elev24);
+    expect(rElev.errorCount).toBe(0);
+    expect(rElev.anomalyWarnCount).toBe(0);
+    expect(rElev.externalInputs.filter((e) => e.sourceKind === 'elevator').length).toBe(12);
+    expect(rElev.externalOutputs.filter((e) => e.sinkKind === 'elevator').length).toBe(12);
 
     // Verify exact Cell-3 full dual-Mk.3 output (6.00 items/s Titanium Plates, 100% efficiency)
     const cell3 = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('Cell-3'))!.doc;
