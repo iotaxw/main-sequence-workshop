@@ -80,24 +80,30 @@ export interface CellFlowInfo {
 }
 
 export interface PowerBreakdown {
-  /** Rated peak power consumption of all machines, labs, teleporters, and functional station modules (MW) */
+  /** Rated peak power consumption of all installed machines, labs, and station facilities (MW) */
   peakDrawMW: number;
-  /** Steady-state operating power draw weighted by machine efficiency + continuous facilities (MW) */
+  /** Steady-state operating power draw weighted by backpressure-converged efficiency + continuous facilities (MW) */
   activeDrawMW: number;
-  /** Maximum rated power generation from all Solar Panels (I/II/III) and Reactors (MW) */
+  /** Maximum rated power generation from all Solar Panels (100% close orbit) and Reactors (MW) */
   maxGenMW: number;
+  /** Conservative minimum power generation (20% far-orbit Solar MinEfficiency + fueled Reactors) (MW) */
+  minGenMW: number;
   /** Max generation from Solar Panels (12 / 48 / 288 MW each) */
   solarGenMW: number;
-  /** Max generation from Reactor Machines (48 MW each) */
+  /** Max generation from Reactor Machines (48 MW each, requires fuel) */
   reactorGenMW: number;
   /** Number of generator entities (solar modules + reactors) */
   generatorCount: number;
   /** Net power margin against peak load: maxGenMW - peakDrawMW (MW) */
   netBalanceMW: number;
+  /** Net power margin against steady-state active draw: maxGenMW - activeDrawMW (MW) */
+  netBalanceActiveMW: number;
   /** Breakdown of peak draw by category */
   crafterPeakMW: number;
   labPeakMW: number;
   facilityPeakMW: number;
+  /** Intermittent combat draw (e.g. Station Turrets: counted in peakDrawMW, 0 MW in peacetime activeDrawMW) */
+  intermittentPeakMW: number;
 }
 
 export interface ExternalOutputSpot {
@@ -112,6 +118,19 @@ export interface ExternalOutputSpot {
   capacityPerSec: number;
 }
 
+export interface BalanceHint {
+  id: string;
+  floor: number;
+  x: number;
+  y: number;
+  itemId: string;
+  nameZh: string;
+  supplyRatePerSec: number;
+  demandRatePerSec: number;
+  estDutyRatio: number;
+  message: string;
+}
+
 export interface SimulationReport {
   passed: boolean;
   errorCount: number;
@@ -123,6 +142,8 @@ export interface SimulationReport {
   externalInputs: ExternalInputSpot[];
   /** Every tail spot where blueprint output exits (yellow warning) */
   externalOutputs: ExternalOutputSpot[];
+  /** Transparent deterministic hints where internal upstream supply exceeds downstream consumer demand */
+  balanceHints: BalanceHint[];
   /** Rated peak power consumption (MW) — backward-compatible alias for power.peakDrawMW */
   totalPowerMW: number;
   /** Full binary-verified power generation & consumption breakdown */
@@ -1063,40 +1084,43 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     crafterDemandByInput.set(b.id, dm);
   }
 
-  // BFS order from external sources + zero-input crafters
-  const bfsOrder: PlacedBuilding[] = [];
-  const bfsSeen = new Set<string>();
-  const bfsQueue: string[] = [];
-  for (const eid of entrySourceKind.keys()) {
-    if (!bfsSeen.has(eid)) {
-      bfsSeen.add(eid);
-      bfsQueue.push(eid);
-    }
-  }
+  // True topological order (Kahn's algorithm) so forward/backward sweeps traverse arbitrary-length belts in 1 pass!
+  // Any remaining nodes belonging to feedback cycles (e.g. Ore Enricher / Xenobacteria loops) are appended deterministically.
+  const inDeg = new Map<string, number>();
+  for (const b of doc.buildings) inDeg.set(b.id, 0);
   for (const b of doc.buildings) {
-    const def = defById.get(b.id);
-    if ((def?.kind === 'crafter' || def?.kind === 'research') && !bfsSeen.has(b.id)) {
-      const rec = b.recipeId ? getRecipeDef(b.recipeId) : undefined;
-      if (!rec || rec.inputs.length === 0) {
-        bfsSeen.add(b.id);
-        bfsQueue.push(b.id);
-      }
+    for (const oe of outEdges.get(b.id) ?? []) {
+      inDeg.set(oe.toId, (inDeg.get(oe.toId) ?? 0) + 1);
     }
   }
-  while (bfsQueue.length > 0) {
-    const cur = bfsQueue.shift()!;
+  const topoOrder: PlacedBuilding[] = [];
+  const topoSeen = new Set<string>();
+  const kahnQueue: string[] = [];
+  for (const b of doc.buildings) {
+    if ((inDeg.get(b.id) ?? 0) === 0) kahnQueue.push(b.id);
+  }
+  while (kahnQueue.length > 0) {
+    const cur = kahnQueue.shift()!;
+    if (topoSeen.has(cur)) continue;
+    topoSeen.add(cur);
     const cb = buildingById.get(cur);
-    if (cb) bfsOrder.push(cb);
+    if (cb) topoOrder.push(cb);
     for (const oe of outEdges.get(cur) ?? []) {
-      if (!bfsSeen.has(oe.toId)) {
-        bfsSeen.add(oe.toId);
-        bfsQueue.push(oe.toId);
+      const nd = (inDeg.get(oe.toId) ?? 1) - 1;
+      inDeg.set(oe.toId, nd);
+      if (nd <= 0 && !topoSeen.has(oe.toId)) {
+        kahnQueue.push(oe.toId);
       }
     }
   }
+  // Append cyclic components in BFS order starting from entries/crafters
   for (const b of doc.buildings) {
-    if (!bfsSeen.has(b.id)) bfsOrder.push(b);
+    if (!topoSeen.has(b.id)) {
+      topoSeen.add(b.id);
+      topoOrder.push(b);
+    }
   }
+  const bfsOrder = topoOrder;
 
   // Backward DP (reverse BFS) to compute exact steady-state downstream demand per node & itemId
   const nodeDemand = new Map<string, Map<string, number>>();
@@ -1106,10 +1130,22 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       const def = defById.get(b.id);
       if (!def) continue;
       const dm = new Map<string, number>();
-      if (def.kind === 'crafter' || def.kind === 'research') {
+      if (def.kind === 'crafter') {
         const req = crafterDemandByInput.get(b.id);
         if (req) {
           for (const [it, r] of req.entries()) dm.set(it, r);
+        }
+      } else if (def.kind === 'research') {
+        const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
+        if (inCap > 1e-9) dm.set('*', inCap);
+      } else if (def.kind === 'container' && (outEdges.get(b.id) ?? []).length === 0) {
+        const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
+        if (inCap > 1e-9) {
+          if (b.filterItems && b.filterItems.length > 0) {
+            for (const it of b.filterItems) dm.set(it, inCap);
+          } else {
+            dm.set('*', inCap);
+          }
         }
       } else {
         const outs = outEdges.get(b.id) ?? [];
@@ -1432,8 +1468,10 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     if (iter > 1 && maxDelta < 1e-5) break;
   }
 
-  // 7. Emit yellow 'external-input-needed' warnings at EVERY external raw-material entry spot!
+  // 7. Emit yellow 'external-input-needed' warnings at EVERY external raw-material entry spot
+  //    AND accumulate TRUE topological netInputs strictly from external source inflows (never global subtraction!)
   const externalInputs: ExternalInputSpot[] = [];
+  const netInputTotals = new Map<string, number>();
   const SOURCE_KIND_ZH: Record<ExternalInputSpot['sourceKind'], string> = {
     doorway: '舱门入口',
     elevator: '电梯接口',
@@ -1442,18 +1480,66 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     'source-container': '原料箱源',
   };
 
+  // Identify backup/seed external entries that feed ONLY into the secondary (0%-drawn) input of a priorityIn balancer
+  // (e.g. Ore Enricher starter seed line once the closed priority recycle loop supplies 100% of demand!)
+  const prioSecondaryZeroSources = new Set<string>();
+  for (const b of doc.buildings) {
+    const def = defById.get(b.id);
+    if (!def || def.kind !== 'balancer' || b.priorityIn === undefined) continue;
+    const ownDm = nodeDemand.get(b.id);
+    const outs = outEdges.get(b.id) ?? [];
+    const maxOutCap = outs.reduce((acc, e) => acc + e.capacity, 0);
+    let demandCap = maxOutCap;
+    if (ownDm && !ownDm.has('*')) {
+      let dmSum = 0;
+      for (const r of ownDm.values()) dmSum += r;
+      if (dmSum > 1e-9) demandCap = Math.min(maxOutCap, dmSum);
+    }
+    let prioSum = 0;
+    const secFromIds: string[] = [];
+    for (const ie of inEdges.get(b.id) ?? []) {
+      for (const oe of outEdges.get(ie.fromId) ?? []) {
+        if (oe.toId !== b.id) continue;
+        const fm = edgeFlows.get(edgeKey(ie.fromId, b.id, oe.portIndex));
+        if (!fm) continue;
+        if (ie.portIndex === b.priorityIn) prioSum += sumFlow(fm);
+        else secFromIds.push(ie.fromId);
+      }
+    }
+    if (prioSum >= demandCap - 1e-3 && secFromIds.length > 0) {
+      // Trace upstream along single-out belts from unused secondary input to mark seed entry as 0-steady-draw
+      const q = [...secFromIds];
+      const seen = new Set<string>(q);
+      while (q.length > 0) {
+        const cur = q.shift()!;
+        const cOuts = outEdges.get(cur) ?? [];
+        if (cOuts.length > 1) continue;
+        if (entrySourceKind.has(cur)) prioSecondaryZeroSources.add(cur);
+        for (const ie of inEdges.get(cur) ?? []) {
+          if (!seen.has(ie.fromId) && isLogistics(ie.fromId)) {
+            seen.add(ie.fromId);
+            q.push(ie.fromId);
+          }
+        }
+      }
+    }
+  }
+
   for (const eid of sortedEntries) {
     const eb = buildingById.get(eid)!;
     const sourceKind = entrySourceKind.get(eid)!;
     const itemId = entryItem.get(eid) ?? null;
     const cap = getEntryCapacity(eid);
-    const reqRate = itemId ? getEntryDemandRate(eid, itemId) : 0;
+    const isSeedBackup = prioSecondaryZeroSources.has(eid);
+    const reqRate = itemId && !isSeedBackup ? getEntryDemandRate(eid, itemId) : 0;
     const supRate = itemId ? Math.min(cap, reqRate) : 0;
     const bottlenecked = itemId !== null && reqRate > cap + 1e-3;
     const nameZh = itemId ? getItemNameZh(itemId) : '未指定原料';
 
-    // Only emit a yellow raw-input warning when this entry actually needs an item (or is an open-belt / source-container).
-    // Note: in a 0-recipe pass-through hub (e.g. B1 highway), doorway entries still mark clearly where external lanes enter!
+    if (itemId && supRate > 1e-4) {
+      netInputTotals.set(itemId, (netInputTotals.get(itemId) ?? 0) + supRate);
+    }
+
     const spotId = `ext_${eb.floor}_${eb.x}_${eb.y}`;
     externalInputs.push({
       id: spotId,
@@ -1506,7 +1592,8 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // 8. Inspect converged flow for mixed-item belts, overload, container filter mismatches, and yellow output tails (尾)
+  // 8. Inspect deterministic forward flow for faults (mixed-item, overload, container filter conflict)
+  //    AND exact yellow output tails (尾) + terminal storage container outputs!
   const SINK_KIND_ZH: Record<ExternalOutputSpot['sinkKind'], string> = {
     doorway: '舱门尾端',
     elevator: '电梯尾端',
@@ -1515,10 +1602,9 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   };
   const externalOutputs: ExternalOutputSpot[] = [];
   const cellFlows: Record<string, CellFlowInfo> = {};
-  const netInputTotals = new Map<string, number>();
   const netOutputTotals = new Map<string, number>();
 
-  // Detect downgrade bottlenecks where a high-tier belt/underground pushes > downstream tier capacity
+  // Detect downgrade bottlenecks where a high-tier belt/underground feeds > downstream tier capacity
   const chokedArrivalByNode = new Map<string, number>();
   for (const b of doc.buildings) {
     const def = defById.get(b.id);
@@ -1536,20 +1622,32 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     const def = defById.get(b.id);
     if (!def) continue;
 
-    if (def.kind === 'container' && b.filterItems && b.filterItems.length > 0) {
-      const allowed = new Set(b.filterItems);
+    if (def.kind === 'container') {
       const inFlow = getNodeInFlow(b.id);
-      for (const [it, r] of inFlow.entries()) {
-        if (r > 1e-4 && !allowed.has(it)) {
-          pushIssue(
-            'error',
-            'port-mismatch',
-            `储物箱 (${b.x},${b.y}) 过滤冲突：输入了非白名单物品「${getItemNameZh(it)}」`,
-            b.floor,
-            b.x,
-            b.y,
-            b.id
-          );
+      if (b.filterItems && b.filterItems.length > 0) {
+        const allowed = new Set(b.filterItems);
+        for (const [it, r] of inFlow.entries()) {
+          if (r > 1e-4 && !allowed.has(it)) {
+            pushIssue(
+              'error',
+              'port-mismatch',
+              `储物箱 (${b.x},${b.y}) 过滤冲突：输入了非白名单物品「${getItemNameZh(it)}」`,
+              b.floor,
+              b.x,
+              b.y,
+              b.id
+            );
+          }
+        }
+      }
+      // Terminal storage container counts cleanly as a blueprint output sink
+      if ((outEdges.get(b.id) ?? []).length === 0) {
+        for (const [it, r] of inFlow.entries()) {
+          if (r > 1e-4) {
+            if (!b.filterItems || b.filterItems.length === 0 || b.filterItems.includes(it)) {
+              netOutputTotals.set(it, (netOutputTotals.get(it) ?? 0) + r);
+            }
+          }
         }
       }
       continue;
@@ -1560,6 +1658,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       // Belt Balancer has 2 full-speed parallel lanes (2 * tierSpeed total throughput!)
       const cap = def.kind === 'balancer' ? laneSpeed * 2 : laneSpeed;
       const flow = getNodeInFlow(b.id);
+
       const itemsObj: Record<string, number> = {};
       let total = 0;
       const nonZeroItems: string[] = [];
@@ -1570,6 +1669,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           nonZeroItems.push(it);
         }
       }
+
       const effectiveArrival = Math.max(total, chokedArrivalByNode.get(b.id) ?? 0);
       const overloaded = effectiveArrival > cap + 1e-3;
       const [w, d] = getBuildingSizeCells(def, b.rotation);
@@ -1656,21 +1756,28 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // 9. Scientific Power Budget (Peak Draw, Active Draw, Max Power Generation across ALL Buildings & Station Modules!)
+  // 9. Transparent Binary-Verified Power Budget (Build 26639889) & Upstream-Surplus Balance Hints
+  //    - Crafters: 0 W idle, powerKW * eff when running (binary-verified: AssemblerObject has no StandbyPower)
+  //    - Turrets: intermittent combat peak (counted in peakDrawMW, 0 MW in peacetime activeDrawMW)
+  //    - Solar: MaxEfficiency=1.00 (close orbit), MinEfficiency=0.20 (far orbit)
+  //    - Reactor: 48 MW constant when fueled
   let crafterPeakKW = 0;
   let crafterActiveKW = 0;
   let labPeakKW = 0;
   let labActiveKW = 0;
   let facilityPeakKW = 0;
+  let intermittentPeakKW = 0;
   let solarGenKW = 0;
   let reactorGenKW = 0;
   let generatorCount = 0;
 
-  // Station modules power draw & max solar generation
   for (const mod of doc.modules) {
     const mDef = getModuleDef(mod.type);
     if (!mDef) continue;
-    if (mDef.powerKW) facilityPeakKW += mDef.powerKW;
+    if (mDef.powerKW) {
+      if (mDef.id.includes('Turret')) intermittentPeakKW += mDef.powerKW;
+      else facilityPeakKW += mDef.powerKW;
+    }
     if (mDef.powerGenKW) {
       solarGenKW += mDef.powerGenKW;
       generatorCount++;
@@ -1680,20 +1787,18 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   let machineCount = 0;
   let configuredMachineCount = 0;
   let effSum = 0;
-
+  const balanceHints: BalanceHint[] = [];
   const byRecipeMap = new Map<string, { rec: RecipeDef; count: number; effSum: number }>();
 
   for (const b of doc.buildings) {
     const def = defById.get(b.id);
     if (!def) continue;
 
-    // Reactor maximum generation (48 MW each)
     if (def.powerGenKW) {
       reactorGenKW += def.powerGenKW;
       generatorCount++;
     }
 
-    // Continuous facility draw (e.g. Teleporter = 12 MW)
     if (def.kind === 'teleporter' && def.powerKW) {
       facilityPeakKW += def.powerKW;
       continue;
@@ -1748,6 +1853,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       }
     }
     for (const inp of rec.inputs) {
+      const need = (inp.quantity ?? 1) / dur;
       const got = inFlow.get(inp.itemId) ?? 0;
       if (got <= 1e-4) {
         pushIssue(
@@ -1759,9 +1865,22 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           b.y,
           b.id
         );
+      } else if (got > need + 0.02) {
+        // Transparent deterministic hint: internal upstream supply exceeds this consumer's rated demand
+        const ratio = Math.max(0, Math.min(1, need / got));
+        balanceHints.push({
+          id: `bal_${b.id}_${inp.itemId}`,
+          floor: b.floor,
+          x: b.x,
+          y: b.y,
+          itemId: inp.itemId,
+          nameZh: inp.nameZh,
+          supplyRatePerSec: Math.round(got * 1000) / 1000,
+          demandRatePerSec: Math.round(need * 1000) / 1000,
+          estDutyRatio: Math.round(ratio * 1000) / 1000,
+          message: `「${inp.nameZh}」上游供给 ${got.toFixed(2)}/s > ${def.nameZh} (${b.x},${b.y}) 需求 ${need.toFixed(2)}/s（实机将自动反压至约 ${Math.round(ratio * 100)}%）`,
+        });
       }
-      const consumed = eff * ((inp.quantity ?? 1) / dur);
-      netInputTotals.set(inp.itemId, (netInputTotals.get(inp.itemId) ?? 0) + consumed);
     }
     const outs = outEdges.get(b.id) ?? [];
     if (rec.outputs.length > 0 && outs.length === 0) {
@@ -1777,35 +1896,28 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // Subtract internal production from netInputTotals so chained recipes report true NET external inputs
-  for (const { rec, effSum: rEffSum } of byRecipeMap.values()) {
-    const dur = rec.durationSeconds && rec.durationSeconds > 0 ? rec.durationSeconds : 1;
-    for (const o of rec.outputs) {
-      const prod = rEffSum * ((o.quantity ?? 1) / dur);
-      const curIn = netInputTotals.get(o.itemId) ?? 0;
-      if (curIn > 0) {
-        const rem = Math.max(0, curIn - prod);
-        if (rem <= 1e-4) netInputTotals.delete(o.itemId);
-        else netInputTotals.set(o.itemId, rem);
-      }
-    }
-  }
-
   const round2 = (v: number) => Math.round(v * 100) / 100;
-  const peakDrawMW = round2((crafterPeakKW + labPeakKW + facilityPeakKW) / 1000);
+  const peakDrawMW = round2((crafterPeakKW + labPeakKW + facilityPeakKW + intermittentPeakKW) / 1000);
   const activeDrawMW = round2((crafterActiveKW + labActiveKW + facilityPeakKW) / 1000);
   const solarGenMW = round2(solarGenKW / 1000);
   const reactorGenMW = round2(reactorGenKW / 1000);
   const maxGenMW = round2((solarGenKW + reactorGenKW) / 1000);
+  const minGenMW = round2((solarGenKW * 0.2 + reactorGenKW) / 1000);
   const netBalanceMW = round2(maxGenMW - peakDrawMW);
+  const netBalanceActiveMW = round2(maxGenMW - activeDrawMW);
 
   if (maxGenMW > 0 && netBalanceMW < -1e-2) {
-    // Anchor power deficit warning on first module/building if present
-    const anchor = doc.buildings[0] ?? (doc.modules[0] ? { floor: doc.modules[0].floor, x: doc.modules[0].gx * 16, y: doc.modules[0].gy * 16 } : { floor: 0, x: 0, y: 0 });
+    const anchor =
+      doc.buildings[0] ??
+      (doc.modules[0] ? { floor: doc.modules[0].floor, x: doc.modules[0].gx * 16, y: doc.modules[0].gy * 16 } : { floor: 0, x: 0, y: 0 });
+    const activeNote =
+      netBalanceActiveMW >= -1e-2
+        ? `（当前拓扑理论实耗 ${activeDrawMW.toFixed(1)} MW 可维持）`
+        : `（连理论实耗 ${activeDrawMW.toFixed(1)} MW 也缺 ${Math.abs(netBalanceActiveMW).toFixed(1)} MW！）`;
     pushIssue(
       'warn',
       'power-deficit',
-      `供电缺口：最大发电 ${maxGenMW.toFixed(1)} MW < 峰值满载功耗 ${peakDrawMW.toFixed(1)} MW（缺 ${Math.abs(netBalanceMW).toFixed(1)} MW）`,
+      `供电缺口：最大发电 ${maxGenMW.toFixed(1)} MW < 装机峰值 ${peakDrawMW.toFixed(1)} MW${activeNote}`,
       anchor.floor,
       anchor.x,
       anchor.y
@@ -1816,13 +1928,16 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     peakDrawMW,
     activeDrawMW,
     maxGenMW,
+    minGenMW,
     solarGenMW,
     reactorGenMW,
     generatorCount,
     netBalanceMW,
+    netBalanceActiveMW,
     crafterPeakMW: round2(crafterPeakKW / 1000),
     labPeakMW: round2(labPeakKW / 1000),
     facilityPeakMW: round2(facilityPeakKW / 1000),
+    intermittentPeakMW: round2(intermittentPeakKW / 1000),
   };
 
   const toRateList = (m: Map<string, number>): FlowItemRate[] =>
@@ -1889,6 +2004,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     issues,
     externalInputs,
     externalOutputs,
+    balanceHints,
     totalPowerMW: peakDrawMW,
     power,
     machineCount,

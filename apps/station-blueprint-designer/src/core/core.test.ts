@@ -676,11 +676,17 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
       ).toBe(true);
     }
 
-    // Power verification: Solar Mk.1 (12) + Reactor (48) = 60 MW max gen vs 109.5 MW peak draw -> power-deficit warn
+    // Power verification: Solar Mk.1 (12, min 20%=2.4) + Reactor (48) = 60 MW max / 50.4 MW min gen
     expect(rep.power.solarGenMW).toBe(12);
     expect(rep.power.reactorGenMW).toBe(48);
     expect(rep.power.maxGenMW).toBe(60);
+    expect(rep.power.minGenMW).toBe(50.4);
     expect(rep.issues.some((i) => i.code === 'power-deficit' && i.severity === 'warn')).toBe(true);
+
+    // Deterministic upstream-surplus balance hint on Zone B (2x Refinery 0.67/s > 1x Assembler 0.50/s -> ~75% backpressure!)
+    const zoneBHint = rep.balanceHints.find((h) => h.x === 11 && h.y === 8 && h.itemId === 'ITEM_TitaniumPlates');
+    expect(zoneBHint, 'Zone B Assembler (11,8) should report deterministic ~75% upstream surplus hint').toBeDefined();
+    expect(zoneBHint!.estDutyRatio).toBeCloseTo(0.75, 2);
 
     // East Cabin (x >= 32): ALL 12 red mid-line faults MUST fire at their exact coordinates!
     const expectedEastFaults: Array<[string, number, number]> = [
@@ -750,18 +756,24 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     expect(repBlocked.power.netBalanceMW).toBe(-22.5);
     expect(repBlocked.issues.some((i) => i.code === 'power-deficit' && i.severity === 'warn')).toBe(true);
 
-    // Case B: Connect output belt from Refinery (55, -15) to Container (56, -16) + add Solar Mk.3 (+288 MW) -> eff = 100%, surplus power!
+    // Case B: Connect output belt from Refinery (55, -15) to Container (56, -16) + Solar Mk.3 (+288 MW) + Turret (6 MW peak, 0 peacetime active)
     doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 55, y: -15, floor: 0, rotation: 0 }).doc;
     doc = placeBuildingCmd(doc, { type: 'DAT_Container', x: 56, y: -16, floor: 0, rotation: 0 }).doc;
     doc = placeModuleCmd(doc, { type: 'BPO_SolarPanelBlock_03', gx: 1, gy: 0, floor: 0, rotation: 0 }).doc; // +288 MW max
+    doc = placeModuleCmd(doc, { type: 'BPO_StationTurretBlock_01', gx: 2, gy: -3, floor: 0, rotation: 0 }).doc; // 6 MW combat peak, 0 peacetime
 
     const repRun = simulateBlueprint(doc);
     expect(repRun.errorCount).toBe(0);
     expect(repRun.avgEfficiency).toBe(1);
     expect(repRun.power.maxGenMW).toBe(396);
-    expect(repRun.power.netBalanceMW).toBe(265.5);
+    expect(repRun.power.minGenMW).toBe(117.6); // 48 reactor + 348 * 0.2 solar
+    expect(repRun.power.intermittentPeakMW).toBe(6);
+    expect(repRun.power.peakDrawMW).toBe(136.5); // 130.5 + 6 turret peak
+    expect(repRun.power.netBalanceMW).toBe(259.5);
     expect(repRun.issues.some((i) => i.code === 'power-deficit')).toBe(false);
-    // Active power = Observatory (96) + Refinery active (4.5 * 1.0) = 100.5 MW (unconfigured Supercomputer & idle Lab draw 0 active)
+    // Active power = Observatory (96) + Refinery active (4.5 * 1.0) = 100.5 MW (Turret = 0 peacetime active!)
     expect(repRun.power.activeDrawMW).toBe(100.5);
+    // Terminal storage Container counts cleanly in netOutputs!
+    expect(repRun.netOutputs.find((o) => o.itemId === 'ITEM_TitaniumPlates')?.ratePerSec).toBeCloseTo(1 / 3, 2);
   });
 });

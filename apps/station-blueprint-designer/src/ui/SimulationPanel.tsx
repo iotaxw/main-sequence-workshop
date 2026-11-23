@@ -54,9 +54,10 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, 
   if (p.crafterPeakMW > 0) powerSubParts.push(`产线 ${fmtMW(p.crafterPeakMW)}`);
   if (p.labPeakMW > 0) powerSubParts.push(`科研 ${fmtMW(p.labPeakMW)}`);
   if (p.facilityPeakMW > 0) powerSubParts.push(`设施 ${fmtMW(p.facilityPeakMW)}`);
+  if (p.intermittentPeakMW > 0) powerSubParts.push(`炮塔峰值 ${fmtMW(p.intermittentPeakMW)}`);
 
   const genSubParts: string[] = [];
-  if (p.solarGenMW > 0) genSubParts.push(`光伏 ${fmtMW(p.solarGenMW)}`);
+  if (p.solarGenMW > 0) genSubParts.push(`光伏 ${fmtMW(p.solarGenMW * 0.2)}~${fmtMW(p.solarGenMW)}`);
   if (p.reactorGenMW > 0) genSubParts.push(`反应堆 ${fmtMW(p.reactorGenMW)}`);
 
   return (
@@ -79,7 +80,7 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, 
 
         <div className="sim-kpi-grid">
           <div className="sim-kpi">
-            <span className="sim-kpi-label">综合效率</span>
+            <span className="sim-kpi-label">拓扑有效率</span>
             <strong className="sim-kpi-val">{effText}</strong>
           </div>
           <div className="sim-kpi">
@@ -98,7 +99,7 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, 
 
         <div className="sim-power-bar">
           <div className="sim-power-row">
-            <span className="sim-kpi-label">额定峰值 / 稳态实耗</span>
+            <span className="sim-kpi-label">装机峰值 / 理论实耗</span>
             <strong className="sim-power-val">
               {fmtMW(p.peakDrawMW)} / {fmtMW(p.activeDrawMW)} MW
             </strong>
@@ -119,7 +120,9 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, 
             </strong>
           </div>
           {genSubParts.length > 0 && (
-            <div className="sim-power-sub">电源构成：{genSubParts.join(' + ')} MW（满载上限）</div>
+            <div className="sim-power-sub">
+              电源构成：{genSubParts.join(' + ')} MW（远日保底 {fmtMW(p.minGenMW)} MW）
+            </div>
           )}
         </div>
 
@@ -169,6 +172,34 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, 
                     {rs.actualOutputRates.map((o) => `${o.ratePerSec.toFixed(2)}/s`).join(' + ')}
                   </span>
                 </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {report.balanceHints.length > 0 && (
+          <div className="sim-section">
+            <div className="section-label">中段配平反压提示（{report.balanceHints.length}）</div>
+            <div className="sim-rate-list">
+              {report.balanceHints.slice(0, 12).map((bh) => (
+                <button
+                  key={bh.id}
+                  type="button"
+                  className="sim-issue-item warn input-spot"
+                  onClick={() =>
+                    onFocusIssue({
+                      id: bh.id,
+                      severity: 'warn',
+                      code: 'external-input-needed',
+                      message: bh.message,
+                      floor: bh.floor,
+                      x: bh.x,
+                      y: bh.y,
+                    })
+                  }
+                >
+                  <span className="sim-issue-msg">{bh.message}</span>
+                </button>
               ))}
             </div>
           </div>
