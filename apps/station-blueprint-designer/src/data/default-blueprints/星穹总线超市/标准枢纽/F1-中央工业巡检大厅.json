@@ -2,8 +2,8 @@
   "format": "station-blueprint-designer",
   "formatVersion": 2,
   "id": "bp_star_hub_f1_central_hall",
-  "name": "F1-中枢 · 中央工业巡检大厅（零传送带）",
-  "description": "F1 核心零带星港巡检广场：十字主通道（x/y=12..19）完全敞开直通四向电梯，四角对称布置观景巡检休憩区、八方绿植与四向产翼指引灯牌。",
+  "name": "F1-中枢 · 中央工业巡检大厅（极简全对称）",
+  "description": "F1 核心零带星港巡检广场：严格八向全对称极简构图，中央 6 格十字主通道（x/y=13..18）完全敞开直通四向电梯，仅以 4 处四角绿植、4 处内庭绿植与 4 座斜角象限指引牌点睛。",
   "gameData": {
     "buildId": "26639889",
     "catalogVersion": 2
@@ -22,197 +22,101 @@
   "buildings": [
     {
       "id": "b_1",
-      "type": "DAT_SignWall",
-      "x": 15,
-      "y": 9,
+      "type": "DAT_Plant_01",
+      "x": 4,
+      "y": 4,
       "floor": 0,
-      "rotation": 0,
-      "label": "↑ 北翼 · 基础冶炼"
+      "rotation": 0
     },
     {
       "id": "b_2",
-      "type": "DAT_SignWall",
-      "x": 16,
-      "y": 22,
+      "type": "DAT_Plant_01",
+      "x": 27,
+      "y": 4,
       "floor": 0,
-      "rotation": 2,
-      "label": "↓ 南翼 · 生物终局"
+      "rotation": 0
     },
     {
       "id": "b_3",
-      "type": "DAT_SignWall",
-      "x": 22,
-      "y": 15,
+      "type": "DAT_Plant_01",
+      "x": 4,
+      "y": 27,
       "floor": 0,
-      "rotation": 1,
-      "label": "→ 东翼 · 机电核心"
+      "rotation": 0
     },
     {
       "id": "b_4",
-      "type": "DAT_SignWall",
-      "x": 9,
-      "y": 16,
+      "type": "DAT_Plant_01",
+      "x": 27,
+      "y": 27,
       "floor": 0,
-      "rotation": 3,
-      "label": "← 西翼 · 重工战备"
+      "rotation": 0
     },
     {
       "id": "b_5",
-      "type": "DAT_Plant_01",
-      "x": 10,
-      "y": 10,
+      "type": "DAT_SignWall",
+      "x": 8,
+      "y": 8,
       "floor": 0,
-      "rotation": 0
+      "rotation": 0,
+      "label": "西北 · 冶炼/重工"
     },
     {
       "id": "b_6",
-      "type": "DAT_Plant_01",
-      "x": 21,
-      "y": 10,
+      "type": "DAT_SignWall",
+      "x": 23,
+      "y": 8,
       "floor": 0,
-      "rotation": 0
+      "rotation": 0,
+      "label": "东北 · 冶炼/机电"
     },
     {
       "id": "b_7",
-      "type": "DAT_Plant_01",
-      "x": 10,
-      "y": 21,
+      "type": "DAT_SignWall",
+      "x": 8,
+      "y": 23,
       "floor": 0,
-      "rotation": 0
+      "rotation": 0,
+      "label": "西南 · 重工/生物"
     },
     {
       "id": "b_8",
-      "type": "DAT_Plant_01",
-      "x": 21,
-      "y": 21,
+      "type": "DAT_SignWall",
+      "x": 23,
+      "y": 23,
       "floor": 0,
-      "rotation": 0
+      "rotation": 0,
+      "label": "东南 · 机电/终局"
     },
     {
       "id": "b_9",
       "type": "DAT_Plant_01",
-      "x": 4,
-      "y": 4,
+      "x": 12,
+      "y": 12,
       "floor": 0,
       "rotation": 0
     },
     {
       "id": "b_10",
       "type": "DAT_Plant_01",
-      "x": 27,
-      "y": 4,
+      "x": 19,
+      "y": 12,
       "floor": 0,
       "rotation": 0
     },
     {
       "id": "b_11",
       "type": "DAT_Plant_01",
-      "x": 4,
-      "y": 27,
+      "x": 12,
+      "y": 19,
       "floor": 0,
       "rotation": 0
     },
     {
       "id": "b_12",
       "type": "DAT_Plant_01",
-      "x": 27,
-      "y": 27,
-      "floor": 0,
-      "rotation": 0
-    },
-    {
-      "id": "b_13",
-      "type": "DAT_CoffeeTable",
-      "x": 6,
-      "y": 6,
-      "floor": 0,
-      "rotation": 0
-    },
-    {
-      "id": "b_14",
-      "type": "DAT_Chair",
-      "x": 6,
-      "y": 7,
-      "floor": 0,
-      "rotation": 3
-    },
-    {
-      "id": "b_15",
-      "type": "DAT_Chair",
-      "x": 7,
-      "y": 6,
-      "floor": 0,
-      "rotation": 2
-    },
-    {
-      "id": "b_16",
-      "type": "DAT_CoffeeTable",
-      "x": 25,
-      "y": 6,
-      "floor": 0,
-      "rotation": 0
-    },
-    {
-      "id": "b_17",
-      "type": "DAT_Chair",
-      "x": 25,
-      "y": 7,
-      "floor": 0,
-      "rotation": 3
-    },
-    {
-      "id": "b_18",
-      "type": "DAT_Chair",
-      "x": 24,
-      "y": 6,
-      "floor": 0,
-      "rotation": 0
-    },
-    {
-      "id": "b_19",
-      "type": "DAT_CoffeeTable",
-      "x": 6,
-      "y": 25,
-      "floor": 0,
-      "rotation": 0
-    },
-    {
-      "id": "b_20",
-      "type": "DAT_Chair",
-      "x": 6,
-      "y": 24,
-      "floor": 0,
-      "rotation": 1
-    },
-    {
-      "id": "b_21",
-      "type": "DAT_Chair",
-      "x": 7,
-      "y": 25,
-      "floor": 0,
-      "rotation": 2
-    },
-    {
-      "id": "b_22",
-      "type": "DAT_CoffeeTable",
-      "x": 25,
-      "y": 25,
-      "floor": 0,
-      "rotation": 0
-    },
-    {
-      "id": "b_23",
-      "type": "DAT_Chair",
-      "x": 25,
-      "y": 24,
-      "floor": 0,
-      "rotation": 1
-    },
-    {
-      "id": "b_24",
-      "type": "DAT_Chair",
-      "x": 24,
-      "y": 25,
+      "x": 19,
+      "y": 19,
       "floor": 0,
       "rotation": 0
     }

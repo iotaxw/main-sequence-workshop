@@ -445,8 +445,7 @@ describe('Versioned JSON codec safety', () => {
         !path.includes('矿石母箱') &&
         !path.includes('翼内小总线') &&
         !path.includes('玻璃玄关') &&
-        !path.includes('F2-电梯') &&
-        !path.includes('中央工业巡检')
+        !path.includes('F2-电梯')
       ) {
         const keys = new Set(
           doc.buildings.map((b) => {
@@ -465,7 +464,7 @@ describe('Versioned JSON codec safety', () => {
           ).toBe(true);
         }
       }
-      if (path.includes('翼内小总线') || path.includes('电梯24口') || path.includes('玻璃玄关') || path.includes('F2-电梯')) {
+      if (path.includes('翼内小总线') || path.includes('电梯24口') || path.includes('玻璃玄关') || path.includes('F2-电梯') || path.includes('中央工业巡检')) {
         const keys = new Set(
           doc.buildings.map((b) => {
             const def = getBuildableDef(b.type)!;
@@ -703,6 +702,24 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
         vaultKeys.has(`${b.type}:${mx},${my},${d},${w}`),
         `Corner Vault ${b.type} at (${b.x},${b.y}) missing exact anti-diagonal mirror at (${mx},${my})`
       ).toBe(true);
+    }
+
+    // Verify all 8 floating plasma turrets in the master Star-Citadel face symmetrically OUTWARD (barrels away from center gx=1,gy=1)
+    const master = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('01-星穹金字塔-三层骨架总图'))!.doc;
+    const turrets = master.modules.filter((m) => m.type === 'BPO_StationTurretBlock_01');
+    expect(turrets.length).toBe(8);
+    const turretMap = new Map(turrets.map((t) => [`${t.gx},${t.gy},${t.floor}`, t.rotation]));
+    for (const t of turrets) {
+      const cx = t.gx + 0.5 - 1;
+      const cy = t.gy + 0.5 - 1;
+      const [dx, dy] = t.rotation === 0 ? [1, 0] : t.rotation === 1 ? [0, 1] : t.rotation === 2 ? [-1, 0] : [0, -1];
+      // Outward dot product > 0: barrels point strictly outward into deep space, docking collar faces inward!
+      expect(dx * cx + dy * cy, `Turret (${t.gx},${t.gy},L${t.floor}) rot=${t.rotation} must face outward`).toBeGreaterThan(0);
+      // Exact E-W mirror (gx <-> 1 - gx, rot 0 <-> 2) and N-S mirror (gy <-> 1 - gy, rot 1 <-> 3)
+      const ewRot = t.rotation === 0 ? 2 : t.rotation === 2 ? 0 : t.rotation;
+      const nsRot = t.rotation === 1 ? 3 : t.rotation === 3 ? 1 : t.rotation;
+      expect(turretMap.get(`${1 - t.gx},${t.gy},${t.floor}`)).toBe(ewRot);
+      expect(turretMap.get(`${t.gx},${1 - t.gy},${t.floor}`)).toBe(nsRot);
     }
   });
 
