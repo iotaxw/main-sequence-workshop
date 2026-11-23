@@ -24,16 +24,100 @@ export interface AutosaveRecord {
   presetRevision?: number;
 }
 
+function cloneDoc(doc: BlueprintDocument): BlueprintDocument {
+  return typeof structuredClone === 'function' ? structuredClone(doc) : (JSON.parse(JSON.stringify(doc)) as BlueprintDocument);
+}
+
+/**
+ * Compact JSON serializer for browser localStorage persistence (avoids 4x pretty-print bloat on 26k+ building blueprints).
+ * Disk exports via FileSystemFolderDriver still use human-readable `serializeBlueprint(doc)`.
+ */
+function serializeCompact(doc: BlueprintDocument): string {
+  return JSON.stringify(doc);
+}
+
+let cachedBuiltinMap: Map<string, BlueprintDocument> | null = null;
+
+function getBuiltinPresetMap(): Map<string, BlueprintDocument> {
+  if (cachedBuiltinMap) return cachedBuiltinMap;
+  const map = new Map<string, BlueprintDocument>();
+  const starter = createStarterBlueprint();
+  const subLine: BlueprintDocument = {
+    format: 'station-blueprint-designer',
+    formatVersion: 2,
+    id: 'bp_sample_refinery_pair',
+    name: '双精炼标准单元',
+    gameData: starter.gameData,
+    modules: [],
+    buildings: [
+      { id: 's_r1', type: 'DAT_Refinery', x: 0, y: 0, floor: 0, rotation: 0, recipeId: 'REC_TitaniumBar', disabledPorts: [1, 3] },
+      { id: 's_r2', type: 'DAT_Refinery', x: 0, y: 4, floor: 0, rotation: 0, recipeId: 'REC_TitaniumBar', disabledPorts: [1, 3] },
+      { id: 's_b1', type: 'DAT_ConveyorBelt', x: 3, y: 1, floor: 0, rotation: 1 },
+      { id: 's_b2', type: 'DAT_ConveyorBelt', x: 3, y: 2, floor: 0, rotation: 1 },
+      { id: 's_b3', type: 'DAT_ConveyorBelt', x: 3, y: 3, floor: 0, rotation: 0 },
+      { id: 's_b4', type: 'DAT_ConveyorBelt', x: 3, y: 5, floor: 0, rotation: 3 },
+      { id: 's_b5', type: 'DAT_ConveyorBelt', x: 3, y: 4, floor: 0, rotation: 3 },
+    ],
+  };
+  map.set('整站方案/双层装配枢纽.json', starter);
+  map.set('产线子蓝图/双精炼标准单元.json', subLine);
+  for (const preset of DEFAULT_LIBRARY_PRESETS) {
+    map.set(normalizeRelPath(preset.path), preset.doc);
+  }
+  cachedBuiltinMap = map;
+  return map;
+}
+
 export function saveWorkspaceAutosave(doc: BlueprintDocument, sourcePath: string | null, dirty = false): number {
   const savedAt = Date.now();
+  const normSource = sourcePath ? normalizeRelPath(sourcePath) : null;
+  const builtins = getBuiltinPresetMap();
+  // Copy-on-write: if opening an unmodified built-in preset (including 26k+ building full-belts master!),
+  // store a tiny ~140-byte presetRef instead of duplicating megabytes into 5 MB browser localStorage!
+  if (normSource && !dirty && builtins.has(normSource)) {
+    const payload = JSON.stringify({
+      savedAt,
+      sourcePath,
+      dirty: false,
+      presetRevision: CURRENT_PRESET_REVISION,
+      presetRef: normSource,
+    });
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, payload);
+    } catch {
+      // Ignore storage quota failure on tiny metadata write
+    }
+    return savedAt;
+  }
   const payload = JSON.stringify({
     savedAt,
     sourcePath,
     dirty,
     presetRevision: CURRENT_PRESET_REVISION,
-    raw: serializeBlueprint(doc),
+    raw: serializeCompact(doc),
   });
-  localStorage.setItem(AUTOSAVE_KEY, payload);
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, payload);
+  } catch {
+    // Fallback: if an enormous dirty blueprint exceeds browser localStorage quota (~5 MB),
+    // preserve the source pointer without crashing the editor UI.
+    if (normSource) {
+      try {
+        localStorage.setItem(
+          AUTOSAVE_KEY,
+          JSON.stringify({
+            savedAt,
+            sourcePath,
+            dirty: false,
+            presetRevision: CURRENT_PRESET_REVISION,
+            presetRef: builtins.has(normSource) ? normSource : undefined,
+          })
+        );
+      } catch {
+        // Ignore secondary quota failure
+      }
+    }
+  }
   return savedAt;
 }
 
@@ -46,22 +130,40 @@ export function loadWorkspaceAutosave(): AutosaveRecord | null {
       sourcePath?: string | null;
       dirty?: boolean;
       presetRevision?: number;
+      presetRef?: string;
       raw?: string;
     };
-    if (!parsed || typeof parsed.raw !== 'string') return null;
+    if (!parsed) return null;
     const sourcePath = typeof parsed.sourcePath === 'string' ? parsed.sourcePath : null;
+    const builtins = getBuiltinPresetMap();
+
+    // Fast path: lightweight preset reference (zero localStorage bloat!)
+    if (typeof parsed.presetRef === 'string') {
+      const refDoc = builtins.get(normalizeRelPath(parsed.presetRef));
+      if (refDoc) {
+        return {
+          savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : Date.now(),
+          sourcePath,
+          dirty: false,
+          presetRevision: CURRENT_PRESET_REVISION,
+          doc: cloneDoc(refDoc),
+        };
+      }
+    }
+
+    if (typeof parsed.raw !== 'string') return null;
     // If an unmodified built-in preset was open in the previous session and built-in presets upgraded,
     // automatically load the freshly updated preset instead of showing stale pre-fix cached geometry!
     if (sourcePath && !parsed.dirty && (parsed.presetRevision ?? 0) < CURRENT_PRESET_REVISION) {
       const norm = normalizeRelPath(sourcePath);
-      const freshPreset = DEFAULT_LIBRARY_PRESETS.find((p) => normalizeRelPath(p.path) === norm);
+      const freshPreset = builtins.get(norm);
       if (freshPreset) {
         return {
           savedAt: Date.now(),
           sourcePath,
           dirty: false,
           presetRevision: CURRENT_PRESET_REVISION,
-          doc: freshPreset.doc,
+          doc: cloneDoc(freshPreset),
         };
       }
     }
@@ -235,10 +337,15 @@ export class FileSystemFolderDriver implements BlueprintLibraryDriver {
 }
 
 interface VirtualStoreData {
+  /** User-created empty folders (built-in preset folders are derived dynamically in memory) */
   folders: string[];
+  /** Copy-on-write user overrides & newly created blueprints ONLY (unmodified built-in presets consume 0 bytes in localStorage!) */
   files: Record<string, { raw: string; updatedAt: number }>;
+  /** Built-in preset paths explicitly deleted or moved away by the user */
+  deletedPresets?: string[];
   seededPresetPaths?: string[];
   presetRevision?: number;
+  storageMode?: 'overlay-v3';
 }
 
 const VIRTUAL_LIB_KEY = 'ms-sbd:virtual-library:v2';
@@ -248,30 +355,27 @@ const SUPERSEDED_PRESET_PATHS = [
   '星穹总线超市/标准枢纽/B1-中央7x8井字立交.json',
 ];
 
-function ensureParentFolders(folders: string[], relPath: string): void {
-  const parts = normalizeRelPath(relPath).split('/');
-  parts.pop();
-  let cur = '';
-  for (const seg of parts) {
-    cur = cur ? `${cur}/${seg}` : seg;
-    if (!folders.includes(cur)) folders.push(cur);
-  }
-}
-
 /**
- * Built-in Offline Virtual Folder Driver (persisted in localStorage/IndexedDB)
- * Used before the user mounts a real OS folder or on browsers without File System Access API.
+ * Built-in Offline Virtual Folder Driver (Copy-on-Write Overlay over in-memory built-in presets).
+ * Built-in presets (including 26k+ building full-belts blueprints) are served directly from memory
+ * with 0 bytes stored in localStorage, preventing browser 5 MB QuotaExceededError forever.
  */
 export class VirtualFolderDriver implements BlueprintLibraryDriver {
   readonly mode = 'virtual-idb' as const;
   readonly rootLabel = '本地蓝图库（内置）';
 
-  private syncNewPresets(store: VirtualStoreData): boolean {
-    const seeded = new Set(store.seededPresetPaths ?? []);
-    const needsRevisionRefresh = (store.presetRevision ?? 0) < CURRENT_PRESET_REVISION;
-    let changed = !Array.isArray(store.seededPresetPaths) || needsRevisionRefresh;
-    const now = Date.now();
-    if (needsRevisionRefresh) {
+  private migrateAndClean(store: VirtualStoreData): boolean {
+    const builtins = getBuiltinPresetMap();
+    const needsUpgrade = store.storageMode !== 'overlay-v3' || (store.presetRevision ?? 0) < CURRENT_PRESET_REVISION;
+    let changed = needsUpgrade;
+
+    if (!Array.isArray(store.deletedPresets)) {
+      store.deletedPresets = [];
+      changed = true;
+    }
+
+    if (needsUpgrade) {
+      // Remove superseded preset paths
       for (const obsolete of SUPERSEDED_PRESET_PATHS) {
         const normOld = normalizeRelPath(obsolete);
         if (store.files[normOld]) {
@@ -279,19 +383,36 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
           changed = true;
         }
       }
-    }
-    for (const preset of DEFAULT_LIBRARY_PRESETS) {
-      const norm = normalizeRelPath(preset.path);
-      if (!needsRevisionRefresh && seeded.has(norm)) continue;
-      seeded.add(norm);
-      if (needsRevisionRefresh || !store.files[norm]) {
-        ensureParentFolders(store.folders, norm);
-        store.files[norm] = { raw: serializeBlueprint(preset.doc), updatedAt: now };
+      // Strip legacy seeded copies of built-in presets out of localStorage!
+      // Previously every built-in preset was duplicated into store.files with 2-space indent (~9+ MB),
+      // causing QuotaExceededError. Now built-in presets live in memory with 0 localStorage footprint.
+      for (const key of Object.keys(store.files)) {
+        const norm = normalizeRelPath(key);
+        if (builtins.has(norm)) {
+          delete store.files[key];
+          changed = true;
+        }
       }
-      changed = true;
+      // Re-compact any remaining user-authored blueprints to save space
+      for (const rec of Object.values(store.files)) {
+        const decoded = deserializeBlueprint(rec.raw);
+        if (decoded.ok) {
+          const compact = serializeCompact(decoded.doc);
+          if (compact.length < rec.raw.length) {
+            rec.raw = compact;
+            changed = true;
+          }
+        }
+      }
+      // Clean obsolete seededPresetPaths list
+      if (store.seededPresetPaths) {
+        delete store.seededPresetPaths;
+        changed = true;
+      }
+      store.presetRevision = CURRENT_PRESET_REVISION;
+      store.storageMode = 'overlay-v3';
     }
-    store.seededPresetPaths = [...seeded];
-    store.presetRevision = CURRENT_PRESET_REVISION;
+
     return changed;
   }
 
@@ -301,44 +422,24 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
       if (raw) {
         const parsed = JSON.parse(raw) as VirtualStoreData;
         if (parsed && Array.isArray(parsed.folders) && parsed.files && typeof parsed.files === 'object') {
-          if (this.syncNewPresets(parsed)) {
+          if (this.migrateAndClean(parsed)) {
             this.saveStore(parsed);
           }
           return parsed;
         }
       }
     } catch {
-      // Fall through to seed
+      // Fall through to clean overlay store
     }
-    const starter = createStarterBlueprint();
-    const subLine: BlueprintDocument = {
-      format: 'station-blueprint-designer',
-      formatVersion: 2,
-      id: 'bp_sample_refinery_pair',
-      name: '双精炼标准单元',
-      gameData: starter.gameData,
-      modules: [],
-      buildings: [
-        { id: 's_r1', type: 'DAT_Refinery', x: 0, y: 0, floor: 0, rotation: 0, recipeId: 'REC_TitaniumBar', disabledPorts: [1, 3] },
-        { id: 's_r2', type: 'DAT_Refinery', x: 0, y: 4, floor: 0, rotation: 0, recipeId: 'REC_TitaniumBar', disabledPorts: [1, 3] },
-        { id: 's_b1', type: 'DAT_ConveyorBelt', x: 3, y: 1, floor: 0, rotation: 1 },
-        { id: 's_b2', type: 'DAT_ConveyorBelt', x: 3, y: 2, floor: 0, rotation: 1 },
-        { id: 's_b3', type: 'DAT_ConveyorBelt', x: 3, y: 3, floor: 0, rotation: 0 },
-        { id: 's_b4', type: 'DAT_ConveyorBelt', x: 3, y: 5, floor: 0, rotation: 3 },
-        { id: 's_b5', type: 'DAT_ConveyorBelt', x: 3, y: 4, floor: 0, rotation: 3 },
-      ],
+    const fresh: VirtualStoreData = {
+      folders: [],
+      files: {},
+      deletedPresets: [],
+      presetRevision: CURRENT_PRESET_REVISION,
+      storageMode: 'overlay-v3',
     };
-    const seeded: VirtualStoreData = {
-      folders: ['整站方案', '产线子蓝图'],
-      files: {
-        '整站方案/双层装配枢纽.json': { raw: serializeBlueprint(starter), updatedAt: Date.now() },
-        '产线子蓝图/双精炼标准单元.json': { raw: serializeBlueprint(subLine), updatedAt: Date.now() },
-      },
-      seededPresetPaths: [],
-    };
-    this.syncNewPresets(seeded);
-    this.saveStore(seeded);
-    return seeded;
+    this.saveStore(fresh);
+    return fresh;
   }
 
   private saveStore(store: VirtualStoreData): void {
@@ -347,6 +448,8 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
 
   async listTree(): Promise<LibraryNode[]> {
     const store = this.loadStore();
+    const builtins = getBuiltinPresetMap();
+    const deleted = new Set((store.deletedPresets ?? []).map(normalizeRelPath));
     const rootChildren: LibraryNode[] = [];
     const folderMap = new Map<string, LibraryFolderEntry>();
 
@@ -367,15 +470,8 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
       return entry;
     };
 
-    for (const f of store.folders) {
-      if (normalizeRelPath(f)) ensureFolder(f);
-    }
-
-    for (const [rel, rec] of Object.entries(store.files)) {
-      const norm = normalizeRelPath(rel);
-      const decoded = deserializeBlueprint(rec.raw);
-      if (!decoded.ok) continue;
-      const fileNode = summarizeDoc(norm, decoded.doc, rec.updatedAt);
+    const addFileNode = (norm: string, doc: BlueprintDocument, updatedAt: number) => {
+      const fileNode = summarizeDoc(norm, doc, updatedAt);
       const parts = norm.split('/');
       if (parts.length === 1) {
         rootChildren.push(fileNode);
@@ -383,6 +479,27 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
         const parent = ensureFolder(parts.slice(0, -1).join('/'));
         parent.children.push(fileNode);
       }
+    };
+
+    for (const f of store.folders) {
+      if (normalizeRelPath(f)) ensureFolder(f);
+    }
+
+    const emittedPaths = new Set<string>();
+
+    // 1) User overrides and custom blueprints from overlay store
+    for (const [rel, rec] of Object.entries(store.files)) {
+      const norm = normalizeRelPath(rel);
+      const decoded = deserializeBlueprint(rec.raw);
+      if (!decoded.ok) continue;
+      emittedPaths.add(norm);
+      addFileNode(norm, decoded.doc, rec.updatedAt);
+    }
+
+    // 2) Unmodified built-in presets directly from memory (0 localStorage bytes!)
+    for (const [norm, doc] of builtins.entries()) {
+      if (emittedPaths.has(norm) || deleted.has(norm)) continue;
+      addFileNode(norm, doc, 0);
     }
 
     return sortNodes(rootChildren);
@@ -390,11 +507,19 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
 
   async readBlueprint(relPath: string): Promise<{ doc: BlueprintDocument; warnings: string[] }> {
     const store = this.loadStore();
-    const rec = store.files[normalizeRelPath(relPath)];
-    if (!rec) throw new Error(`未找到蓝图文件：${relPath}`);
-    const decoded = deserializeBlueprint(rec.raw);
-    if (!decoded.ok) throw new Error(decoded.error);
-    return { doc: decoded.doc, warnings: decoded.warnings };
+    const norm = normalizeRelPath(relPath);
+    const rec = store.files[norm];
+    if (rec) {
+      const decoded = deserializeBlueprint(rec.raw);
+      if (!decoded.ok) throw new Error(decoded.error);
+      return { doc: decoded.doc, warnings: decoded.warnings };
+    }
+    const deleted = new Set((store.deletedPresets ?? []).map(normalizeRelPath));
+    const builtin = !deleted.has(norm) ? getBuiltinPresetMap().get(norm) : undefined;
+    if (builtin) {
+      return { doc: cloneDoc(builtin), warnings: [] };
+    }
+    throw new Error(`未找到蓝图文件：${relPath}`);
   }
 
   async writeBlueprint(relPath: string, doc: BlueprintDocument): Promise<void> {
@@ -407,7 +532,10 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
       const folderPath = parts.join('/');
       if (!store.folders.includes(folderPath)) store.folders.push(folderPath);
     }
-    store.files[finalPath] = { raw: serializeBlueprint(doc), updatedAt: Date.now() };
+    if (store.deletedPresets) {
+      store.deletedPresets = store.deletedPresets.filter((p) => normalizeRelPath(p) !== finalPath);
+    }
+    store.files[finalPath] = { raw: serializeCompact(doc), updatedAt: Date.now() };
     this.saveStore(store);
   }
 
@@ -428,6 +556,13 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
     for (const key of Object.keys(store.files)) {
       if (key.startsWith(`${norm}/`)) delete store.files[key];
     }
+    const deleted = new Set((store.deletedPresets ?? []).map(normalizeRelPath));
+    for (const builtinPath of getBuiltinPresetMap().keys()) {
+      if (builtinPath === norm || builtinPath.startsWith(`${norm}/`)) {
+        deleted.add(builtinPath);
+      }
+    }
+    store.deletedPresets = [...deleted];
     this.saveStore(store);
   }
 
@@ -439,12 +574,22 @@ export class VirtualFolderDriver implements BlueprintLibraryDriver {
     if (store.files[normFrom]) {
       store.files[normTo] = store.files[normFrom];
       delete store.files[normFrom];
-      const parts = normTo.split('/');
-      if (parts.length > 1) {
-        const folder = parts.slice(0, -1).join('/');
-        if (!store.folders.includes(folder)) store.folders.push(folder);
-      }
-      this.saveStore(store);
+    } else {
+      const builtin = getBuiltinPresetMap().get(normFrom);
+      if (!builtin) return;
+      store.files[normTo] = { raw: serializeCompact(builtin), updatedAt: Date.now() };
+      const deleted = new Set((store.deletedPresets ?? []).map(normalizeRelPath));
+      deleted.add(normFrom);
+      store.deletedPresets = [...deleted];
     }
+    const parts = normTo.split('/');
+    if (parts.length > 1) {
+      const folder = parts.slice(0, -1).join('/');
+      if (!store.folders.includes(folder)) store.folders.push(folder);
+    }
+    if (store.deletedPresets) {
+      store.deletedPresets = store.deletedPresets.filter((p) => normalizeRelPath(p) !== normTo);
+    }
+    this.saveStore(store);
   }
 }

@@ -27,6 +27,7 @@ import {
   validateModulePlacement,
 } from './geometry';
 import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
+import { loadWorkspaceAutosave, saveWorkspaceAutosave, VirtualFolderDriver } from './library';
 import { DEFAULT_LIBRARY_PRESETS } from './presets';
 import { simulateBlueprint } from './simulation';
 import { CadCameraRig, MAX_DISTANCE } from '../renderer/camera-rig';
@@ -893,5 +894,70 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     expect(repRun.power.activeDrawMW).toBe(100.5);
     // Terminal storage Container counts cleanly in netOutputs!
     expect(repRun.netOutputs.find((o) => o.itemId === 'ITEM_TitaniumPlates')?.ratePerSec).toBeCloseTo(1 / 3, 2);
+  });
+});
+
+describe('VirtualFolderDriver copy-on-write overlay & 5 MB localStorage quota safety', () => {
+  it('lists and reads all built-in presets (including 26k+ full-belts master) with < 1 KB localStorage usage and migrates legacy bloated stores', async () => {
+    const QUOTA_CHARS = 5_000_000;
+    const mem = new Map<string, string>();
+    const totalChars = () => [...mem.values()].reduce((s, v) => s + v.length, 0);
+    const mockStorage = {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        const nextTotal = totalChars() - (mem.get(k)?.length ?? 0) + v.length;
+        if (nextTotal > QUOTA_CHARS) {
+          throw new Error(`QuotaExceededError: Failed to execute 'setItem' on 'Storage': setting '${k}' exceeded the quota.`);
+        }
+        mem.set(k, v);
+      },
+      removeItem: (k: string) => {
+        mem.delete(k);
+      },
+      clear: () => mem.clear(),
+    };
+    const prevStorage = (globalThis as { localStorage?: unknown }).localStorage;
+    (globalThis as { localStorage?: unknown }).localStorage = mockStorage;
+    try {
+      const driver = new VirtualFolderDriver();
+      const tree = await driver.listTree();
+      expect(tree.length).toBeGreaterThanOrEqual(3);
+      // Unmodified built-in presets MUST occupy < 1 KB in localStorage (0 bytes duplicated!)
+      expect(totalChars()).toBeLessThan(1024);
+
+      // Reading the massive 26,143-building full-belts blueprint + autosaving it unmodified stays < 1 KB!
+      const fullPath = '星穹总线超市/02-星穹金字塔-完整带线总图.json';
+      const { doc: fullDoc } = await driver.readBlueprint(fullPath);
+      expect(fullDoc.buildings.length).toBeGreaterThan(20000);
+      saveWorkspaceAutosave(fullDoc, fullPath, false);
+      expect(totalChars()).toBeLessThan(1024);
+
+      const restored = loadWorkspaceAutosave();
+      expect(restored?.sourcePath).toBe(fullPath);
+      expect(restored?.doc.buildings.length).toBe(fullDoc.buildings.length);
+
+      // Simulate legacy bloated store (v9 with duplicated built-in presets + user custom blueprint) -> auto-strips bloat while preserving custom file!
+      const customDoc = createStarterBlueprint();
+      customDoc.name = '我的自建小站';
+      mem.set(
+        'ms-sbd:virtual-library:v2',
+        JSON.stringify({
+          folders: ['星穹总线超市', '自定义'],
+          files: {
+            '星穹总线超市/01-星穹金字塔-三层骨架总图.json': { raw: serializeBlueprint(fullDoc), updatedAt: 1 },
+            '自定义/我的小站.json': { raw: serializeBlueprint(customDoc), updatedAt: 2 },
+          },
+          presetRevision: 9,
+        })
+      );
+      const migratedTree = await driver.listTree();
+      expect(migratedTree.length).toBeGreaterThanOrEqual(4);
+      const { doc: customBack } = await driver.readBlueprint('自定义/我的小站.json');
+      expect(customBack.name).toBe('我的自建小站');
+      // After migration, legacy built-in copy was stripped so storage dropped way below 50 KB!
+      expect(totalChars()).toBeLessThan(50_000);
+    } finally {
+      (globalThis as { localStorage?: unknown }).localStorage = prevStorage;
+    }
   });
 });
