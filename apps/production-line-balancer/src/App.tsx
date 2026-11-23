@@ -200,11 +200,24 @@ export default function App() {
   }
 
   const t = (key: LabelKey) => label(key, language);
-  const activeForkRecipeId = activeForkState
-    ? (activeForkState.fork.kind === 'produce'
-      ? effectiveRecipes[activeForkState.fork.itemId]
-      : effectiveRecycles[activeForkState.fork.itemId])
-    : undefined;
+  const activeForkRecipeIds = useMemo(() => {
+    if (!activeForkState) return [];
+    const { fork } = activeForkState;
+    if (fork.kind === 'produce') {
+      const id = effectiveRecipes[fork.itemId];
+      return id ? [id] : [];
+    }
+    const ids = new Set<string>();
+    if (effectiveRecycles[fork.itemId]) ids.add(effectiveRecycles[fork.itemId]!);
+    if (plan?.status === 'solved') {
+      for (const row of plan.rows) {
+        if (row.inputs.some(input => input.itemId === fork.itemId)) ids.add(row.recipeId);
+      }
+    }
+    return [...ids];
+  }, [activeForkState, effectiveRecipes, effectiveRecycles, plan]);
+  const hasExplicitRecycle = activeForkState?.fork.kind === 'recycle'
+    && effectiveRecycles[activeForkState.fork.itemId] !== undefined;
 
   return (
     <LanguageContext.Provider value={{ language, t }}>
@@ -286,10 +299,10 @@ export default function App() {
           <ForkPopover
             fork={activeForkState.fork}
             index={index}
-            activeRecipeId={activeForkRecipeId}
+            activeRecipeIds={activeForkRecipeIds}
             anchorEl={activeForkState.anchorEl}
             onSelect={selectFork}
-            onRemoveRecycle={activeForkState.fork.kind === 'recycle' ? () => removeRecycle(activeForkState.fork.itemId) : undefined}
+            onRemoveRecycle={hasExplicitRecycle ? () => removeRecycle(activeForkState.fork.itemId) : undefined}
             onClose={() => setOpenFork(null)}
           />
         )}

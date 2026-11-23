@@ -61,4 +61,29 @@ describe('default recipe resolution', () => {
     expect(recipes.ITEM_MagneticCoils).toBe('REC_MagneticCoilsAlt1');
     expect(recipes.ITEM_CobaltPlates).toBe('REC_CobaltPlates');
   });
+
+  it('closes AlphaProtein Biomass surplus cleanly to zero net byproducts via XenoEukaryaRecycling', () => {
+    const inputsWithSeed = [...defaultInputs, 'ITEM_Xenoeukarya'];
+    const before = solvePlan(dataset, index, {
+      target: { itemId: 'ITEM_AlphaProtein', ratePerMin: '30' },
+      inputItemIds: inputsWithSeed,
+      recipeByItem: {},
+    });
+    expect(before.status).toBe('solved');
+    if (before.status === 'solved') {
+      expect(before.byproducts).toEqual([{ itemId: 'ITEM_Biomass', ratePerMin: '30' }]);
+    }
+    const after = solvePlan(dataset, index, {
+      target: { itemId: 'ITEM_AlphaProtein', ratePerMin: '30' },
+      inputItemIds: inputsWithSeed,
+      recipeByItem: {},
+      recycleItemIds: ['ITEM_Biomass'],
+      recycleByItem: { ITEM_Biomass: 'REC_XenoEukaryaRecycling' },
+    });
+    expect(after.status).toBe('solved');
+    if (after.status === 'solved') {
+      expect(after.byproducts).toEqual([]);
+      expect(after.rawInputs.some(flow => flow.itemId === 'ITEM_Xenoeukarya')).toBe(false);
+    }
+  });
 });

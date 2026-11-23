@@ -364,6 +364,8 @@ button:focus-visible, input:focus-visible {
   white-space: nowrap;
 }
 .flow-chip--byproduct { border-color: color-mix(in srgb, var(--byproduct) 28%, var(--line)); }
+.flow-chip--balanced { border-color: color-mix(in srgb, var(--byproduct) 42%, var(--line)); background: color-mix(in srgb, var(--byproduct) 5%, var(--surface)); }
+.flow-chip--balanced > .rate-value { color: var(--byproduct); font-weight: 600; }
 .flow-chip--editing { border-color: var(--byproduct); box-shadow: 0 0 0 2px color-mix(in srgb, var(--byproduct) 16%, transparent); }
 .rate-value { padding-right: var(--s1); font-family: var(--mono); font-size: 12px; }
 .flow-chip > .rate-value { padding-inline: 2px; }

@@ -247,10 +247,10 @@ export function RecipeGrid({ rows, index, activeForkItemId, onSwitch }: {
   );
 }
 
-export function ForkPopover({ fork, index, activeRecipeId, anchorEl, onSelect, onRemoveRecycle, onClose }: {
+export function ForkPopover({ fork, index, activeRecipeIds, anchorEl, onSelect, onRemoveRecycle, onClose }: {
   fork: Fork;
   index: DatasetIndex;
-  activeRecipeId?: string;
+  activeRecipeIds: string[];
   anchorEl: HTMLElement | null;
   onSelect: (recipeId: string) => void;
   onRemoveRecycle?: () => void;
@@ -259,6 +259,7 @@ export function ForkPopover({ fork, index, activeRecipeId, anchorEl, onSelect, o
   const { language, t } = useLanguage();
   const item = index.items.get(fork.itemId)!;
   const heading = t(fork.kind === 'recycle' ? 'selectRecycle' : 'selectProduce');
+  const activeSet = useMemo(() => new Set(activeRecipeIds), [activeRecipeIds]);
   const panelRef = useRef<HTMLElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
@@ -341,7 +342,7 @@ export function ForkPopover({ fork, index, activeRecipeId, anchorEl, onSelect, o
         <ItemGlyph item={item} role={fork.kind === 'recycle' ? 'byproduct' : 'target'} size="small" />
         <span className="fork-picker__item">{entityName(item, language)}</span>
         <span className="fork-popover__spacer" />
-        {fork.kind === 'recycle' && activeRecipeId && onRemoveRecycle && (
+        {fork.kind === 'recycle' && onRemoveRecycle && (
           <button className="fork-popover__clear" onClick={onRemoveRecycle}>
             {t('removeRecycle')}
           </button>
@@ -354,7 +355,7 @@ export function ForkPopover({ fork, index, activeRecipeId, anchorEl, onSelect, o
         {fork.recipeIds.map(recipeId => {
           const recipe = index.recipes.get(recipeId)!;
           const machine = index.machines.get(recipe.machineId)!;
-          const selected = recipeId === activeRecipeId;
+          const selected = activeSet.has(recipeId);
           return (
             <button
               className={`recipe-card recipe-option${selected ? ' recipe-option--active' : ''}`}
@@ -426,7 +427,15 @@ export function SummaryStrip({ plan, index, activeRecycleItemId, onOpenRecycle }
   const machineDescription = language === 'en'
     ? `Built ${machines.built}, continuous ${exactMachines}`
     : `建设 ${machines.built} 台，连续 ${exactMachines} 台`;
-  const orphanRecycles = Object.keys(plan.recycleByItem).filter(itemId => !plan.byproducts.some(flow => flow.itemId === itemId));
+  const surplusByproductIds = new Set(plan.byproducts.map(flow => flow.itemId));
+  const rowByproductIds = plan.rows.flatMap(row =>
+    row.outputs.filter(output => output.isByproduct).map(output => output.itemId),
+  );
+  const balancedByproductIds = [...new Set([
+    ...Object.keys(plan.recycleByItem),
+    ...rowByproductIds,
+  ])].filter(itemId => !surplusByproductIds.has(itemId));
+  const hasAnyByproduct = plan.byproducts.length > 0 || balancedByproductIds.length > 0;
   return (
     <section className="summary" aria-label={t('summary')}>
       <div className="metric metric--flows">
@@ -440,9 +449,9 @@ export function SummaryStrip({ plan, index, activeRecycleItemId, onOpenRecycle }
           ))}
         </div>
       </div>
-      {(plan.byproducts.length > 0 || orphanRecycles.length > 0) && (
+      {hasAnyByproduct && (
         <div className="metric metric--flows">
-          <span className="metric__label">{t('byproductOutputs')}{plan.byproducts.length > 0 && <span className="metric__unit">/min</span>}</span>
+          <span className="metric__label">{t('byproductOutputs')}<span className="metric__unit">/min</span></span>
           <div className="metric__flows">
             {plan.byproducts.map(flow => {
               const active = plan.recycleByItem[flow.itemId] !== undefined;
@@ -465,22 +474,24 @@ export function SummaryStrip({ plan, index, activeRecycleItemId, onOpenRecycle }
                 </span>
               );
             })}
-            {orphanRecycles.map(itemId => {
+            {balancedByproductIds.map(itemId => {
               const isOpen = activeRecycleItemId === itemId;
               return (
-                <button
-                  className={`flow-chip flow-chip--byproduct recycle-toggle--on${isOpen ? ' flow-chip--editing' : ''}`}
-                  key={itemId}
-                  onClick={event => onOpenRecycle(itemId, event.currentTarget)}
-                  title={t('selectRecycle')}
-                  aria-label={t('selectRecycle')}
-                  aria-pressed="true"
-                  aria-expanded={isOpen}
-                  aria-haspopup="dialog"
-                >
+                <span className={`flow-chip flow-chip--byproduct flow-chip--balanced${isOpen ? ' flow-chip--editing' : ''}`} key={itemId}>
                   <ItemGlyph item={index.items.get(itemId)!} role="byproduct" size="small" />
-                  <UiIcon name="recycle" size={12} />
-                </button>
+                  <RateValue value="0" />
+                  <button
+                    className={`recycle-toggle recycle-toggle--on${isOpen ? ' recycle-toggle--open' : ''}`}
+                    onClick={event => onOpenRecycle(itemId, event.currentTarget)}
+                    title={t('selectRecycle')}
+                    aria-label={t('selectRecycle')}
+                    aria-pressed="true"
+                    aria-expanded={isOpen}
+                    aria-haspopup="dialog"
+                  >
+                    <UiIcon name="recycle" size={12} />
+                  </button>
+                </span>
               );
             })}
           </div>
