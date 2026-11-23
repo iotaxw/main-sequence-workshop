@@ -373,6 +373,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     portCells: Array<{ portIndex: number; adjX: number; adjY: number }>;
   }
   const virtualObservatories: VirtualObservatoryRec[] = [];
+  const virtualObsAdjCells = new Set<string>();
   for (const mod of doc.modules) {
     if (mod.type !== 'BPO_DeepSpaceObservatory' || !mod.recipeId) continue;
     const mDef = getModuleDef(mod.type);
@@ -386,7 +387,10 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     ];
     for (let pi = 0; pi < LOCAL_PORTS.length; pi++) {
       const [rx, ry] = rotateVec2(LOCAL_PORTS[pi][0], LOCAL_PORTS[pi][1], mod.rotation);
-      portCells.push({ portIndex: pi, adjX: Math.floor(cx + rx), adjY: Math.floor(cy + ry) });
+      const ax = Math.floor(cx + rx);
+      const ay = Math.floor(cy + ry);
+      portCells.push({ portIndex: pi, adjX: ax, adjY: ay });
+      virtualObsAdjCells.add(cellKey(mod.floor, ax, ay));
     }
     const vb: PlacedBuilding = {
       id: `mod_obs:${mod.id}`,
@@ -584,7 +588,11 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       } else if (backDock) {
         entrySourceKind.set(b.id, 'dock');
         if (backDock.itemId) dockEntryItem.set(b.id, backDock.itemId);
-      } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, bx, by, b.floor)) {
+      } else if (
+        !virtualObsAdjCells.has(cellKey(b.floor, b.x, b.y)) &&
+        isDoorwayThresholdCell(doc, b.x, b.y, b.floor) &&
+        isBoundaryFloorMissing(doc, bx, by, b.floor)
+      ) {
         entrySourceKind.set(b.id, 'doorway');
       }
 
@@ -1322,8 +1330,9 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   for (const b of simNodes) {
     if ((inDeg.get(b.id) ?? 0) === 0) kahnQueue.push(b.id);
   }
-  while (kahnQueue.length > 0) {
-    const cur = kahnQueue.shift()!;
+  let kahnHead = 0;
+  while (kahnHead < kahnQueue.length) {
+    const cur = kahnQueue[kahnHead++];
     if (topoSeen.has(cur)) continue;
     topoSeen.add(cur);
     const cb = buildingById.get(cur);
@@ -1336,11 +1345,33 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       }
     }
   }
-  // Append cyclic components in BFS order starting from entries/crafters
+  // Append cyclic components in forward BFS order starting from cyclic crafters so a single iteration
+  // propagates flow all the way around arbitrarily long closed feedback loops (e.g. 100-tile Biomass loop)!
+  const cycQueue: string[] = [];
   for (const b of simNodes) {
     if (!topoSeen.has(b.id)) {
-      topoSeen.add(b.id);
-      topoOrder.push(b);
+      const k = defById.get(b.id)?.kind;
+      if (k === 'crafter' || k === 'research') cycQueue.push(b.id);
+    }
+  }
+  for (const b of simNodes) {
+    if (!topoSeen.has(b.id)) cycQueue.push(b.id);
+  }
+  let cycHead = 0;
+  while (cycHead < cycQueue.length) {
+    const startId = cycQueue[cycHead++];
+    if (topoSeen.has(startId)) continue;
+    const bfsQ = [startId];
+    let bfsH = 0;
+    while (bfsH < bfsQ.length) {
+      const cur = bfsQ[bfsH++];
+      if (topoSeen.has(cur)) continue;
+      topoSeen.add(cur);
+      const cb = buildingById.get(cur);
+      if (cb) topoOrder.push(cb);
+      for (const oe of outEdges.get(cur) ?? []) {
+        if (!topoSeen.has(oe.toId)) bfsQ.push(oe.toId);
+      }
     }
   }
   const bfsOrder = topoOrder;
@@ -1495,7 +1526,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  const ITERS = 20;
+  const ITERS = 32;
   for (let iter = 0; iter < ITERS; iter++) {
     let maxDelta = 0;
     const setEdgeFlow = (key: string, fm: FlowMap) => {
@@ -1536,9 +1567,16 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
             if (got <= 1e-4 && headSet?.has(inp.itemId)) {
               got = need;
             }
-            // Ignite closed self-recycling loops (e.g. XenobacteriaRecycling) on iter 0
-            if (iter === 0 && got < need && rec.outputs.some((o) => o.itemId === inp.itemId)) {
-              got = need;
+            // Ignite closed self-recycling & multi-machine regenerative loops (e.g. Xenobacteria <-> Biomass) on iter 0..1;
+            // subsequent iterations run WITHOUT seed injection so any non-conserving/broken loop decays to 0!
+            if (iter <= 1 && got < need) {
+              const isSelfLoop = rec.outputs.some((o) => o.itemId === inp.itemId);
+              const hasInternalCycleProducer =
+                !isSelfLoop &&
+                (inEdges.get(b.id) ?? []).some((ie) => upstreamProducedByNode.get(ie.fromId)?.has(inp.itemId));
+              if (isSelfLoop || hasInternalCycleProducer) {
+                got = need;
+              }
             }
             inputEff = Math.min(inputEff, need > 0 ? got / need : 1);
           }
@@ -1633,7 +1671,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
             let rem = rawRate * capScale;
             if (rem <= 1e-9) continue;
             let active = outs.slice();
-            while (rem > 1e-9 && active.length > 0) {
+            for (let wf = 0; wf < 8 && rem > 1e-9 && active.length > 0; wf++) {
               const share = rem / active.length;
               const nextActive: OutEdge[] = [];
               let sentAny = false;

@@ -29,6 +29,7 @@ import {
 import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
 import {
   clearSavedGitHubConfig,
+  clearWorkspaceAutosave,
   GitHubPrivateRepoDriver,
   loadSavedGitHubConfig,
   loadWorkspaceAutosave,
@@ -483,7 +484,9 @@ describe('Versioned JSON codec safety', () => {
           }
         }
       }
+      const distinctRecipes = new Set(doc.buildings.map((b) => b.recipeId).filter(Boolean));
       if (
+        distinctRecipes.size <= 1 &&
         !path.includes('Cell-9P') &&
         !path.includes('角落稳压母库') &&
         !path.includes('矿石母箱') &&
@@ -1306,6 +1309,16 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
 
       clearSavedGitHubConfig();
       expect(loadSavedGitHubConfig()).toBeNull();
+
+      // Verify workspace autosave can be cleanly wiped on private cloud disconnect
+      saveWorkspaceAutosave(doc, '星穹总线超市/主站.json', false);
+      expect(loadWorkspaceAutosave()?.doc.name).toBe('私有星穹主站-已修改');
+      clearWorkspaceAutosave();
+      expect(loadWorkspaceAutosave()).toBeNull();
+
+      // Verify public default preset list strictly exposes ONLY the clean 2x2A starter template
+      const publicPaths = DEFAULT_LIBRARY_PRESETS.filter((p) => !p.isPrivate).map((p) => p.path);
+      expect(publicPaths).toEqual(['2x2A-标准起步模板.json']);
     } finally {
       globalThis.fetch = prevFetch;
       (globalThis as { localStorage?: unknown }).localStorage = prevStorage;

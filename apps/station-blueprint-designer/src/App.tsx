@@ -36,6 +36,7 @@ import {
 import {
   BlueprintLibraryDriver,
   clearSavedGitHubConfig,
+  clearWorkspaceAutosave,
   FileSystemFolderDriver,
   GitHubPrivateRepoDriver,
   loadSavedGitHubConfig,
@@ -1487,11 +1488,20 @@ export const App: React.FC = () => {
 
   const handleDisconnectGitHubRepo = async () => {
     clearSavedGitHubConfig();
+    clearWorkspaceAutosave();
     const fallback = new VirtualFolderDriver();
+    const pubTemplate = DEFAULT_LIBRARY_PRESETS.find((p) => !p.isPrivate);
+    const resetDoc = pubTemplate ? pubTemplate.doc : createStarterBlueprint();
     setDriver(fallback);
+    setHistory(createHistory(resetDoc));
+    setActiveSourcePath(pubTemplate ? pubTemplate.path : null);
+    setDirty(false);
+    setSelection(EMPTY_SELECTION);
+    setActiveTool({ kind: 'select' });
+    setStampingLibPath(null);
     setGhModal(null);
     await refreshLibrary(fallback);
-    showToast('已断开 GitHub 私有库并清除浏览器本地 Token，已切回内置蓝图库');
+    showToast('已断开私有云库并清除本地 Token 与画布缓存，已切回公开起步模板');
   };
 
   const handleExportNativeSav = async (mode: 'station' | 'preset' = 'station', targetDoc: BlueprintDocument = doc) => {

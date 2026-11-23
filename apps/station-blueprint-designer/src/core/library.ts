@@ -101,6 +101,14 @@ export function saveWorkspaceAutosave(doc: BlueprintDocument, sourcePath: string
   return savedAt;
 }
 
+export function clearWorkspaceAutosave(): void {
+  try {
+    localStorage.removeItem(AUTOSAVE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function loadWorkspaceAutosave(): AutosaveRecord | null {
   try {
     const text = localStorage.getItem(AUTOSAVE_KEY);

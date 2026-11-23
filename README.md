@@ -6,7 +6,7 @@
 
 - [产线规划配平器](https://iotaxw.github.io/main-sequence-workshop/production-line-balancer/)：从版本化游戏数据确定目标产率所需的输入、配方分支、机器数量和耗电（[源码与使用说明](apps/production-line-balancer/README.md)）。
 - [总线超市规划器](https://iotaxw.github.io/main-sequence-workshop/mall-planner/)：浏览和编辑物品层级、配方依赖、常备目标与隔离分区，并导入导出协作方案（[源码与使用说明](apps/mall-planner/README.md)）。
-- [空间站蓝图规划器](https://iotaxw.github.io/main-sequence-workshop/station-blueprint-designer/)：离线 3D 暗色 CAD 空间站与内部产线蓝图规划器，支持本地文件夹蓝图库、多层框选与配方/端口配置（[源码与使用说明](apps/station-blueprint-designer/README.md)）。
+- [空间站蓝图规划器](https://iotaxw.github.io/main-sequence-workshop/station-blueprint-designer/)：离线 3D 暗色 CAD 空间站蓝图规划器，支持实时产线物流诊断、原生 `.sav` ↔ JSON 双向互转（共享 Rust/WASM 编解码库 `packages/ms-blueprint-codec/`）、本地文件夹与个人 GitHub 私有云库（[源码与使用说明](apps/station-blueprint-designer/README.md)）。
 - [空间站局部蓝图 Mod](apps/station-section-blueprints/README.md)：在原生设计器中保存、整理和复用局部蓝图，当前仍处于开发预览阶段。
 
 网页工具通过 GitHub Actions 构建并发布到 GitHub Pages：
