@@ -2,8 +2,8 @@
   "format": "station-blueprint-designer",
   "formatVersion": 2,
   "id": "bp_star_citadel_3deck_master",
-  "name": "星穹金字塔 · 三层退台总线超市总骨架",
-  "description": "B1（Z=0m：原物质5母阵+矿石应急合流+8×8严格对称井字立交+四角大库）+ F1（Z=16m：4向玻璃玄关+北9/东10/西9/南10对称四翼+24块光伏III 6.9GW+双天文台）+ F2（Z=32m：39常备四向巨窗星光商业街+360度悬空玻璃天桥环廊）。",
+  "name": "星穹金字塔 · 三层退台与四象3D星帆浮岛总图",
+  "description": "B1（Z=0m：原物质5母阵+矿石应急合流+8×8对称井字立交+四角稳压大库）+ F1（Z=16m：4向玻璃玄关+对称四翼+16块主城Mk.2装饰稳定光翼+双天文台）+ F2（Z=32m：39常备巨窗商业街+360°玻璃天桥环）+ 四象限45°三维阶梯浮空星帆能源岛（32块Mk.3自L1升至L4、含高空/底舱双层防空塔，零装甲板，100%光照总发电约10GW）。",
   "gameData": {
     "buildId": "26639889",
     "catalogVersion": 2
@@ -841,328 +841,616 @@
       "id": "m_93",
       "type": "BPO_StationAdapter_01",
       "gx": 4,
-      "gy": -10,
+      "gy": -12,
       "floor": 2,
       "rotation": 0,
-      "label": "光伏翼适配器"
+      "label": "主城装饰光翼适配器"
     },
     {
       "id": "m_94",
-      "type": "BPO_SolarPanelBlock_03",
+      "type": "BPO_SolarPanelBlock_02",
       "gx": 5,
-      "gy": -10,
+      "gy": -12,
       "floor": 2,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_95",
-      "type": "BPO_SolarPanelBlock_03",
+      "type": "BPO_SolarPanelBlock_02",
       "gx": 5,
-      "gy": -9,
+      "gy": -11,
       "floor": 2,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_96",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 7,
-      "gy": -10,
+      "type": "BPO_StationAdapter_01",
+      "gx": -3,
+      "gy": -12,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 2,
+      "label": "主城装饰光翼适配器"
     },
     {
       "id": "m_97",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 7,
-      "gy": -9,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": -4,
+      "gy": -12,
       "floor": 2,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_98",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 9,
-      "gy": -10,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": -4,
+      "gy": -11,
       "floor": 2,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_99",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 9,
-      "gy": -9,
+      "type": "BPO_StationAdapter_01",
+      "gx": 4,
+      "gy": 12,
       "floor": 2,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "主城装饰光翼适配器"
     },
     {
       "id": "m_100",
-      "type": "BPO_StationTurretBlock_01",
-      "gx": 4,
-      "gy": -11,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": 5,
+      "gy": 12,
       "floor": 2,
-      "rotation": 3,
-      "label": "等离子炮塔"
+      "rotation": 0,
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_101",
-      "type": "BPO_StationTurretBlock_01",
-      "gx": 4,
-      "gy": -8,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": 5,
+      "gy": 13,
       "floor": 2,
-      "rotation": 1,
-      "label": "等离子炮塔"
+      "rotation": 0,
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_102",
       "type": "BPO_StationAdapter_01",
       "gx": -3,
-      "gy": -10,
+      "gy": 12,
       "floor": 2,
       "rotation": 2,
-      "label": "光伏翼适配器"
+      "label": "主城装饰光翼适配器"
     },
     {
       "id": "m_103",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": -5,
-      "gy": -10,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": -4,
+      "gy": 12,
       "floor": 2,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_104",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": -5,
-      "gy": -9,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": -4,
+      "gy": 13,
       "floor": 2,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_105",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": -7,
-      "gy": -10,
+      "type": "BPO_StationAdapter_01",
+      "gx": 12,
+      "gy": -3,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 3,
+      "label": "主城装饰光翼适配器"
     },
     {
       "id": "m_106",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": -7,
-      "gy": -9,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": 12,
+      "gy": -4,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 1,
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_107",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": -9,
-      "gy": -10,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": 13,
+      "gy": -4,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 1,
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_108",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": -9,
-      "gy": -9,
+      "type": "BPO_StationAdapter_01",
+      "gx": 12,
+      "gy": 4,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 1,
+      "label": "主城装饰光翼适配器"
     },
     {
       "id": "m_109",
-      "type": "BPO_StationTurretBlock_01",
-      "gx": -3,
-      "gy": -11,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": 12,
+      "gy": 5,
       "floor": 2,
-      "rotation": 3,
-      "label": "等离子炮塔"
+      "rotation": 1,
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_110",
-      "type": "BPO_StationTurretBlock_01",
-      "gx": -3,
-      "gy": -8,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": 13,
+      "gy": 5,
       "floor": 2,
       "rotation": 1,
-      "label": "等离子炮塔"
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_111",
       "type": "BPO_StationAdapter_01",
-      "gx": 4,
-      "gy": 12,
+      "gx": -12,
+      "gy": -3,
       "floor": 2,
-      "rotation": 0,
-      "label": "光伏翼适配器"
+      "rotation": 3,
+      "label": "主城装饰光翼适配器"
     },
     {
       "id": "m_112",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 5,
-      "gy": 12,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": -12,
+      "gy": -4,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 1,
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_113",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 5,
-      "gy": 13,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": -11,
+      "gy": -4,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 1,
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_114",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 7,
-      "gy": 12,
+      "type": "BPO_StationAdapter_01",
+      "gx": -12,
+      "gy": 4,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 1,
+      "label": "主城装饰光翼适配器"
     },
     {
       "id": "m_115",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 7,
-      "gy": 13,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": -12,
+      "gy": 5,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 1,
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_116",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 9,
-      "gy": 12,
+      "type": "BPO_SolarPanelBlock_02",
+      "gx": -11,
+      "gy": 5,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 1,
+      "label": "主城太阳能稳定翼 (Mk.2 · 48MW)"
     },
     {
       "id": "m_117",
-      "type": "BPO_SolarPanelBlock_03",
-      "gx": 9,
-      "gy": 13,
+      "type": "BPO_StationCorner_01",
+      "gx": 12,
+      "gy": -11,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 2,
+      "label": "东北浮岛水晶锚核"
     },
     {
       "id": "m_118",
       "type": "BPO_StationTurretBlock_01",
-      "gx": 4,
-      "gy": 11,
-      "floor": 2,
-      "rotation": 3,
-      "label": "等离子炮塔"
+      "gx": 12,
+      "gy": -11,
+      "floor": 4,
+      "rotation": 0,
+      "label": "东北浮岛高空防空塔 (L4)"
     },
     {
       "id": "m_119",
       "type": "BPO_StationTurretBlock_01",
-      "gx": 4,
-      "gy": 14,
-      "floor": 2,
-      "rotation": 1,
-      "label": "等离子炮塔"
+      "gx": 12,
+      "gy": -11,
+      "floor": 0,
+      "rotation": 0,
+      "label": "东北浮岛底舱防空塔 (L0)"
     },
     {
       "id": "m_120",
-      "type": "BPO_StationAdapter_01",
-      "gx": -3,
-      "gy": 12,
-      "floor": 2,
-      "rotation": 2,
-      "label": "光伏翼适配器"
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 11,
+      "gy": -9,
+      "floor": 1,
+      "rotation": 0,
+      "label": "东北星帆浮岛 · 一阶下潜帆 (L1)"
     },
     {
       "id": "m_121",
       "type": "BPO_SolarPanelBlock_03",
-      "gx": -5,
-      "gy": 12,
-      "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "gx": 10,
+      "gy": -11,
+      "floor": 1,
+      "rotation": 1,
+      "label": "东北星帆浮岛 · 一阶下潜帆 (L1)"
     },
     {
       "id": "m_122",
       "type": "BPO_SolarPanelBlock_03",
-      "gx": -5,
-      "gy": 13,
+      "gx": 13,
+      "gy": -11,
       "floor": 2,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "东北星帆浮岛 · 二阶主帆 (L2)"
     },
     {
       "id": "m_123",
       "type": "BPO_SolarPanelBlock_03",
-      "gx": -7,
-      "gy": 12,
+      "gx": 12,
+      "gy": -13,
       "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "rotation": 1,
+      "label": "东北星帆浮岛 · 二阶主帆 (L2)"
     },
     {
       "id": "m_124",
       "type": "BPO_SolarPanelBlock_03",
-      "gx": -7,
-      "gy": 13,
-      "floor": 2,
+      "gx": 15,
+      "gy": -11,
+      "floor": 3,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "东北星帆浮岛 · 三阶升翼帆 (L3)"
     },
     {
       "id": "m_125",
       "type": "BPO_SolarPanelBlock_03",
-      "gx": -9,
-      "gy": 12,
-      "floor": 2,
-      "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "gx": 12,
+      "gy": -15,
+      "floor": 3,
+      "rotation": 1,
+      "label": "东北星帆浮岛 · 三阶升翼帆 (L3)"
     },
     {
       "id": "m_126",
       "type": "BPO_SolarPanelBlock_03",
-      "gx": -9,
-      "gy": 13,
-      "floor": 2,
+      "gx": 15,
+      "gy": -13,
+      "floor": 4,
       "rotation": 0,
-      "label": "太阳能板3型 (288MW)"
+      "label": "东北星帆浮岛 · 四阶穹顶冠帆 (L4)"
     },
     {
       "id": "m_127",
-      "type": "BPO_StationTurretBlock_01",
-      "gx": -3,
-      "gy": 11,
-      "floor": 2,
-      "rotation": 3,
-      "label": "等离子炮塔"
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 14,
+      "gy": -15,
+      "floor": 4,
+      "rotation": 1,
+      "label": "东北星帆浮岛 · 四阶穹顶冠帆 (L4)"
     },
     {
       "id": "m_128",
-      "type": "BPO_StationTurretBlock_01",
-      "gx": -3,
-      "gy": 14,
+      "type": "BPO_StationCorner_01",
+      "gx": -11,
+      "gy": -11,
       "floor": 2,
       "rotation": 1,
-      "label": "等离子炮塔"
+      "label": "西北浮岛水晶锚核"
     },
     {
       "id": "m_129",
+      "type": "BPO_StationTurretBlock_01",
+      "gx": -11,
+      "gy": -11,
+      "floor": 4,
+      "rotation": 0,
+      "label": "西北浮岛高空防空塔 (L4)"
+    },
+    {
+      "id": "m_130",
+      "type": "BPO_StationTurretBlock_01",
+      "gx": -11,
+      "gy": -11,
+      "floor": 0,
+      "rotation": 0,
+      "label": "西北浮岛底舱防空塔 (L0)"
+    },
+    {
+      "id": "m_131",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -11,
+      "gy": -9,
+      "floor": 1,
+      "rotation": 0,
+      "label": "西北星帆浮岛 · 一阶下潜帆 (L1)"
+    },
+    {
+      "id": "m_132",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -9,
+      "gy": -11,
+      "floor": 1,
+      "rotation": 1,
+      "label": "西北星帆浮岛 · 一阶下潜帆 (L1)"
+    },
+    {
+      "id": "m_133",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -13,
+      "gy": -11,
+      "floor": 2,
+      "rotation": 0,
+      "label": "西北星帆浮岛 · 二阶主帆 (L2)"
+    },
+    {
+      "id": "m_134",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -11,
+      "gy": -13,
+      "floor": 2,
+      "rotation": 1,
+      "label": "西北星帆浮岛 · 二阶主帆 (L2)"
+    },
+    {
+      "id": "m_135",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -15,
+      "gy": -11,
+      "floor": 3,
+      "rotation": 0,
+      "label": "西北星帆浮岛 · 三阶升翼帆 (L3)"
+    },
+    {
+      "id": "m_136",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -11,
+      "gy": -15,
+      "floor": 3,
+      "rotation": 1,
+      "label": "西北星帆浮岛 · 三阶升翼帆 (L3)"
+    },
+    {
+      "id": "m_137",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -15,
+      "gy": -13,
+      "floor": 4,
+      "rotation": 0,
+      "label": "西北星帆浮岛 · 四阶穹顶冠帆 (L4)"
+    },
+    {
+      "id": "m_138",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -13,
+      "gy": -15,
+      "floor": 4,
+      "rotation": 1,
+      "label": "西北星帆浮岛 · 四阶穹顶冠帆 (L4)"
+    },
+    {
+      "id": "m_139",
+      "type": "BPO_StationCorner_01",
+      "gx": 12,
+      "gy": 12,
+      "floor": 2,
+      "rotation": 3,
+      "label": "东南浮岛水晶锚核"
+    },
+    {
+      "id": "m_140",
+      "type": "BPO_StationTurretBlock_01",
+      "gx": 12,
+      "gy": 12,
+      "floor": 4,
+      "rotation": 0,
+      "label": "东南浮岛高空防空塔 (L4)"
+    },
+    {
+      "id": "m_141",
+      "type": "BPO_StationTurretBlock_01",
+      "gx": 12,
+      "gy": 12,
+      "floor": 0,
+      "rotation": 0,
+      "label": "东南浮岛底舱防空塔 (L0)"
+    },
+    {
+      "id": "m_142",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 11,
+      "gy": 10,
+      "floor": 1,
+      "rotation": 0,
+      "label": "东南星帆浮岛 · 一阶下潜帆 (L1)"
+    },
+    {
+      "id": "m_143",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 10,
+      "gy": 11,
+      "floor": 1,
+      "rotation": 1,
+      "label": "东南星帆浮岛 · 一阶下潜帆 (L1)"
+    },
+    {
+      "id": "m_144",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 13,
+      "gy": 12,
+      "floor": 2,
+      "rotation": 0,
+      "label": "东南星帆浮岛 · 二阶主帆 (L2)"
+    },
+    {
+      "id": "m_145",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 12,
+      "gy": 13,
+      "floor": 2,
+      "rotation": 1,
+      "label": "东南星帆浮岛 · 二阶主帆 (L2)"
+    },
+    {
+      "id": "m_146",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 15,
+      "gy": 12,
+      "floor": 3,
+      "rotation": 0,
+      "label": "东南星帆浮岛 · 三阶升翼帆 (L3)"
+    },
+    {
+      "id": "m_147",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 12,
+      "gy": 15,
+      "floor": 3,
+      "rotation": 1,
+      "label": "东南星帆浮岛 · 三阶升翼帆 (L3)"
+    },
+    {
+      "id": "m_148",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 15,
+      "gy": 14,
+      "floor": 4,
+      "rotation": 0,
+      "label": "东南星帆浮岛 · 四阶穹顶冠帆 (L4)"
+    },
+    {
+      "id": "m_149",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": 14,
+      "gy": 15,
+      "floor": 4,
+      "rotation": 1,
+      "label": "东南星帆浮岛 · 四阶穹顶冠帆 (L4)"
+    },
+    {
+      "id": "m_150",
+      "type": "BPO_StationCorner_01",
+      "gx": -11,
+      "gy": 12,
+      "floor": 2,
+      "rotation": 0,
+      "label": "西南浮岛水晶锚核"
+    },
+    {
+      "id": "m_151",
+      "type": "BPO_StationTurretBlock_01",
+      "gx": -11,
+      "gy": 12,
+      "floor": 4,
+      "rotation": 0,
+      "label": "西南浮岛高空防空塔 (L4)"
+    },
+    {
+      "id": "m_152",
+      "type": "BPO_StationTurretBlock_01",
+      "gx": -11,
+      "gy": 12,
+      "floor": 0,
+      "rotation": 0,
+      "label": "西南浮岛底舱防空塔 (L0)"
+    },
+    {
+      "id": "m_153",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -11,
+      "gy": 10,
+      "floor": 1,
+      "rotation": 0,
+      "label": "西南星帆浮岛 · 一阶下潜帆 (L1)"
+    },
+    {
+      "id": "m_154",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -9,
+      "gy": 11,
+      "floor": 1,
+      "rotation": 1,
+      "label": "西南星帆浮岛 · 一阶下潜帆 (L1)"
+    },
+    {
+      "id": "m_155",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -13,
+      "gy": 12,
+      "floor": 2,
+      "rotation": 0,
+      "label": "西南星帆浮岛 · 二阶主帆 (L2)"
+    },
+    {
+      "id": "m_156",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -11,
+      "gy": 13,
+      "floor": 2,
+      "rotation": 1,
+      "label": "西南星帆浮岛 · 二阶主帆 (L2)"
+    },
+    {
+      "id": "m_157",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -15,
+      "gy": 12,
+      "floor": 3,
+      "rotation": 0,
+      "label": "西南星帆浮岛 · 三阶升翼帆 (L3)"
+    },
+    {
+      "id": "m_158",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -11,
+      "gy": 15,
+      "floor": 3,
+      "rotation": 1,
+      "label": "西南星帆浮岛 · 三阶升翼帆 (L3)"
+    },
+    {
+      "id": "m_159",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -15,
+      "gy": 14,
+      "floor": 4,
+      "rotation": 0,
+      "label": "西南星帆浮岛 · 四阶穹顶冠帆 (L4)"
+    },
+    {
+      "id": "m_160",
+      "type": "BPO_SolarPanelBlock_03",
+      "gx": -13,
+      "gy": 15,
+      "floor": 4,
+      "rotation": 1,
+      "label": "西南星帆浮岛 · 四阶穹顶冠帆 (L4)"
+    },
+    {
+      "id": "m_161",
       "type": "BPO_Station_03",
       "gx": 0,
       "gy": 0,
@@ -1171,7 +1459,7 @@
       "label": "F2 中央零带星际中庭"
     },
     {
-      "id": "m_130",
+      "id": "m_162",
       "type": "BPO_ElevatorBlock_02A",
       "gx": 0,
       "gy": -2,
@@ -1180,7 +1468,7 @@
       "label": "北电梯 F2 (11常备)"
     },
     {
-      "id": "m_131",
+      "id": "m_163",
       "type": "BPO_ElevatorBlock_02A",
       "gx": 2,
       "gy": 0,
@@ -1189,7 +1477,7 @@
       "label": "东电梯 F2 (10常备)"
     },
     {
-      "id": "m_132",
+      "id": "m_164",
       "type": "BPO_ElevatorBlock_02A",
       "gx": 0,
       "gy": 2,
@@ -1198,7 +1486,7 @@
       "label": "南电梯 F2 (7常备+EA)"
     },
     {
-      "id": "m_133",
+      "id": "m_165",
       "type": "BPO_ElevatorBlock_02A",
       "gx": -2,
       "gy": 0,
@@ -1207,7 +1495,7 @@
       "label": "西电梯 F2 (11常备)"
     },
     {
-      "id": "m_134",
+      "id": "m_166",
       "type": "BPO_StationCorridor_02",
       "gx": 0,
       "gy": -4,
@@ -1216,7 +1504,7 @@
       "label": "F2 北商业街前段 · 基础建材与燃料馆"
     },
     {
-      "id": "m_135",
+      "id": "m_167",
       "type": "BPO_StationCorridor_02",
       "gx": 0,
       "gy": -6,
@@ -1225,7 +1513,7 @@
       "label": "F2 北商业街后段 · 基础建材与燃料馆"
     },
     {
-      "id": "m_136",
+      "id": "m_168",
       "type": "BPO_StationCorridor_02",
       "gx": 4,
       "gy": 0,
@@ -1234,7 +1522,7 @@
       "label": "F2 东商业街前段 · 机电与电路馆"
     },
     {
-      "id": "m_137",
+      "id": "m_169",
       "type": "BPO_StationCorridor_02",
       "gx": 6,
       "gy": 0,
@@ -1243,7 +1531,7 @@
       "label": "F2 东商业街后段 · 机电与电路馆"
     },
     {
-      "id": "m_138",
+      "id": "m_170",
       "type": "BPO_StationCorridor_02",
       "gx": -4,
       "gy": 0,
@@ -1252,7 +1540,7 @@
       "label": "F2 西商业街前段 · 重工与战备馆"
     },
     {
-      "id": "m_139",
+      "id": "m_171",
       "type": "BPO_StationCorridor_02",
       "gx": -6,
       "gy": 0,
@@ -1261,7 +1549,7 @@
       "label": "F2 西商业街后段 · 重工与战备馆"
     },
     {
-      "id": "m_140",
+      "id": "m_172",
       "type": "BPO_StationCorridor_02",
       "gx": 0,
       "gy": 4,
@@ -1270,7 +1558,7 @@
       "label": "F2 南商业街前段 · 生物与终局皇冠馆"
     },
     {
-      "id": "m_141",
+      "id": "m_173",
       "type": "BPO_StationCorridor_02",
       "gx": 0,
       "gy": 6,
@@ -1279,7 +1567,7 @@
       "label": "F2 南商业街后段 · 生物与终局皇冠馆"
     },
     {
-      "id": "m_142",
+      "id": "m_174",
       "type": "BPO_StationAdapter_01",
       "gx": 0,
       "gy": -7,
@@ -1288,7 +1576,7 @@
       "label": "F2 北观景终端适配器"
     },
     {
-      "id": "m_143",
+      "id": "m_175",
       "type": "BPO_Dock_2",
       "gx": 0,
       "gy": -10,
@@ -1297,7 +1585,7 @@
       "label": "F2 北旗舰停泊主港"
     },
     {
-      "id": "m_144",
+      "id": "m_176",
       "type": "BPO_StationAdapter_01",
       "gx": 0,
       "gy": 8,
@@ -1306,7 +1594,7 @@
       "label": "F2 南观景终端适配器"
     },
     {
-      "id": "m_145",
+      "id": "m_177",
       "type": "BPO_CommandModule",
       "gx": 0,
       "gy": 9,
@@ -1315,7 +1603,7 @@
       "label": "星穹母港指挥舱"
     },
     {
-      "id": "m_146",
+      "id": "m_178",
       "type": "BPO_ScannerModule",
       "gx": 1,
       "gy": 9,
@@ -1324,7 +1612,7 @@
       "label": "星穹母港扫描舱"
     },
     {
-      "id": "m_147",
+      "id": "m_179",
       "type": "BPO_StationAdapter_01",
       "gx": 8,
       "gy": 0,
@@ -1333,7 +1621,7 @@
       "label": "F2 东观景终端适配器"
     },
     {
-      "id": "m_148",
+      "id": "m_180",
       "type": "BPO_Dock_2",
       "gx": 9,
       "gy": 0,
@@ -1342,7 +1630,7 @@
       "label": "F2 东旗舰停泊副港"
     },
     {
-      "id": "m_149",
+      "id": "m_181",
       "type": "BPO_StationAdapter_01",
       "gx": -7,
       "gy": 0,
@@ -1351,7 +1639,7 @@
       "label": "F2 西观景终端适配器"
     },
     {
-      "id": "m_150",
+      "id": "m_182",
       "type": "BPO_Dock",
       "gx": -8,
       "gy": 0,
@@ -1360,7 +1648,7 @@
       "label": "F2 西轻型穿梭机对接口"
     },
     {
-      "id": "m_151",
+      "id": "m_183",
       "type": "BPO_Dock",
       "gx": -8,
       "gy": 1,
@@ -1369,305 +1657,305 @@
       "label": "F2 西轻型穿梭机对接口"
     },
     {
-      "id": "m_152",
-      "type": "BPO_StationCorridor_01",
-      "gx": -6,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_153",
-      "type": "BPO_StationCorridor_01",
-      "gx": -5,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_154",
-      "type": "BPO_StationCorridor_01",
-      "gx": -4,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_155",
-      "type": "BPO_StationCorridor_01",
-      "gx": -3,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_156",
-      "type": "BPO_StationCorridor_01",
-      "gx": -2,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_157",
-      "type": "BPO_StationCorridor_01",
-      "gx": -1,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北西玻璃天桥"
-    },
-    {
-      "id": "m_158",
-      "type": "BPO_StationCorridor_01",
-      "gx": 2,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北东玻璃天桥"
-    },
-    {
-      "id": "m_159",
-      "type": "BPO_StationCorridor_01",
-      "gx": 3,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北东玻璃天桥"
-    },
-    {
-      "id": "m_160",
-      "type": "BPO_StationCorridor_01",
-      "gx": 4,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北东玻璃天桥"
-    },
-    {
-      "id": "m_161",
-      "type": "BPO_StationCorridor_01",
-      "gx": 5,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北东玻璃天桥"
-    },
-    {
-      "id": "m_162",
-      "type": "BPO_StationCorridor_01",
-      "gx": 6,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北东玻璃天桥"
-    },
-    {
-      "id": "m_163",
-      "type": "BPO_StationCorridor_01",
-      "gx": 7,
-      "gy": -7,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 北东玻璃天桥"
-    },
-    {
-      "id": "m_164",
-      "type": "BPO_StationCorridor_01",
-      "gx": -6,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南西玻璃天桥"
-    },
-    {
-      "id": "m_165",
-      "type": "BPO_StationCorridor_01",
-      "gx": -5,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南西玻璃天桥"
-    },
-    {
-      "id": "m_166",
-      "type": "BPO_StationCorridor_01",
-      "gx": -4,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南西玻璃天桥"
-    },
-    {
-      "id": "m_167",
-      "type": "BPO_StationCorridor_01",
-      "gx": -3,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南西玻璃天桥"
-    },
-    {
-      "id": "m_168",
-      "type": "BPO_StationCorridor_01",
-      "gx": -2,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南西玻璃天桥"
-    },
-    {
-      "id": "m_169",
-      "type": "BPO_StationCorridor_01",
-      "gx": -1,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南西玻璃天桥"
-    },
-    {
-      "id": "m_170",
-      "type": "BPO_StationCorridor_01",
-      "gx": 2,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南东玻璃天桥"
-    },
-    {
-      "id": "m_171",
-      "type": "BPO_StationCorridor_01",
-      "gx": 3,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南东玻璃天桥"
-    },
-    {
-      "id": "m_172",
-      "type": "BPO_StationCorridor_01",
-      "gx": 4,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南东玻璃天桥"
-    },
-    {
-      "id": "m_173",
-      "type": "BPO_StationCorridor_01",
-      "gx": 5,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南东玻璃天桥"
-    },
-    {
-      "id": "m_174",
-      "type": "BPO_StationCorridor_01",
-      "gx": 6,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南东玻璃天桥"
-    },
-    {
-      "id": "m_175",
-      "type": "BPO_StationCorridor_01",
-      "gx": 7,
-      "gy": 8,
-      "floor": 4,
-      "rotation": 0,
-      "label": "F2 南东玻璃天桥"
-    },
-    {
-      "id": "m_176",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -6,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_177",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -5,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_178",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -4,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_179",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -3,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_180",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -2,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_181",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": -1,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西北玻璃天桥"
-    },
-    {
-      "id": "m_182",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": 2,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西南玻璃天桥"
-    },
-    {
-      "id": "m_183",
-      "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": 3,
-      "floor": 4,
-      "rotation": 1,
-      "label": "F2 西南玻璃天桥"
-    },
-    {
       "id": "m_184",
       "type": "BPO_StationCorridor_01",
-      "gx": -7,
-      "gy": 4,
+      "gx": -6,
+      "gy": -7,
       "floor": 4,
-      "rotation": 1,
-      "label": "F2 西南玻璃天桥"
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
     },
     {
       "id": "m_185",
       "type": "BPO_StationCorridor_01",
+      "gx": -5,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_186",
+      "type": "BPO_StationCorridor_01",
+      "gx": -4,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_187",
+      "type": "BPO_StationCorridor_01",
+      "gx": -3,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_188",
+      "type": "BPO_StationCorridor_01",
+      "gx": -2,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_189",
+      "type": "BPO_StationCorridor_01",
+      "gx": -1,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北西玻璃天桥"
+    },
+    {
+      "id": "m_190",
+      "type": "BPO_StationCorridor_01",
+      "gx": 2,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北东玻璃天桥"
+    },
+    {
+      "id": "m_191",
+      "type": "BPO_StationCorridor_01",
+      "gx": 3,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北东玻璃天桥"
+    },
+    {
+      "id": "m_192",
+      "type": "BPO_StationCorridor_01",
+      "gx": 4,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北东玻璃天桥"
+    },
+    {
+      "id": "m_193",
+      "type": "BPO_StationCorridor_01",
+      "gx": 5,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北东玻璃天桥"
+    },
+    {
+      "id": "m_194",
+      "type": "BPO_StationCorridor_01",
+      "gx": 6,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北东玻璃天桥"
+    },
+    {
+      "id": "m_195",
+      "type": "BPO_StationCorridor_01",
+      "gx": 7,
+      "gy": -7,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 北东玻璃天桥"
+    },
+    {
+      "id": "m_196",
+      "type": "BPO_StationCorridor_01",
+      "gx": -6,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南西玻璃天桥"
+    },
+    {
+      "id": "m_197",
+      "type": "BPO_StationCorridor_01",
+      "gx": -5,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南西玻璃天桥"
+    },
+    {
+      "id": "m_198",
+      "type": "BPO_StationCorridor_01",
+      "gx": -4,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南西玻璃天桥"
+    },
+    {
+      "id": "m_199",
+      "type": "BPO_StationCorridor_01",
+      "gx": -3,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南西玻璃天桥"
+    },
+    {
+      "id": "m_200",
+      "type": "BPO_StationCorridor_01",
+      "gx": -2,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南西玻璃天桥"
+    },
+    {
+      "id": "m_201",
+      "type": "BPO_StationCorridor_01",
+      "gx": -1,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南西玻璃天桥"
+    },
+    {
+      "id": "m_202",
+      "type": "BPO_StationCorridor_01",
+      "gx": 2,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南东玻璃天桥"
+    },
+    {
+      "id": "m_203",
+      "type": "BPO_StationCorridor_01",
+      "gx": 3,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南东玻璃天桥"
+    },
+    {
+      "id": "m_204",
+      "type": "BPO_StationCorridor_01",
+      "gx": 4,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南东玻璃天桥"
+    },
+    {
+      "id": "m_205",
+      "type": "BPO_StationCorridor_01",
+      "gx": 5,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南东玻璃天桥"
+    },
+    {
+      "id": "m_206",
+      "type": "BPO_StationCorridor_01",
+      "gx": 6,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南东玻璃天桥"
+    },
+    {
+      "id": "m_207",
+      "type": "BPO_StationCorridor_01",
+      "gx": 7,
+      "gy": 8,
+      "floor": 4,
+      "rotation": 0,
+      "label": "F2 南东玻璃天桥"
+    },
+    {
+      "id": "m_208",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -6,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_209",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -5,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_210",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -4,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_211",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -3,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_212",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -2,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_213",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": -1,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西北玻璃天桥"
+    },
+    {
+      "id": "m_214",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": 2,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西南玻璃天桥"
+    },
+    {
+      "id": "m_215",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": 3,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西南玻璃天桥"
+    },
+    {
+      "id": "m_216",
+      "type": "BPO_StationCorridor_01",
+      "gx": -7,
+      "gy": 4,
+      "floor": 4,
+      "rotation": 1,
+      "label": "F2 西南玻璃天桥"
+    },
+    {
+      "id": "m_217",
+      "type": "BPO_StationCorridor_01",
       "gx": -7,
       "gy": 5,
       "floor": 4,
@@ -1675,7 +1963,7 @@
       "label": "F2 西南玻璃天桥"
     },
     {
-      "id": "m_186",
+      "id": "m_218",
       "type": "BPO_StationCorridor_01",
       "gx": -7,
       "gy": 6,
@@ -1684,7 +1972,7 @@
       "label": "F2 西南玻璃天桥"
     },
     {
-      "id": "m_187",
+      "id": "m_219",
       "type": "BPO_StationCorridor_01",
       "gx": -7,
       "gy": 7,
@@ -1693,7 +1981,7 @@
       "label": "F2 西南玻璃天桥"
     },
     {
-      "id": "m_188",
+      "id": "m_220",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -6,
@@ -1702,7 +1990,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_189",
+      "id": "m_221",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -5,
@@ -1711,7 +1999,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_190",
+      "id": "m_222",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -4,
@@ -1720,7 +2008,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_191",
+      "id": "m_223",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -3,
@@ -1729,7 +2017,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_192",
+      "id": "m_224",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -2,
@@ -1738,7 +2026,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_193",
+      "id": "m_225",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": -1,
@@ -1747,7 +2035,7 @@
       "label": "F2 东北玻璃天桥"
     },
     {
-      "id": "m_194",
+      "id": "m_226",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 2,
@@ -1756,7 +2044,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_195",
+      "id": "m_227",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 3,
@@ -1765,7 +2053,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_196",
+      "id": "m_228",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 4,
@@ -1774,7 +2062,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_197",
+      "id": "m_229",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 5,
@@ -1783,7 +2071,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_198",
+      "id": "m_230",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 6,
@@ -1792,7 +2080,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_199",
+      "id": "m_231",
       "type": "BPO_StationCorridor_01",
       "gx": 8,
       "gy": 7,
@@ -1801,7 +2089,7 @@
       "label": "F2 东南玻璃天桥"
     },
     {
-      "id": "m_200",
+      "id": "m_232",
       "type": "BPO_StationCorner_01",
       "gx": -7,
       "gy": -7,
@@ -1810,7 +2098,7 @@
       "label": "F2 西北全景落地窗观景台"
     },
     {
-      "id": "m_201",
+      "id": "m_233",
       "type": "BPO_StationCorner_01",
       "gx": 8,
       "gy": -7,
@@ -1819,7 +2107,7 @@
       "label": "F2 东北全景落地窗观景台"
     },
     {
-      "id": "m_202",
+      "id": "m_234",
       "type": "BPO_StationCorner_01",
       "gx": 8,
       "gy": 8,
@@ -1828,7 +2116,7 @@
       "label": "F2 东南全景落地窗观景台"
     },
     {
-      "id": "m_203",
+      "id": "m_235",
       "type": "BPO_StationCorner_01",
       "gx": -7,
       "gy": 8,
