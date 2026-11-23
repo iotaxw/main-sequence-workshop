@@ -138,6 +138,18 @@ export interface PlacedModule {
   floor: number; // integer station floor L (each floor = 8m)
   rotation: Rotation;
   label?: string;
+  /** Optional recipe for functional station modules with built-in machines (e.g. BPO_DeepSpaceObservatory) */
+  recipeId?: string;
+  /** Optional per-port filter config for BPO_Dock_2 (matches Build 26639889 BPO_IndustrialDock::Filters[8]) */
+  dockPorts?: Array<{ portIndex: number; itemId: string; mode: 'unload' | 'load' }>;
+  /** Optional native paint palette index (0 = default) */
+  paletteId?: number;
+  /** Optional native mining drone bay target ore itemId */
+  miningItem?: string;
+  /** Optional native dock / shipyard display name */
+  dockName?: string;
+  /** Lossless native DesignSaveGame metadata preserved across .sav round-trips */
+  nativeMeta?: Record<string, unknown>;
 }
 
 /** Placed building/machine/belt on the unified 1m world grid, aligned with station floor L */
@@ -164,6 +176,10 @@ export interface PlacedBuilding {
   portFilters?: Record<number, string>;
   /** Container logistic item filter whitelist (WBP_LogisticFilters) */
   filterItems?: string[];
+  /** Optional native paint palette index */
+  paletteId?: number;
+  /** Lossless native DesignSaveGame metadata preserved across .sav round-trips */
+  nativeMeta?: Record<string, unknown>;
 }
 
 /** Unified Blueprint Document (Scheme A: can be opened as workspace OR stamped as sub-blueprint!) */
@@ -179,6 +195,8 @@ export interface BlueprintDocument {
   };
   modules: PlacedModule[];
   buildings: PlacedBuilding[];
+  /** Lossless native DesignSaveGame document metadata (palettes, camera, GVAS header) */
+  nativeMeta?: Record<string, unknown>;
   /** Preserve unknown extra fields on round-trip */
   extensions?: Record<string, unknown>;
 }

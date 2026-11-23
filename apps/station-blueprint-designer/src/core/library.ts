@@ -1,4 +1,4 @@
-import { deserializeBlueprint, serializeBlueprint, createStarterBlueprint } from './codec';
+import { deserializeBlueprint, serializeBlueprint } from './codec';
 import { getDocumentFloorRange } from './geometry';
 import { DEFAULT_LIBRARY_PRESETS } from './presets';
 import type { BlueprintDocument, LibraryFileEntry, LibraryFolderEntry, LibraryNode } from './types';
@@ -41,26 +41,6 @@ let cachedBuiltinMap: Map<string, BlueprintDocument> | null = null;
 function getBuiltinPresetMap(): Map<string, BlueprintDocument> {
   if (cachedBuiltinMap) return cachedBuiltinMap;
   const map = new Map<string, BlueprintDocument>();
-  const starter = createStarterBlueprint();
-  const subLine: BlueprintDocument = {
-    format: 'station-blueprint-designer',
-    formatVersion: 2,
-    id: 'bp_sample_refinery_pair',
-    name: '双精炼标准单元',
-    gameData: starter.gameData,
-    modules: [],
-    buildings: [
-      { id: 's_r1', type: 'DAT_Refinery', x: 0, y: 0, floor: 0, rotation: 0, recipeId: 'REC_TitaniumBar', disabledPorts: [1, 3] },
-      { id: 's_r2', type: 'DAT_Refinery', x: 0, y: 4, floor: 0, rotation: 0, recipeId: 'REC_TitaniumBar', disabledPorts: [1, 3] },
-      { id: 's_b1', type: 'DAT_ConveyorBelt', x: 3, y: 1, floor: 0, rotation: 1 },
-      { id: 's_b2', type: 'DAT_ConveyorBelt', x: 3, y: 2, floor: 0, rotation: 1 },
-      { id: 's_b3', type: 'DAT_ConveyorBelt', x: 3, y: 3, floor: 0, rotation: 0 },
-      { id: 's_b4', type: 'DAT_ConveyorBelt', x: 3, y: 5, floor: 0, rotation: 3 },
-      { id: 's_b5', type: 'DAT_ConveyorBelt', x: 3, y: 4, floor: 0, rotation: 3 },
-    ],
-  };
-  map.set('整站方案/双层装配枢纽.json', starter);
-  map.set('产线子蓝图/双精炼标准单元.json', subLine);
   for (const preset of DEFAULT_LIBRARY_PRESETS) {
     map.set(normalizeRelPath(preset.path), preset.doc);
   }
@@ -349,10 +329,12 @@ interface VirtualStoreData {
 }
 
 const VIRTUAL_LIB_KEY = 'ms-sbd:virtual-library:v2';
-const CURRENT_PRESET_REVISION = 12;
+const CURRENT_PRESET_REVISION = 13;
 const SUPERSEDED_PRESET_PATHS = [
   '星穹总线超市/标准生产细胞/Cell-7S-超算9台满铺舱.json',
   '星穹总线超市/标准枢纽/B1-中央7x8井字立交.json',
+  '整站方案/双层装配枢纽.json',
+  '产线子蓝图/双精炼标准单元.json',
 ];
 
 /**

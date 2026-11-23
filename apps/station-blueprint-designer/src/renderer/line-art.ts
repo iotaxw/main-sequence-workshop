@@ -592,7 +592,7 @@ export function buildBeltLineArt(
         ? palette.beltRailMk2
         : palette.beltRailMk1;
 
-  const railLines = buildLineSegments(railPts, railColor, opacity, isSelected ? 1.25 : 1.05, 'primary');
+  const railLines = buildLineSegments(railPts, railColor, opacity, isSelected ? 1.25 : 1.05, 'detail');
   railLines.position.set(cx, y + 0.01, cz);
   railLines.rotation.y = -b.rotation * (Math.PI / 2);
   group.add(railLines);

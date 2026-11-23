@@ -48,7 +48,7 @@ export interface ExternalInputSpot {
   x: number;
   y: number;
   buildingId: string;
-  sourceKind: 'doorway' | 'elevator' | 'wall-stub' | 'open-belt' | 'source-container' | 'machine-head';
+  sourceKind: 'doorway' | 'elevator' | 'dock' | 'wall-stub' | 'open-belt' | 'source-container' | 'machine-head';
   itemId: string | null;
   nameZh: string;
   requiredRatePerSec: number;
@@ -113,7 +113,7 @@ export interface ExternalOutputSpot {
   x: number;
   y: number;
   buildingId: string;
-  sinkKind: 'doorway' | 'elevator' | 'wall-stub' | 'open-belt';
+  sinkKind: 'doorway' | 'elevator' | 'dock' | 'wall-stub' | 'open-belt';
   items: Array<{ itemId: string; nameZh: string; ratePerSec: number }>;
   totalRatePerSec: number;
   capacityPerSec: number;
@@ -186,23 +186,82 @@ interface InEdge {
   capacity: number;
 }
 
-function collectElevatorPortCells(doc: BlueprintDocument): Set<string> {
-  const ports = new Set<string>();
+/**
+ * Build 26639889 binary-verified ElevatorObject stack rule (MainSequence-Win64-Shipping.exe @ 0x1442e1d68):
+ * Stacked elevator blocks merge into one shared ElevatorStack ONLY when XY coordinates match AND their floors
+ * are vertically contiguous (next.floor === prev.floor + prev.sizeUnits[2], zero air gaps!).
+ * Returns a map from world port cellKey -> continuous stackId so belts across gaps NEVER falsely link.
+ */
+function collectElevatorPortStacks(doc: BlueprintDocument): Map<string, string> {
+  const ports = new Map<string, string>();
+  const byXY = new Map<string, Array<{ mod: BlueprintDocument['modules'][number]; def: NonNullable<ReturnType<typeof getModuleDef>> }>>();
   for (const mod of doc.modules) {
     const def = getModuleDef(mod.type);
-    if (!def) continue;
-    const [cx, cy] = getModuleCenterM(mod, def);
-    for (const fl of def.floors) {
-      if (!fl.elevatorPorts) continue;
-      for (const ep of fl.elevatorPorts) {
-        const [rx, ry] = rotateVec2(ep.x, ep.y, mod.rotation);
-        const wx = Math.floor(cx + rx);
-        const wy = Math.floor(cy + ry);
-        ports.add(cellKey(mod.floor + fl.floorOffset, wx, wy));
+    if (!def || !def.floors.some((f) => f.elevatorPorts && f.elevatorPorts.length > 0)) continue;
+    const key = `${mod.gx},${mod.gy}`;
+    const arr = byXY.get(key);
+    if (arr) arr.push({ mod, def });
+    else byXY.set(key, [{ mod, def }]);
+  }
+
+  for (const [xyKey, list] of byXY.entries()) {
+    list.sort((a, b) => a.mod.floor - b.mod.floor);
+    let stackSeq = 0;
+    let prevTopFloor = Number.NaN;
+    for (const { mod, def } of list) {
+      if (Number.isNaN(prevTopFloor) || mod.floor !== prevTopFloor) {
+        stackSeq++;
+      }
+      prevTopFloor = mod.floor + def.sizeUnits[2];
+      const stackId = `${xyKey}#${stackSeq}`;
+      const [cx, cy] = getModuleCenterM(mod, def);
+      for (const fl of def.floors) {
+        if (!fl.elevatorPorts) continue;
+        for (const ep of fl.elevatorPorts) {
+          const [rx, ry] = rotateVec2(ep.x, ep.y, mod.rotation);
+          const wx = Math.floor(cx + rx);
+          const wy = Math.floor(cy + ry);
+          ports.set(cellKey(mod.floor + fl.floorOffset, wx, wy), stackId);
+        }
       }
     }
   }
   return ports;
+}
+
+interface DockPortSpec {
+  moduleId: string;
+  portIndex: number;
+  itemId?: string;
+  mode?: 'unload' | 'load';
+}
+
+/**
+ * Build 26639889 binary-verified BPO_Dock_2 (BPO_IndustrialDock::Filters[8]) port cells:
+ * 8 bidirectional ports along the interior docking apron edge (local lx = -8.5, ly = [-5.5..-2.5, +2.5..+5.5]).
+ */
+function collectIndustrialDockPorts(doc: BlueprintDocument): Map<string, DockPortSpec> {
+  const dockPorts = new Map<string, DockPortSpec>();
+  const LOCAL_Y = [-5.5, -4.5, -3.5, -2.5, 2.5, 3.5, 4.5, 5.5];
+  for (const mod of doc.modules) {
+    if (mod.type !== 'BPO_Dock_2') continue;
+    const def = getModuleDef(mod.type);
+    if (!def) continue;
+    const [cx, cy] = getModuleCenterM(mod, def);
+    for (let i = 0; i < LOCAL_Y.length; i++) {
+      const [rx, ry] = rotateVec2(-8.5, LOCAL_Y[i], mod.rotation);
+      const wx = Math.floor(cx + rx);
+      const wy = Math.floor(cy + ry);
+      const cfg = mod.dockPorts?.find((p) => p.portIndex === i);
+      dockPorts.set(cellKey(mod.floor, wx, wy), {
+        moduleId: mod.id,
+        portIndex: i,
+        itemId: cfg?.itemId,
+        mode: cfg?.mode,
+      });
+    }
+  }
+  return dockPorts;
 }
 
 function isDoorwayThresholdCell(doc: BlueprintDocument, x: number, y: number, floor: number): boolean {
@@ -267,11 +326,13 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     });
   };
 
-  // 1. Spatial index of all buildings & definitions
+  // 1. Spatial index of all buildings & definitions (plus built-in BPO_DeepSpaceObservatory machines!)
   const defById = new Map<string, BuildableDef>();
   const buildingById = new Map<string, PlacedBuilding>();
   const cellMap = new Map<string, PlacedBuilding>();
-  const elevatorPorts = collectElevatorPortCells(doc);
+  const elevatorPorts = collectElevatorPortStacks(doc);
+  const dockPorts = collectIndustrialDockPorts(doc);
+  const dockEntryItem = new Map<string, string>();
 
   for (const b of doc.buildings) {
     const def = getBuildableDef(b.type);
@@ -286,7 +347,64 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // Index active world ports for machines, labs, reactors & containers
+  // Synthesize virtual crafter nodes for BPO_DeepSpaceObservatory modules configured with a recipeId
+  // (powerKW = 0 because the module's 96 MW draw is already accounted for in doc.modules!)
+  const OBS_VIRTUAL_DEF: BuildableDef = {
+    id: 'VIRTUAL_DeepSpaceObservatoryMachine',
+    objectClass: 'BPO_DeepSpaceObservatoryMachine',
+    nameEn: 'Deep Space Observatory',
+    nameZh: '深空天文台',
+    descriptionZh: '内置深空观测合成终端（西连接口中央 2 个双向接口）',
+    categoryEn: 'Functional Blocks',
+    categoryZh: '功能构件',
+    kind: 'crafter',
+    tier: 3,
+    size: [1, 1],
+    heightM: 16,
+    crafterId: 'BPO_DeepSpaceObservatory',
+    ports: [],
+    configurablePorts: false,
+    powerKW: 0,
+    sourceAsset: '/Game/Blueprints/BuildingBlocks/BPO_DeepSpaceObservatory',
+  };
+  interface VirtualObservatoryRec {
+    building: PlacedBuilding;
+    sideDir: Rotation;
+    portCells: Array<{ portIndex: number; adjX: number; adjY: number }>;
+  }
+  const virtualObservatories: VirtualObservatoryRec[] = [];
+  for (const mod of doc.modules) {
+    if (mod.type !== 'BPO_DeepSpaceObservatory' || !mod.recipeId) continue;
+    const mDef = getModuleDef(mod.type);
+    if (!mDef) continue;
+    const [cx, cy] = getModuleCenterM(mod, mDef);
+    const sideDir = normalizeRotation(2 + mod.rotation); // West face at rot=0
+    const portCells: Array<{ portIndex: number; adjX: number; adjY: number }> = [];
+    const LOCAL_PORTS: Array<[number, number]> = [
+      [-16.5, -0.5],
+      [-16.5, 0.5],
+    ];
+    for (let pi = 0; pi < LOCAL_PORTS.length; pi++) {
+      const [rx, ry] = rotateVec2(LOCAL_PORTS[pi][0], LOCAL_PORTS[pi][1], mod.rotation);
+      portCells.push({ portIndex: pi, adjX: Math.floor(cx + rx), adjY: Math.floor(cy + ry) });
+    }
+    const vb: PlacedBuilding = {
+      id: `mod_obs:${mod.id}`,
+      type: OBS_VIRTUAL_DEF.id,
+      x: Math.floor(cx),
+      y: Math.floor(cy),
+      floor: mod.floor,
+      rotation: mod.rotation,
+      recipeId: mod.recipeId,
+      label: mod.label ?? '深空天文台',
+    };
+    defById.set(vb.id, OBS_VIRTUAL_DEF);
+    buildingById.set(vb.id, vb);
+    virtualObservatories.push({ building: vb, sideDir, portCells });
+  }
+  const simNodes: PlacedBuilding[] = [...doc.buildings, ...virtualObservatories.map((v) => v.building)];
+
+  // Index active world ports for machines, labs, reactors, containers & built-in observatories
   interface AdjacentPortTarget {
     building: PlacedBuilding;
     portIndex: number;
@@ -314,6 +432,16 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         portIndex: wp.port.index,
         sideDir,
         enabled: wp.enabled,
+      });
+    }
+  }
+  for (const vo of virtualObservatories) {
+    for (const pc of vo.portCells) {
+      addAdjPort(cellKey(vo.building.floor, pc.adjX, pc.adjY), {
+        building: vo.building,
+        portIndex: pc.portIndex,
+        sideDir: vo.sideDir,
+        enabled: true,
       });
     }
   }
@@ -448,13 +576,20 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       const fx = b.x + dx;
       const fy = b.y + dy;
 
-      if (elevatorPorts.has(cellKey(b.floor, bx, by))) {
+      const backElevStack = elevatorPorts.get(cellKey(b.floor, bx, by));
+      const backDock = dockPorts.get(cellKey(b.floor, bx, by));
+      if (backElevStack) {
         entrySourceKind.set(b.id, 'elevator');
-        pushElev(elevOutByCol, `${bx},${by}`, { bid: b.id, floor: b.floor, speed });
+        pushElev(elevOutByCol, `${backElevStack}:${bx},${by}`, { bid: b.id, floor: b.floor, speed });
+      } else if (backDock) {
+        entrySourceKind.set(b.id, 'dock');
+        if (backDock.itemId) dockEntryItem.set(b.id, backDock.itemId);
       } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, bx, by, b.floor)) {
         entrySourceKind.set(b.id, 'doorway');
       }
 
+      const frontElevStack = elevatorPorts.get(cellKey(b.floor, fx, fy));
+      const frontDock = dockPorts.get(cellKey(b.floor, fx, fy));
       const { target: machHit, disabledHit } = findEnabledMachinePortAccepting(b.floor, b.x, b.y, b.rotation);
       if (machHit) {
         addEdge(b.id, machHit.building.id, speed, undefined, machHit.portIndex);
@@ -470,10 +605,13 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           b.y,
           b.id
         );
-      } else if (elevatorPorts.has(cellKey(b.floor, fx, fy))) {
+      } else if (frontElevStack) {
         exitSinkKind.set(b.id, 'elevator');
         boundaryExits.add(b.id);
-        pushElev(elevInByCol, `${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
+        pushElev(elevInByCol, `${frontElevStack}:${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
+      } else if (frontDock) {
+        exitSinkKind.set(b.id, 'dock');
+        boundaryExits.add(b.id);
       } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, fx, fy, b.floor)) {
         exitSinkKind.set(b.id, 'doorway');
         boundaryExits.add(b.id);
@@ -568,7 +706,12 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
             b.id
           );
         } else if (elevatorPorts.has(cellKey(b.floor, fx, fy))) {
+          const stackId = elevatorPorts.get(cellKey(b.floor, fx, fy))!;
           exitSinkKind.set(b.id, 'elevator');
+          boundaryExits.add(b.id);
+          pushElev(elevInByCol, `${stackId}:${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
+        } else if (dockPorts.has(cellKey(b.floor, fx, fy))) {
+          exitSinkKind.set(b.id, 'dock');
           boundaryExits.add(b.id);
         } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, fx, fy, b.floor)) {
           exitSinkKind.set(b.id, 'doorway');
@@ -703,8 +846,29 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // 2B. Link stacked cross-floor elevator shafts at matching (wx, wy) coordinates (Build 26639889 ElevatorObject::ItemColumns)
-  //     Any belt pushing into shaft column (wx, wy) on floor F1 feeds belts pulling from the same (wx, wy) on any other floor F2 != F1!
+  // 2A. Connect built-in BPO_DeepSpaceObservatory output ports to adjacent outbound belts/logistics
+  for (const vo of virtualObservatories) {
+    for (const pc of vo.portCells) {
+      const nb = cellMap.get(cellKey(vo.building.floor, pc.adjX, pc.adjY));
+      if (!nb) continue;
+      const nbDef = defById.get(nb.id)!;
+      if (nbDef.kind === 'belt') {
+        if (nb.rotation !== oppositeRot(vo.sideDir)) {
+          addEdge(vo.building.id, nb.id, getTierSpeed(nbDef.tier), pc.portIndex);
+        }
+      } else if (nbDef.kind === 'underground' && nb.undergroundMode === 'in' && nb.rotation === vo.sideDir) {
+        addEdge(vo.building.id, nb.id, getTierSpeed(nbDef.tier), pc.portIndex);
+      } else if (nbDef.kind === 'splitter' && nb.rotation === vo.sideDir) {
+        addEdge(vo.building.id, nb.id, getTierSpeed(nbDef.tier), pc.portIndex, 0);
+      } else if (nbDef.kind === 'balancer' && nb.rotation === vo.sideDir) {
+        const acc = canLogisticsAcceptFrom(nb, nbDef, vo.sideDir, pc.adjX, pc.adjY);
+        if (acc.ok) addEdge(vo.building.id, nb.id, getTierSpeed(nbDef.tier), pc.portIndex, acc.inPortIndex);
+      }
+    }
+  }
+
+  // 2B. Link stacked cross-floor elevator shafts at matching (stackId, wx, wy) coordinates (Build 26639889 ElevatorObject::ItemColumns)
+  //     Only vertically contiguous stacked elevator blocks share a stackId; air gaps break the vertical link!
   for (const [colKey, ins] of elevInByCol.entries()) {
     const outs = elevOutByCol.get(colKey);
     if (!outs || outs.length === 0) continue;
@@ -804,9 +968,9 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   // 4. General-purpose external raw-input item inference (ZERO hardcoded 32x32 magic constants!)
   const entryItem = new Map<string, string>();
 
-  // Identify upstream crafter output items feeding any logistics node directly
+  // Identify upstream crafter output items feeding any logistics/container node directly
   const upstreamProducedByNode = new Map<string, Set<string>>();
-  for (const b of doc.buildings) {
+  for (const b of simNodes) {
     const def = defById.get(b.id);
     if (!def || (def.kind !== 'crafter' && def.kind !== 'research') || !b.recipeId) continue;
     const rec = getRecipeDef(b.recipeId);
@@ -827,9 +991,11 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           upstreamProducedByNode.set(cur, set);
         }
         set.add(itemId);
-        if (isLogistics(cur)) {
+        const curKind = defById.get(cur)?.kind;
+        if (isLogistics(cur) || curKind === 'container') {
           for (const ne of outEdges.get(cur) ?? []) {
-            if (!visited.has(ne.toId) && isLogistics(ne.toId)) {
+            const nk = defById.get(ne.toId)?.kind;
+            if (!visited.has(ne.toId) && (isLogistics(ne.toId) || nk === 'container')) {
               visited.add(ne.toId);
               q.push(ne.toId);
             }
@@ -883,7 +1049,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   };
 
   // Pre-register internally produced items reaching each crafter
-  for (const b of doc.buildings) {
+  for (const b of simNodes) {
     const def = defById.get(b.id);
     if (!def || (def.kind !== 'crafter' && def.kind !== 'research') || !b.recipeId) continue;
     const rec = getRecipeDef(b.recipeId);
@@ -910,10 +1076,17 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     sortKey: number;
   }> = [];
 
-  // Pass 1: Assign entries with explicit source-container filters or explicit downstream filter hints first
+  // Pass 1: Assign entries with explicit Industrial Dock port filters, source-container filters, or downstream filter hints first
   for (const eid of sortedEntries) {
     const eb = buildingById.get(eid)!;
     const ebDef = defById.get(eid)!;
+
+    const dockItem = dockEntryItem.get(eid);
+    if (dockItem) {
+      entryItem.set(eid, dockItem);
+      for (const h of traceToCrafters(eid, true)) assignCrafterPort(h.crafterId, h.portIndex, dockItem);
+      continue;
+    }
 
     if (ebDef.kind === 'container' && eb.filterItems && eb.filterItems.length > 0) {
       entryItem.set(eid, eb.filterItems[0]);
@@ -1121,7 +1294,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
 
   const crafterEfficiency = new Map<string, number>();
   const crafterDemandByInput = new Map<string, Map<string, number>>();
-  for (const b of doc.buildings) {
+  for (const b of simNodes) {
     const def = defById.get(b.id);
     if (!def || (def.kind !== 'crafter' && def.kind !== 'research') || !b.recipeId) continue;
     const rec = getRecipeDef(b.recipeId);
@@ -1137,8 +1310,8 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   // True topological order (Kahn's algorithm) so forward/backward sweeps traverse arbitrary-length belts in 1 pass!
   // Any remaining nodes belonging to feedback cycles (e.g. Ore Enricher / Xenobacteria loops) are appended deterministically.
   const inDeg = new Map<string, number>();
-  for (const b of doc.buildings) inDeg.set(b.id, 0);
-  for (const b of doc.buildings) {
+  for (const b of simNodes) inDeg.set(b.id, 0);
+  for (const b of simNodes) {
     for (const oe of outEdges.get(b.id) ?? []) {
       inDeg.set(oe.toId, (inDeg.get(oe.toId) ?? 0) + 1);
     }
@@ -1146,7 +1319,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   const topoOrder: PlacedBuilding[] = [];
   const topoSeen = new Set<string>();
   const kahnQueue: string[] = [];
-  for (const b of doc.buildings) {
+  for (const b of simNodes) {
     if ((inDeg.get(b.id) ?? 0) === 0) kahnQueue.push(b.id);
   }
   while (kahnQueue.length > 0) {
@@ -1164,7 +1337,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
   // Append cyclic components in BFS order starting from entries/crafters
-  for (const b of doc.buildings) {
+  for (const b of simNodes) {
     if (!topoSeen.has(b.id)) {
       topoSeen.add(b.id);
       topoOrder.push(b);
@@ -1280,7 +1453,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   // treat that missing input as a YELLOW open head ('machine-head') and virtually supply `need` so downstream
   // machines in an unfed multi-stage template trace cleanly without cascading false red errors!
   const machineHeadInputs = new Map<string, Set<string>>();
-  for (const b of doc.buildings) {
+  for (const b of simNodes) {
     const def = defById.get(b.id);
     if (!def || def.kind !== 'crafter' || !b.recipeId) continue;
     const rec = getRecipeDef(b.recipeId);
@@ -1612,6 +1785,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   const SOURCE_KIND_ZH: Record<ExternalInputSpot['sourceKind'], string> = {
     doorway: '舱门入口',
     elevator: '电梯接口',
+    dock: '货港卸货口',
     'wall-stub': '穿墙地下口',
     'open-belt': '待接原料端',
     'source-container': '原料箱源',
@@ -1735,6 +1909,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   const SINK_KIND_ZH: Record<ExternalOutputSpot['sinkKind'], string> = {
     doorway: '舱门尾端',
     elevator: '电梯尾端',
+    dock: '货港装货口',
     'wall-stub': '穿墙尾端',
     'open-belt': '敞口尾端',
   };
@@ -1944,7 +2119,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   const balanceHints: BalanceHint[] = [];
   const byRecipeMap = new Map<string, { rec: RecipeDef; count: number; effSum: number }>();
 
-  for (const b of doc.buildings) {
+  for (const b of simNodes) {
     const def = defById.get(b.id);
     if (!def) continue;
 

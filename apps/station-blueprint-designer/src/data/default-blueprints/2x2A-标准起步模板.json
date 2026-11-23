@@ -1,0 +1,23 @@
+{
+  "format": "station-blueprint-designer",
+  "formatVersion": 2,
+  "id": "bp_template_2x2a",
+  "name": "2x2A 标准起步模板",
+  "description": "单个 2×2 A（30×30 可建室内地板）空间站起步甲板，适合作为任何产线模块或空间站设计的标准起点。",
+  "gameData": {
+    "buildId": "26639889",
+    "catalogVersion": 1
+  },
+  "modules": [
+    {
+      "id": "mod_2x2a_starter",
+      "type": "BPO_Station_02A",
+      "gx": 0,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0,
+      "label": "2x2A 起步甲板"
+    }
+  ],
+  "buildings": []
+}

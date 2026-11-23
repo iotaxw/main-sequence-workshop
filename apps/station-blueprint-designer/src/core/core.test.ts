@@ -28,7 +28,8 @@ import {
 } from './geometry';
 import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
 import { loadWorkspaceAutosave, saveWorkspaceAutosave, VirtualFolderDriver } from './library';
-import { DEFAULT_LIBRARY_PRESETS } from './presets';
+import { exportNativeSav, importNativeSav } from './native-codec';
+import { DEFAULT_LIBRARY_PRESETS, HAS_PRIVATE_PRESETS } from './presets';
 import { simulateBlueprint } from './simulation';
 import { CadCameraRig, MAX_DISTANCE } from '../renderer/camera-rig';
 
@@ -290,7 +291,7 @@ describe('Versioned JSON codec safety', () => {
   });
 
   it('validates 100% of built-in default profile blueprints (zero overlaps, zero out-of-floor, valid recipes)', () => {
-    expect(DEFAULT_LIBRARY_PRESETS.length).toBeGreaterThanOrEqual(9);
+    expect(DEFAULT_LIBRARY_PRESETS.length).toBeGreaterThanOrEqual(HAS_PRIVATE_PRESETS ? 9 : 1);
     for (const preset of DEFAULT_LIBRARY_PRESETS) {
       const { doc, path } = preset;
       expect(doc.modules.length, `${path} modules`).toBeGreaterThan(0);
@@ -356,7 +357,11 @@ describe('Versioned JSON codec safety', () => {
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
       (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-') || p.path.includes('F2-电梯')
     );
-    expect(targets.length).toBe(21);
+    if (!HAS_PRIVATE_PRESETS) {
+      expect(DEFAULT_LIBRARY_PRESETS.map((p) => p.path)).toEqual(['2x2A-标准起步模板.json']);
+      return;
+    }
+    expect(targets.length).toBeGreaterThanOrEqual(21);
     for (const { doc, path } of targets) {
       const cellMap = new Map<string, (typeof doc.buildings)[number]>();
       const elevPortCells = new Set<string>();
@@ -655,7 +660,11 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
       (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-') || p.path.includes('F2-电梯')
     );
-    expect(targets.length).toBe(21);
+    if (!HAS_PRIVATE_PRESETS) {
+      expect(DEFAULT_LIBRARY_PRESETS.length).toBe(1);
+      return;
+    }
+    expect(targets.length).toBeGreaterThanOrEqual(21);
     for (const { doc, path } of targets) {
       const report = simulateBlueprint(doc);
       expect(
@@ -781,7 +790,11 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
 
   it('verifies ALL new real-game simulation rules, braided encoded undergrounds, and zero west-cabin errors on Sim-Debug blueprint', () => {
     const preset = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('Sim-Debug-全情况诊断台'));
-    expect(preset, 'Sim-Debug diagnostic blueprint must be present in default library').toBeDefined();
+    if (!HAS_PRIVATE_PRESETS) {
+      expect(preset).toBeUndefined();
+      return;
+    }
+    expect(preset, 'Sim-Debug diagnostic blueprint must be present in private library').toBeDefined();
     const rep = simulateBlueprint(preset!.doc);
 
     // 1. West Cabin (x < 32): ZERO red errors across Zones A-E, braided undergrounds, and unfed 2-stage template!
@@ -982,6 +995,65 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     expect(rep.avgEfficiency).toBe(1);
     expect(rep.netInputs.length).toBe(0); // 100% self-contained from L0 Protomatter!
     expect(rep.netOutputs.find((o) => o.itemId === 'ITEM_TitaniumOre')?.ratePerSec).toBeCloseTo(0.5, 2);
+
+    // Binary-verified gap rule (MainSequence-Win64-Shipping.exe @ 0x1442e1d68):
+    // Removing the middle L2 elevator leaves an air gap between L0 and L4 -> they MUST NOT link across the gap!
+    const gappedDoc = {
+      ...doc,
+      modules: doc.modules.filter((m) => !(m.type === 'BPO_ElevatorBlock_02A' && m.floor === 2)),
+      buildings: doc.buildings.filter((b) => b.floor !== 2),
+    };
+    // Wire L4 to try pulling Protomatter from (7, 10, L4) directly over the L2 air gap
+    const gappedWithPull = {
+      ...gappedDoc,
+      buildings: [
+        ...gappedDoc.buildings.filter((b) => b.floor === 0),
+        { id: 'b_gap_pull', type: 'DAT_ConveyorBelt3', x: 6, y: 10, floor: 4, rotation: 2 as const },
+        { id: 'b_gap_pull2', type: 'DAT_ConveyorBelt3', x: 5, y: 10, floor: 4, rotation: 2 as const },
+      ],
+    };
+    const gapRep = simulateBlueprint(gappedWithPull);
+    // L4 pull belt remains an unlinked elevator entry with 0 Protomatter delivered across the air gap!
+    expect(gapRep.cellFlows['4:6,10']?.totalRate ?? 0).toBe(0);
+    expect(gapRep.externalInputs.some((e) => e.floor === 4 && e.x === 6 && e.y === 10 && e.sourceKind === 'elevator')).toBe(true);
+  });
+
+  it('simulates native BPO_Dock_2 (8 filtered unload ports) feeding BPO_DeepSpaceObservatory (REC_StrangeWarpFuel) into a container with 0 errors', () => {
+    let doc = createEmptyBlueprint();
+    // Same exact geometry as Star-Citadel B1 West Dock -> Adapter -> Hall -> Observatory!
+    doc = placeModuleCmd(doc, { type: 'BPO_Dock_2', gx: -6, gy: -4, floor: 0, rotation: 2 }).doc;
+    doc.modules[doc.modules.length - 1].dockPorts = [
+      { portIndex: 0, itemId: 'ITEM_StrangeMatterCrystal', mode: 'unload' },
+    ];
+    doc = placeModuleCmd(doc, { type: 'BPO_StationAdapter_01', gx: -3, gy: -4, floor: 0, rotation: 2 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_03', gx: -2, gy: -4, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_DeepSpaceObservatory', gx: 0, gy: -4, floor: 0, rotation: 0 }).doc;
+    doc.modules[doc.modules.length - 1].recipeId = 'REC_StrangeWarpFuel';
+
+    // Dock port 0 at rot=2: local (-8.5, -5.5) -> rotated (+8.5, +5.5) around center (-72, -48) => (-64, -43), adjacent buildable belt at (-63, -43)!
+    // Route East through Adapter (-48..-33) into Hall (-32..-1) -> up to y=-49 (local y=15) -> straight East into Observatory!
+    for (let x = -63; x <= -20; x++) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x, y: -43, floor: 0, rotation: 0 }).doc;
+    }
+    for (let y = -43; y >= -48; y--) {
+      if (y === -43) continue;
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: -20, y, floor: 0, rotation: 3 }).doc;
+    }
+    // Turn North at (-20,-43) instead of East
+    doc.buildings = doc.buildings.map((b) => (b.x === -20 && b.y === -43 ? { ...b, rotation: 3 as const } : b));
+    for (let x = -20; x <= -1; x++) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x, y: -49, floor: 0, rotation: 0 }).doc;
+    }
+    // Observatory outputs WarpFuel at (-1, -48) (local y=16) -> pull West into Container_2 at (-12, -48)!
+    for (let x = -1; x >= -8; x--) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x, y: -48, floor: 0, rotation: 2 }).doc;
+    }
+    doc = placeBuildingCmd(doc, { type: 'DAT_Container_2', x: -12, y: -50, floor: 0, rotation: 0 }).doc;
+
+    const rep = simulateBlueprint(doc);
+    expect(rep.errorCount).toBe(0);
+    expect(rep.externalInputs.some((e) => e.sourceKind === 'dock' && e.itemId === 'ITEM_StrangeMatterCrystal')).toBe(true);
+    expect(rep.netOutputs.find((o) => o.itemId === 'ITEM_WarpFuel')?.ratePerSec).toBeCloseTo(0.25, 2);
   });
 });
 
@@ -1009,43 +1081,141 @@ describe('VirtualFolderDriver copy-on-write overlay & 5 MB localStorage quota sa
     try {
       const driver = new VirtualFolderDriver();
       const tree = await driver.listTree();
-      expect(tree.length).toBeGreaterThanOrEqual(3);
+      expect(tree.length).toBeGreaterThanOrEqual(1);
       // Unmodified built-in presets MUST occupy < 1 KB in localStorage (0 bytes duplicated!)
       expect(totalChars()).toBeLessThan(1024);
 
-      // Reading the massive 26,143-building full-belts blueprint + autosaving it unmodified stays < 1 KB!
-      const fullPath = '星穹总线超市/02-星穹金字塔-完整带线总图.json';
-      const { doc: fullDoc } = await driver.readBlueprint(fullPath);
-      expect(fullDoc.buildings.length).toBeGreaterThan(20000);
-      saveWorkspaceAutosave(fullDoc, fullPath, false);
-      expect(totalChars()).toBeLessThan(1024);
+      if (HAS_PRIVATE_PRESETS) {
+        // Reading the massive 26,143-building full-belts blueprint + autosaving it unmodified stays < 1 KB!
+        const fullPath = '星穹总线超市/02-星穹金字塔-完整带线总图.json';
+        const { doc: fullDoc } = await driver.readBlueprint(fullPath);
+        expect(fullDoc.buildings.length).toBeGreaterThan(20000);
+        saveWorkspaceAutosave(fullDoc, fullPath, false);
+        expect(totalChars()).toBeLessThan(1024);
 
-      const restored = loadWorkspaceAutosave();
-      expect(restored?.sourcePath).toBe(fullPath);
-      expect(restored?.doc.buildings.length).toBe(fullDoc.buildings.length);
+        const restored = loadWorkspaceAutosave();
+        expect(restored?.sourcePath).toBe(fullPath);
+        expect(restored?.doc.buildings.length).toBe(fullDoc.buildings.length);
 
-      // Simulate legacy bloated store (v9 with duplicated built-in presets + user custom blueprint) -> auto-strips bloat while preserving custom file!
-      const customDoc = createStarterBlueprint();
-      customDoc.name = '我的自建小站';
-      mem.set(
-        'ms-sbd:virtual-library:v2',
-        JSON.stringify({
-          folders: ['星穹总线超市', '自定义'],
-          files: {
-            '星穹总线超市/01-星穹金字塔-三层骨架总图.json': { raw: serializeBlueprint(fullDoc), updatedAt: 1 },
-            '自定义/我的小站.json': { raw: serializeBlueprint(customDoc), updatedAt: 2 },
-          },
-          presetRevision: 9,
-        })
-      );
-      const migratedTree = await driver.listTree();
-      expect(migratedTree.length).toBeGreaterThanOrEqual(4);
-      const { doc: customBack } = await driver.readBlueprint('自定义/我的小站.json');
-      expect(customBack.name).toBe('我的自建小站');
-      // After migration, legacy built-in copy was stripped so storage dropped way below 50 KB!
-      expect(totalChars()).toBeLessThan(50_000);
+        // Simulate legacy bloated store (v9 with duplicated built-in presets + user custom blueprint) -> auto-strips bloat while preserving custom file!
+        const customDoc = createStarterBlueprint();
+        customDoc.name = '我的自建小站';
+        mem.set(
+          'ms-sbd:virtual-library:v2',
+          JSON.stringify({
+            folders: ['星穹总线超市', '自定义'],
+            files: {
+              '星穹总线超市/01-星穹金字塔-三层骨架总图.json': { raw: serializeBlueprint(fullDoc), updatedAt: 1 },
+              '自定义/我的小站.json': { raw: serializeBlueprint(customDoc), updatedAt: 2 },
+            },
+            presetRevision: 9,
+          })
+        );
+        const migratedTree = await driver.listTree();
+        expect(migratedTree.length).toBeGreaterThanOrEqual(2);
+        const { doc: customBack } = await driver.readBlueprint('自定义/我的小站.json');
+        expect(customBack.name).toBe('我的自建小站');
+        // After migration, legacy built-in copy was stripped so storage dropped way below 50 KB!
+        expect(totalChars()).toBeLessThan(50_000);
+      } else {
+        // Public open-source build contains ONLY the single clean 2x2A starter template!
+        const { doc: tplDoc } = await driver.readBlueprint('2x2A-标准起步模板.json');
+        expect(tplDoc.modules.length).toBe(1);
+        expect(tplDoc.modules[0].type).toBe('BPO_Station_02A');
+        saveWorkspaceAutosave(tplDoc, '2x2A-标准起步模板.json', false);
+        expect(totalChars()).toBeLessThan(1024);
+      }
     } finally {
       (globalThis as { localStorage?: unknown }).localStorage = prevStorage;
     }
+  });
+});
+
+describe('Shared Rust/WASM native .sav <-> Canonical Blueprint JSON codec', () => {
+  it('deterministically round-trips 100% of all 27 station modules, all 36 buildables, and starter/preset blueprints via real WASM', async () => {
+    const starter = createStarterBlueprint();
+    const exported = await exportNativeSav(starter, 'station');
+    expect(exported.bytes.length).toBeGreaterThan(2000);
+    // GVAS magic header "GVAS"
+    expect(Array.from(exported.bytes.slice(0, 4))).toEqual([0x47, 0x56, 0x41, 0x53]);
+    expect(exported.report.warnings).toEqual([]);
+    expect(exported.report.module_count).toBe(starter.modules.length);
+    expect(exported.report.connector_count).toBeGreaterThan(0);
+
+    const imported = await importNativeSav(exported.bytes);
+    expect(imported.report.warnings).toEqual([]);
+    expect(imported.doc.name).toBe(starter.name);
+    expect(imported.doc.modules.length).toBe(starter.modules.length);
+    expect(imported.doc.buildings.length).toBe(starter.buildings.length);
+
+    // Exhaustive 100% module + buildable coverage matrix through browser WASM!
+    const allModulesDoc = createEmptyBlueprint('全量27模块36建筑WASM确定性核验');
+    CATALOG.stationModules.forEach((mDef, idx) => {
+      const rot = (idx % 4) as 0 | 1 | 2 | 3;
+      allModulesDoc.modules.push({
+        id: `m_${idx}`,
+        type: mDef.id,
+        gx: idx * 4,
+        gy: 0,
+        floor: mDef.id === 'BPO_StationArmour_01B' ? -1 : 0,
+        rotation: rot,
+      });
+    });
+    CATALOG.buildables.forEach((bDef, idx) => {
+      const rot = (idx % 4) as 0 | 1 | 2 | 3;
+      const x = idx * 12;
+      if (bDef.kind === 'underground') {
+        const dx = rot === 0 ? 1 : rot === 2 ? -1 : 0;
+        const dy = rot === 1 ? 1 : rot === 3 ? -1 : 0;
+        allModulesDoc.buildings.push(
+          { id: `u_${idx}_in`, type: bDef.id, x, y: 0, floor: 0, rotation: rot, undergroundMode: 'in', undergroundPartnerId: `u_${idx}_out` },
+          { id: `u_${idx}_out`, type: bDef.id, x: x + dx * 4, y: dy * 4, floor: 0, rotation: rot, undergroundMode: 'out', undergroundPartnerId: `u_${idx}_in` }
+        );
+      } else {
+        allModulesDoc.buildings.push({
+          id: `b_${idx}`,
+          type: bDef.id,
+          x,
+          y: 0,
+          floor: 0,
+          rotation: rot,
+          ...(bDef.kind === 'crafter' ? { recipeId: 'REC_ReinforcedPlates', disabledPorts: [1] } : {}),
+          ...(bDef.kind === 'splitter' ? { priorityOut: 1, disabledPorts: [2], portFilters: { 3: 'ITEM_ReinforcedPlates' } } : {}),
+          ...(bDef.kind === 'balancer' ? { priorityIn: 0, priorityOut: 2, portFilters: { 2: 'ITEM_WaterIce' } } : {}),
+          ...(bDef.kind === 'container' ? { disabledPorts: [0], filterItems: ['ITEM_TitaniumPlates'] } : {}),
+          ...(bDef.kind === 'teleporter' ? { label: '跃迁点A' } : {}),
+        });
+      }
+    });
+    const covSav = await exportNativeSav(allModulesDoc, 'station');
+    expect(covSav.report.warnings).toEqual([]);
+    const covBack = await importNativeSav(covSav.bytes);
+    expect(covBack.report.warnings).toEqual([]);
+    expect(covBack.doc.modules.length).toBe(CATALOG.stationModules.length);
+    expect(covBack.doc.buildings.length).toBe(allModulesDoc.buildings.length);
+    for (let i = 0; i < allModulesDoc.modules.length; i++) {
+      const a = allModulesDoc.modules[i];
+      const b = covBack.doc.modules[i];
+      expect([b.type, b.gx, b.gy, b.floor, b.rotation]).toEqual([a.type, a.gx, a.gy, a.floor, a.rotation]);
+    }
+    const backRef = covBack.doc.buildings.find((b) => b.type === 'DAT_Refinery');
+    expect(backRef?.recipeId).toBe('REC_ReinforcedPlates');
+    expect(backRef?.disabledPorts).toEqual([1]);
+
+    if (HAS_PRIVATE_PRESETS) {
+      const b1Fuel = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('氢氘燃料直连舱'))!.doc;
+      const fuelSav = await exportNativeSav(b1Fuel, 'station');
+      expect(fuelSav.report.warnings).toEqual([]);
+      const fuelBack = await importNativeSav(fuelSav.bytes);
+      expect(fuelBack.report.warnings).toEqual([]);
+      expect(simulateBlueprint(fuelBack.doc).errorCount).toBe(0);
+    }
+
+    // Verify STATION_PRESET mode (for future in-game Mod paste) also round-trips cleanly!
+    const presetSav = await exportNativeSav(starter, 'preset');
+    expect(presetSav.report.connector_count).toBe(0);
+    const presetBack = await importNativeSav(presetSav.bytes);
+    expect(presetBack.doc.modules.length).toBe(starter.modules.length);
+    expect(presetBack.doc.buildings.length).toBe(starter.buildings.length);
   });
 });

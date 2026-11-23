@@ -1516,7 +1516,7 @@ export class CadSceneController {
 
   private computeDistanceLod(): number {
     const dist = this.rig.currentDistance;
-    return THREE.MathUtils.clamp(1.0 - (dist - 55) / 85, 0.3, 1.0);
+    return THREE.MathUtils.clamp(1.0 - (dist - 65) / 175, 0.22, 1.0);
   }
 
   private applyDistanceLodAndFog(): void {

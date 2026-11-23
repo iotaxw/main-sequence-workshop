@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildPlannedBeltPath, cellsToBeltSpecs, extendBeltStroke, selectConnectedBeltChain } from './core/belt-router';
 import { getBuildableDef, getModuleDef, getRecipeDef } from './core/catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './core/codec';
+import { DEFAULT_LIBRARY_PRESETS } from './core/presets';
 import { cycleVariantInGroup, findGroupForEntity, getGroupsForView, getShortLabel } from './core/groups';
 import {
   boxSelectEntities,
@@ -41,6 +42,7 @@ import {
   saveWorkspaceAutosave,
   VirtualFolderDriver,
 } from './core/library';
+import { exportNativeSav, importNativeSav } from './core/native-codec';
 import { simulateBlueprint, type SimulationIssue } from './core/simulation';
 import type {
   ActiveTool,
@@ -55,6 +57,7 @@ import type {
 import { PITCH_SNAP_PRESETS } from './renderer/camera-rig';
 import { CadSceneController } from './renderer/scene-controller';
 import { CAD_THEMES, type CadThemeId, loadSavedTheme, saveTheme } from './renderer/theme';
+import { GameInteropMenu } from './ui/GameInteropMenu';
 import { HelpDrawer } from './ui/HelpDrawer';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { LibrarySidebar } from './ui/LibrarySidebar';
@@ -87,7 +90,11 @@ export const App: React.FC = () => {
   const initialSession = useMemo(() => {
     const recovered = loadWorkspaceAutosave();
     if (recovered) return recovered;
-    return { savedAt: 0, sourcePath: '整站方案/双层装配枢纽.json', doc: createStarterBlueprint() };
+    const pubTemplate = DEFAULT_LIBRARY_PRESETS.find((p) => !p.isPrivate);
+    if (pubTemplate) {
+      return { savedAt: 0, sourcePath: pubTemplate.path, doc: pubTemplate.doc };
+    }
+    return { savedAt: 0, sourcePath: null, doc: createStarterBlueprint() };
   }, []);
 
   const [history, setHistory] = useState(() => createHistory(initialSession.doc));
@@ -1353,6 +1360,48 @@ export const App: React.FC = () => {
 
   const handleImportJsonFile = async (file: File) => {
     try {
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith('.sav')) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { doc: imported, report } = await importNativeSav(bytes);
+        const baseName = sanitizeFileName(imported.name || file.name.replace(/\.sav$/i, ''));
+        const targetPath = `导入蓝图/${baseName}`;
+        await driver.writeBlueprint(targetPath, imported);
+        await refreshLibrary();
+        // Immediately open imported .sav station on canvas & frame its center
+        setHistory(createHistory(imported));
+        setActiveSourcePath(targetPath);
+        setDirty(false);
+        setSelection(EMPTY_SELECTION);
+        setActiveTool({ kind: 'select' });
+        const floors = imported.modules.map((m) => m.floor);
+        const targetFloor = floors.length ? Math.min(...floors.filter((f) => f >= 0), floors[0]) : 0;
+        setFocusFloor(targetFloor);
+        if (imported.modules.length > 0) {
+          let sumX = 0;
+          let sumY = 0;
+          let count = 0;
+          for (const m of imported.modules) {
+            const mDef = getModuleDef(m.type);
+            if (mDef) {
+              const [minX, minY, maxX, maxY] = getModuleBoundsM(m, mDef);
+              sumX += (minX + maxX) * 0.5;
+              sumY += (minY + maxY) * 0.5;
+            } else {
+              sumX += m.gx * STATION_UNIT_M + STATION_UNIT_M * 0.5;
+              sumY += m.gy * STATION_UNIT_M + STATION_UNIT_M * 0.5;
+            }
+            count++;
+          }
+          sceneRef.current?.rig.focusPoint(sumX / count, sumY / count, 92);
+        }
+        showToast(
+          `已导入原生 .sav「${imported.name}」（${report.module_count} 站体 · ${report.building_count} 建筑${report.warnings.length ? ` · ${report.warnings.length} 条提示` : ''}）`,
+          report.warnings.length ? 'warn' : 'info'
+        );
+        return;
+      }
+
       const text = await file.text();
       const decoded = deserializeBlueprint(text);
       if (!decoded.ok) {
@@ -1365,6 +1414,49 @@ export const App: React.FC = () => {
       showToast(`已导入至 ${targetPath}${decoded.warnings.length ? `（${decoded.warnings[0]}）` : ''}`);
     } catch (err) {
       showToast(`导入失败：${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
+  };
+
+  const handleExportNativeSav = async (mode: 'station' | 'preset' = 'station', targetDoc: BlueprintDocument = doc) => {
+    try {
+      const { bytes, report } = await exportNativeSav(targetDoc, mode);
+      const blob = new Blob([bytes as BlobPart], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const baseName = sanitizeFileName(targetDoc.name || 'station').replace(/\.json$/i, '');
+      const suffix = mode === 'preset' ? '.preset.sav' : '.sav';
+      a.download = `${baseName}${suffix}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(
+        mode === 'preset'
+          ? `已导出 Mod 局部预设 ${baseName}${suffix}（${report.module_count} 站体 · ${report.native_machine_count} 机器）`
+          : `已导出游戏原生 ${baseName}.sav（${report.module_count} 站体 · ${report.native_machine_count} 机器 · ${report.connector_count} 连接口${report.warnings.length ? ` · ${report.warnings.length} 条提示` : ''}）`,
+        report.warnings.length ? 'warn' : 'info'
+      );
+    } catch (err) {
+      showToast(`导出原生 .sav 失败：${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
+  };
+
+  const handleExportCanonicalJson = () => {
+    const blob = new Blob([serializeBlueprint(doc)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = sanitizeFileName(doc.name || 'blueprint');
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`已导出规范蓝图 ${a.download}`);
+  };
+
+  const handleExportSavFromLibrary = async (file: LibraryFileEntry) => {
+    try {
+      const { doc: libDoc } = await driver.readBlueprint(file.path);
+      await handleExportNativeSav('station', libDoc);
+    } catch (err) {
+      showToast(`导出 .sav 失败：${err instanceof Error ? err.message : String(err)}`, 'error');
     }
   };
 
@@ -1579,6 +1671,15 @@ export const App: React.FC = () => {
           <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="保存蓝图 (Ctrl+S)">
             保存
           </button>
+          <GameInteropMenu
+            driverMode={driver.mode}
+            rootLabel={driver.rootLabel}
+            fsSupported={FileSystemFolderDriver.isSupported()}
+            onImportFile={(f) => void handleImportJsonFile(f)}
+            onExportNativeSav={(mode) => void handleExportNativeSav(mode)}
+            onExportCanonicalJson={handleExportCanonicalJson}
+            onMountLocalFolder={handleMountLocalFolder}
+          />
           <button
             type="button"
             className="cad-btn"
@@ -1608,6 +1709,7 @@ export const App: React.FC = () => {
           onStampFromLibrary={handleStampFromLibrary}
           onOpenFromLibrary={handleOpenFromLibrary}
           onExportFromLibrary={handleExportFromLibrary}
+          onExportSavFromLibrary={(f) => void handleExportSavFromLibrary(f)}
           onDeleteEntry={handleDeleteLibEntry}
           onMoveFile={handleMoveLibFile}
         />
@@ -1616,6 +1718,18 @@ export const App: React.FC = () => {
           ref={viewportRef}
           className={`cad-viewport tool-${activeTool.kind}`}
           onContextMenu={(e) => e.preventDefault()}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes('Files')) {
+              e.preventDefault();
+            }
+          }}
+          onDrop={(e) => {
+            const dropped = e.dataTransfer.files?.[0];
+            if (dropped && /\.(sav|json)$/i.test(dropped.name)) {
+              e.preventDefault();
+              void handleImportJsonFile(dropped);
+            }
+          }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}

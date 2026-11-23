@@ -1589,3 +1589,132 @@ body,
   font-size: 9.5px;
   color: var(--text-muted);
 }
+
+/* ================================================================
+   Unified Game Interop & Mod Ecosystem Popover Menu
+   ================================================================ */
+.interop-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.interop-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 344px;
+  max-width: 92vw;
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border-subtle);
+  border-radius: 11px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
+  z-index: 60;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.interop-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.interop-section {
+  padding: 10px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.interop-section:last-child {
+  border-bottom: none;
+}
+
+.interop-section-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.interop-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.interop-action-btn:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.interop-action-btn.primary {
+  border-color: var(--accent);
+}
+
+.interop-action-main {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.interop-action-sub {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.interop-path-hint {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-hairline);
+  border-radius: 5px;
+  padding: 4px 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interop-sync-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.interop-sync-card.mounted {
+  border-color: var(--line-active);
+}
+
+.interop-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.interop-sync-desc {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}

@@ -9,8 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run src",
     "sim:offline": "node offline-sim/run.mjs",
-    "sim:report": "node offline-sim/run.mjs --report",
-    "extract:catalog": "node scripts/extract-catalog.mjs"
+    "sim:report": "node offline-sim/run.mjs --report"
   },
   "dependencies": {
     "react": "^19.1.0",

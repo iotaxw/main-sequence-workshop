@@ -36,6 +36,7 @@ export function serializeBlueprint(doc: BlueprintDocument): string {
     gameData: doc.gameData,
     modules: doc.modules,
     buildings: doc.buildings,
+    ...(doc.nativeMeta ? { nativeMeta: doc.nativeMeta } : {}),
   };
   return JSON.stringify(payload, null, 2) + '\n';
 }
@@ -118,6 +119,12 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
       floor,
       rotation: m.rotation,
       ...(typeof m.label === 'string' && m.label ? { label: m.label } : {}),
+      ...(isFiniteInt(m.paletteId) && m.paletteId !== 0 ? { paletteId: m.paletteId } : {}),
+      ...(typeof m.miningItem === 'string' && m.miningItem ? { miningItem: m.miningItem } : {}),
+      ...(typeof m.dockName === 'string' && m.dockName ? { dockName: m.dockName } : {}),
+      ...(m.nativeMeta && typeof m.nativeMeta === 'object' && !Array.isArray(m.nativeMeta)
+        ? { nativeMeta: m.nativeMeta as Record<string, unknown> }
+        : {}),
     });
   }
 
@@ -181,6 +188,10 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
       ...(isFiniteInt(b.priorityOut) && b.priorityOut >= 0 ? { priorityOut: b.priorityOut } : {}),
       ...(portFilters ? { portFilters } : {}),
       ...(filterItems && filterItems.length > 0 ? { filterItems } : {}),
+      ...(isFiniteInt(b.paletteId) && b.paletteId !== 0 ? { paletteId: b.paletteId } : {}),
+      ...(b.nativeMeta && typeof b.nativeMeta === 'object' && !Array.isArray(b.nativeMeta)
+        ? { nativeMeta: b.nativeMeta as Record<string, unknown> }
+        : {}),
     });
   }
 
@@ -197,12 +208,16 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
 
   const knownKeys = new Set([
     'format', 'formatVersion', 'id', 'name', 'description',
-    'gameData', 'modules', 'buildings', 'buildables',
+    'gameData', 'modules', 'buildings', 'buildables', 'nativeMeta',
   ]);
   const extensions: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (!knownKeys.has(k)) extensions[k] = v;
   }
+  const nativeMeta =
+    obj.nativeMeta && typeof obj.nativeMeta === 'object' && !Array.isArray(obj.nativeMeta)
+      ? (obj.nativeMeta as Record<string, unknown>)
+      : undefined;
 
   return {
     ok: true,
@@ -215,6 +230,7 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
       gameData: { buildId, catalogVersion },
       modules,
       buildings,
+      ...(nativeMeta ? { nativeMeta } : {}),
       ...(Object.keys(extensions).length > 0 ? { extensions } : {}),
     },
     warnings,

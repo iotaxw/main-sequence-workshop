@@ -18,6 +18,7 @@ interface LibrarySidebarProps {
   onStampFromLibrary: (file: LibraryFileEntry) => void;
   onOpenFromLibrary: (file: LibraryFileEntry) => void;
   onExportFromLibrary: (file: LibraryFileEntry) => void;
+  onExportSavFromLibrary: (file: LibraryFileEntry) => void;
   onDeleteEntry: (path: string, isFolder: boolean) => void;
   onMoveFile: (fromPath: string, targetFolder: string) => void;
 }
@@ -58,6 +59,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
   onStampFromLibrary,
   onOpenFromLibrary,
   onExportFromLibrary,
+  onExportSavFromLibrary,
   onDeleteEntry,
   onMoveFile,
 }) => {
@@ -172,10 +174,18 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
           <button
             type="button"
             className="lib-mini-btn"
-            title="导出 JSON"
+            title="导出规范 JSON"
             onClick={() => onExportFromLibrary(file)}
           >
-            导出
+            JSON
+          </button>
+          <button
+            type="button"
+            className="lib-mini-btn"
+            title="导出游戏原生设计图 .sav"
+            onClick={() => onExportSavFromLibrary(file)}
+          >
+            .sav
           </button>
           <button
             type="button"
@@ -226,11 +236,11 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
         <button type="button" className="cad-btn" onClick={() => onCreateFolder('')}>
           + 目录
         </button>
-        <label className="cad-btn file-label">
-          导入
+        <label className="cad-btn file-label" title="导入蓝图 JSON 或游戏原版 Designs/*.sav">
+          导入 .json/.sav
           <input
             type="file"
-            accept=".json,application/json"
+            accept=".json,.sav,application/json"
             style={{ display: 'none' }}
             onChange={(e) => {
               const f = e.target.files?.[0];

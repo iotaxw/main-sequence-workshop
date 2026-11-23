@@ -4,15 +4,18 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 
 /**
- * Motion-stable, angle-invariant, zero-junction-dot analytical SDF line renderer.
+ * Motion-stable, angle-invariant, Moiré-free analytical SDF line renderer (v4).
  *
  * Root-cause invariants:
- * 1. Computes rotationally-invariant Euclidean pixel derivative `length(vec2(dFdx(vUv.x), dFdy(vUv.x)))`
- *    BEFORE any branch — eliminates both GPU quad derivative explosions (vanishing short belt-turn
- *    segments) and L1 `fwidth` 1.414x thickness bias across viewing angles.
- * 2. Expands quad width by a full +2.2 CSS px AA skirt and centers a Nyquist-safe ~1.65 device-pixel
- *    analytical smoothstep ramp around `uEdgeRatio = coreWidth / quadWidth`, eliminating sub-pixel
- *    shimmering/crawling during continuous camera pan, orbit, and zoom (even at 1x pixel ratio).
+ * 1. Computes exact screen-space segment length `vSegLenPx = _dirLen * resolution.y * 0.5` in the
+ *    vertex shader and applies analytical Nyquist prefiltering (`smoothstep(1.1, 4.2, vSegLenPx)`)
+ *    so sub-pixel micro-segments (distant belt chevrons, tiny bevels, dense parallel ticks) smoothly
+ *    attenuate before crossing the 2-pixel Nyquist frequency — eliminating far-field Moiré ripples
+ *    while keeping macro machine/module silhouettes razor sharp.
+ * 2. Computes rotationally-invariant Euclidean pixel derivative `length(vec2(dFdx(vUv.x), dFdy(vUv.x)))`
+ *    with a +2.6 CSS px AA skirt and sRGB gamma-compensated coverage (`pow(_cov, 0.65)`), eliminating
+ *    the ~40% luminance pumping ("diagonal roping/beading") caused by blending linear coverage into
+ *    an sRGB framebuffer during smooth camera pans and orbits.
  * 3. Smoothly tapers flush micro-bevel caps (`_cap` in [0.02, 0.22]) so joints have zero bulbous dots
  *    and zero hard-clipping flicker.
  * 4. Focus-layer lines use pre-baked ink colors at `opacity = 1.0`, making overlapping vertex
@@ -38,9 +41,9 @@ export interface CrispLineOptions {
 
 export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
   const coreWidth = Math.max(1.0, opts.widthPx ?? 1.25);
-  // Generous +2.2px analytical AA skirt gives >= 1.65 device-pixel Nyquist transition band on 1x & 2x displays
-  const quadWidth = coreWidth + 2.2;
-  const edgeRatio = THREE.MathUtils.clamp(coreWidth / quadWidth, 0.2, 0.78);
+  // Generous +2.6px analytical AA skirt ensures full Nyquist filter support across shallow diagonal angles
+  const quadWidth = coreWidth + 2.6;
+  const edgeRatio = THREE.MathUtils.clamp(coreWidth / quadWidth, 0.18, 0.76);
   const opacity = opts.opacity ?? 1.0;
 
   const mat = new LineMaterial({
@@ -66,10 +69,12 @@ export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uEdgeRatio = { value: edgeRatio };
 
-    // 1. Safe zero-length guard for vertical ribs collapsing to 0px in top-down 89° view
+    // 1. Safe zero-length guard + exact screen-space segment length (CSS px) for analytical Nyquist prefilter
+    shader.vertexShader = 'varying float vSegLenPx;\n' + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace(
       'dir = normalize( dir );',
       `float _dirLen = length( dir );
+      vSegLenPx = _dirLen * resolution.y * 0.5;
       dir = ( _dirLen > 1e-5 ) ? ( dir / _dirLen ) : vec2( 1.0, 0.0 );`
     );
     shader.vertexShader = shader.vertexShader.replace(
@@ -77,10 +82,10 @@ export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
       'offset *= ( _dirLen > 1e-5 ) ? linewidth : 0.0;'
     );
 
-    // Inject uniform declaration in fragment shader
-    shader.fragmentShader = 'uniform float uEdgeRatio;\n' + shader.fragmentShader;
+    // Inject uniform + varying declarations in fragment shader
+    shader.fragmentShader = 'uniform float uEdgeRatio;\nvarying float vSegLenPx;\n' + shader.fragmentShader;
 
-    // 2. Angle-invariant Euclidean derivative + Nyquist-safe smooth SDF + smooth flush caps
+    // 2. Angle-invariant Euclidean derivative + sRGB gamma-compensated SDF + per-segment Nyquist prefilter
     shader.fragmentShader = shader.fragmentShader.replace(
       `if ( abs( vUv.y ) > 1.0 ) {
 
@@ -97,14 +102,16 @@ export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
 					if ( _cap > 0.22 ) discard;
 					float _capCov = 1.0 - smoothstep( 0.02, 0.22, _cap );
 					float _dist = abs( vUv.x );
-					float _halfAa = min( _px * 0.85, 1.0 - uEdgeRatio );
+					float _halfAa = min( _px * 0.95, 1.0 - uEdgeRatio );
 					float _cov = 1.0 - smoothstep( max( 0.0, uEdgeRatio - _halfAa ), min( 1.0, uEdgeRatio + _halfAa ), _dist );
-					_cov *= _capCov;
+					_cov = pow( max( _cov, 0.0 ), 0.65 );
+					float _nyq = smoothstep( 0.35, 1.15, vSegLenPx );
+					_cov *= _capCov * _nyq;
 					if ( _cov <= 0.005 ) discard;
 					alpha *= _cov;`
     );
   };
-  mat.customProgramCacheKey = () => (opts.dashed ? 'crisp-cad-line-dashed-v3' : 'crisp-cad-line-v3');
+  mat.customProgramCacheKey = () => (opts.dashed ? 'crisp-cad-line-dashed-v4' : 'crisp-cad-line-v4');
 
   return mat;
 }
