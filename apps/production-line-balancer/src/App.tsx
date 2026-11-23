@@ -15,13 +15,14 @@ import {
   SummaryStrip,
   UiIcon,
 } from './ui/components';
-import { resolveProduceForks } from './ui/default-recipes';
+import { feasibleRecycleOptions, resolveProduceForks, type FeasibleRecycleOption } from './ui/default-recipes';
 import { entityName, label, LanguageContext, type LabelKey } from './ui/language';
 
 const dataset = datasetJson as Dataset;
 const index = indexDataset(dataset);
 const defaultInputs = defaultExternalInputItemIds(dataset);
 const defaultInputKey = [...defaultInputs].sort().join(',');
+const craftableItems = dataset.items.filter(item => (index.recipesByOutput.get(item.id)?.length ?? 0) > 0);
 const itemOrder = new Map(dataset.items.map((item, order) => [item.id, order]));
 
 interface OpenForkState {
@@ -123,6 +124,26 @@ export default function App() {
     ?? (plan?.status === 'pending-forks' ? { fork: plan.fork, anchorEl: null } : null);
   const target = targetItemId ? index.items.get(targetItemId) : undefined;
 
+  const feasibleRecycleByItem = useMemo(() => {
+    const map = new Map<string, FeasibleRecycleOption[]>();
+    if (!targetItemId || plan?.status !== 'solved') return map;
+    const candidateByproducts = new Set<string>([
+      ...plan.byproducts.map(flow => flow.itemId),
+      ...Object.keys(plan.recycleByItem),
+    ]);
+    const currentInput = {
+      target: { itemId: targetItemId, ratePerMin },
+      inputItemIds,
+      recipeByItem: effectiveRecipes,
+      recycleItemIds,
+      recycleByItem: effectiveRecycles,
+    };
+    for (const itemId of candidateByproducts) {
+      map.set(itemId, feasibleRecycleOptions(dataset, index, currentInput, plan, itemId));
+    }
+    return map;
+  }, [targetItemId, ratePerMin, inputItemIds, effectiveRecipes, recycleItemIds, effectiveRecycles, plan]);
+
   function applyResolvedRecipes(
     nextTarget: string | null,
     nextInputs: string[],
@@ -142,11 +163,23 @@ export default function App() {
       const nextRecipes = { ...effectiveRecipes, [fork.itemId]: recipeId };
       applyResolvedRecipes(targetItemId, inputItemIds, nextRecipes);
     } else {
-      const nextRecycleIds = recycleItemIds.includes(fork.itemId) ? recycleItemIds : [...recycleItemIds, fork.itemId];
-      const nextRecycles = { ...effectiveRecycles, [fork.itemId]: recipeId };
-      setRecycleItemIds(nextRecycleIds);
-      setRecycleByItem(nextRecycles);
-      applyResolvedRecipes(targetItemId, inputItemIds, effectiveRecipes, nextRecycleIds, nextRecycles);
+      const option = feasibleRecycleByItem.get(fork.itemId)?.find(candidate => candidate.recipeId === recipeId);
+      if (option?.removeExternalItemId) {
+        const nextInputs = inputItemIds.filter(id => id !== option.removeExternalItemId);
+        const nextRecycleIds = recycleItemIds.filter(id => id !== fork.itemId);
+        const nextRecycles = { ...recycleByItem };
+        delete nextRecycles[fork.itemId];
+        setInputItemIds(nextInputs);
+        setRecycleItemIds(nextRecycleIds);
+        setRecycleByItem(nextRecycles);
+        applyResolvedRecipes(targetItemId, nextInputs, effectiveRecipes, nextRecycleIds, nextRecycles);
+      } else {
+        const nextRecycleIds = recycleItemIds.includes(fork.itemId) ? recycleItemIds : [...recycleItemIds, fork.itemId];
+        const nextRecycles = { ...effectiveRecycles, [fork.itemId]: recipeId };
+        setRecycleItemIds(nextRecycleIds);
+        setRecycleByItem(nextRecycles);
+        applyResolvedRecipes(targetItemId, inputItemIds, effectiveRecipes, nextRecycleIds, nextRecycles);
+      }
     }
     setOpenFork(null);
   }
@@ -171,16 +204,13 @@ export default function App() {
       setOpenFork(null);
       return;
     }
-    const consumerIds = dataset.recipes
-      .filter(recipe => recipe.inputs.some(input => input.itemId === itemId))
-      .map(recipe => recipe.id)
-      .sort((left, right) => left.localeCompare(right));
-    if (consumerIds.length === 0) return;
+    const options = feasibleRecycleByItem.get(itemId) ?? [];
+    if (options.length === 0) return;
     setOpenFork({
       fork: {
         itemId,
         kind: 'recycle',
-        recipeIds: consumerIds,
+        recipeIds: options.map(option => option.recipeId),
       },
       anchorEl,
     });
@@ -299,6 +329,7 @@ export default function App() {
               plan={plan}
               index={index}
               activeRecycleItemId={openFork?.fork.kind === 'recycle' ? openFork.fork.itemId : null}
+              canRecycleItem={itemId => (feasibleRecycleByItem.get(itemId)?.length ?? 0) > 0}
               onOpenRecycle={openRecycleFork}
             />
             <RecipeGrid
@@ -326,12 +357,18 @@ export default function App() {
 
         {picker && (
           <ItemPicker
-            items={dataset.items}
+            items={picker === 'target' ? craftableItems : dataset.items}
             onClose={() => setPicker(null)}
             onSelect={itemId => {
               if (picker === 'target') {
+                const nextInputs = inputItemIds.includes(itemId)
+                  ? inputItemIds.filter(id => id !== itemId)
+                  : inputItemIds;
                 setTargetItemId(itemId);
-                applyResolvedRecipes(itemId, inputItemIds, recipeByItem);
+                if (nextInputs !== inputItemIds) {
+                  setInputItemIds(nextInputs);
+                }
+                applyResolvedRecipes(itemId, nextInputs, recipeByItem);
                 setOpenFork(null);
               } else {
                 const nextInputs = inputItemIds.includes(itemId) ? inputItemIds : [...inputItemIds, itemId];

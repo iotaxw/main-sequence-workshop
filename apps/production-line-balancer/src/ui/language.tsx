@@ -30,6 +30,10 @@ const labels = {
   byproductOutputs: { 'zh-Hans': '净副产', en: 'Net byproducts' },
   duration: { 'zh-Hans': '执行时间', en: 'Duration' },
   continuous: { 'zh-Hans': '连续', en: 'Continuous' },
+  conservedCycleHint: {
+    'zh-Hans': '该物品属于生物质自循环催化剂，无法仅由原矿净产出；如需转换培养，请先在顶部「外部输入」中添加生物质或对应菌种。',
+    en: 'This item belongs to a conserved biomass cycle and cannot be net-produced from ores alone. Add Biomass or a seed culture to External Inputs to convert it.',
+  },
 } as const;
 
 export type LabelKey = keyof typeof labels;

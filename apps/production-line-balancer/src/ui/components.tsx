@@ -449,10 +449,11 @@ export function ItemPicker({ items, onSelect, onClose }: {
   );
 }
 
-export function SummaryStrip({ plan, index, activeRecycleItemId, onOpenRecycle }: {
+export function SummaryStrip({ plan, index, activeRecycleItemId, canRecycleItem, onOpenRecycle }: {
   plan: SolvedPlan;
   index: DatasetIndex;
   activeRecycleItemId?: string | null;
+  canRecycleItem?: (itemId: string) => boolean;
   onOpenRecycle: (itemId: string, anchor: HTMLElement) => void;
 }) {
   const { language, t } = useLanguage();
@@ -489,22 +490,25 @@ export function SummaryStrip({ plan, index, activeRecycleItemId, onOpenRecycle }
           <div className="metric__flows">
             {plan.byproducts.map(flow => {
               const active = plan.recycleByItem[flow.itemId] !== undefined;
-              const isOpen = activeRecycleItemId === flow.itemId;
+              const canRecycle = !canRecycleItem || canRecycleItem(flow.itemId);
+              const isOpen = canRecycle && activeRecycleItemId === flow.itemId;
               return (
                 <span className={`flow-chip flow-chip--byproduct${isOpen ? ' flow-chip--editing' : ''}`} key={flow.itemId}>
                   <ItemGlyph item={index.items.get(flow.itemId)!} role="byproduct" size="small" />
                   <RateValue value={flow.ratePerMin} />
-                  <button
-                    className={`recycle-toggle${active ? ' recycle-toggle--on' : ''}${isOpen ? ' recycle-toggle--open' : ''}`}
-                    onClick={event => onOpenRecycle(flow.itemId, event.currentTarget)}
-                    aria-label={t(active ? 'selectRecycle' : 'recycle')}
-                    aria-pressed={active}
-                    aria-expanded={isOpen}
-                    aria-haspopup="dialog"
-                    title={t(active ? 'selectRecycle' : 'recycle')}
-                  >
-                    <UiIcon name="recycle" size={12} />
-                  </button>
+                  {canRecycle && (
+                    <button
+                      className={`recycle-toggle${active ? ' recycle-toggle--on' : ''}${isOpen ? ' recycle-toggle--open' : ''}`}
+                      onClick={event => onOpenRecycle(flow.itemId, event.currentTarget)}
+                      aria-label={t(active ? 'selectRecycle' : 'recycle')}
+                      aria-pressed={active}
+                      aria-expanded={isOpen}
+                      aria-haspopup="dialog"
+                      title={t(active ? 'selectRecycle' : 'recycle')}
+                    >
+                      <UiIcon name="recycle" size={12} />
+                    </button>
+                  )}
                 </span>
               );
             })}
@@ -512,8 +516,8 @@ export function SummaryStrip({ plan, index, activeRecycleItemId, onOpenRecycle }
               const explicit = plan.recycleByItem[itemId] !== undefined;
               const isOpen = explicit && activeRecycleItemId === itemId;
               const internalNote = language === 'en'
-                ? 'Consumed internally by upstream recipes (0/min net). Add seeds to External Inputs to supply externally.'
-                : '已由产线内上游配方完全消耗（净剩余 0/min）；如需外部供给种子，请在「外部输入」添加。';
+                ? 'Consumed internally by upstream recipes (0/min net). Click "Supply externally" on a recycling card to supply seeds externally and export surplus.'
+                : '已由产线内上游配方完全消耗（净剩余 0/min）；如需外排或外部供给菌种，可点击对应回收卡片的「设为外部输入」。';
               return (
                 <span
                   className={`flow-chip flow-chip--byproduct ${explicit ? 'flow-chip--balanced' : 'flow-chip--internal'}${isOpen ? ' flow-chip--editing' : ''}`}
@@ -555,18 +559,30 @@ export function SummaryStrip({ plan, index, activeRecycleItemId, onOpenRecycle }
   );
 }
 
+const conservedCatalystIds = new Set([
+  'ITEM_Biomass',
+  'ITEM_Xenobacteria',
+  'ITEM_Xenoeukarya',
+  'ITEM_Xenoarchaea',
+]);
+
 export function IssuePanel({ issues, index }: { issues: Issue[]; index: DatasetIndex }) {
+  const { t } = useLanguage();
   return (
     <div className="issues" role="alert">
-      {issues.map((issue, issueIndex) => (
-        <div className="issue" key={`${issue.kind}-${issueIndex}`}>
-          <span className="issue__kind">{issue.kind}</span>
-          <span className="issue__message">{issue.message}</span>
-          <span className="issue__items">
-            {issue.itemIds.map(itemId => index.items.has(itemId) && <ItemGlyph key={itemId} item={index.items.get(itemId)!} size="small" />)}
-          </span>
-        </div>
-      ))}
+      {issues.map((issue, issueIndex) => {
+        const isConservedCycle = (issue.kind === 'conflict' || issue.kind === 'indeterminate')
+          && issue.itemIds.some(itemId => conservedCatalystIds.has(itemId));
+        return (
+          <div className="issue" key={`${issue.kind}-${issueIndex}`}>
+            <span className="issue__kind">{issue.kind}</span>
+            <span className="issue__message">{isConservedCycle ? t('conservedCycleHint') : issue.message}</span>
+            <span className="issue__items">
+              {issue.itemIds.map(itemId => index.items.has(itemId) && <ItemGlyph key={itemId} item={index.items.get(itemId)!} size="small" />)}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
