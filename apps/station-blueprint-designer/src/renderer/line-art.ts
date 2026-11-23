@@ -223,9 +223,57 @@ function addRectBlock(
   y1: number,
   fillMat: THREE.Material,
   primaryPts: number[],
-  detailPts: number[]
+  detailPts: number[],
+  verticalToPrimary = false
 ): void {
-  addChamferPrism(target, hx, hz, y0, y1, 0, fillMat, primaryPts, detailPts, { cx, cz });
+  addChamferPrism(target, hx, hz, y0, y1, 0, fillMat, primaryPts, detailPts, {
+    cx,
+    cz,
+    verticalToPrimary,
+  });
+}
+
+/**
+ * Adds a razor-thin vertical photovoltaic blade sail along X (spanning [x0, x1] and [y0, y1], thin thickness 2*halfZ),
+ * with crisp primary silhouette edges and fine PV cell grid lines on both -Z and +Z faces.
+ */
+function addVerticalSailBlade(
+  target: THREE.Group,
+  x0: number,
+  x1: number,
+  cz: number,
+  halfZ: number,
+  y0: number,
+  y1: number,
+  fillMat: THREE.Material,
+  primaryPts: number[],
+  detailPts: number[],
+  cols: number,
+  rows: number
+): void {
+  const cx = (x0 + x1) / 2;
+  const hx = Math.max(0.05, (x1 - x0) / 2);
+  addChamferPrism(target, hx, halfZ, y0, y1, 0, fillMat, primaryPts, detailPts, {
+    cx,
+    cz,
+    verticalToPrimary: true,
+  });
+  // Ensure the bottom horizontal rim is also a crisp primary silhouette edge when protruding below deck
+  pushSeg(primaryPts, x0, cz - halfZ, x1, cz - halfZ, y0, y0);
+  pushSeg(primaryPts, x0, cz + halfZ, x1, cz + halfZ, y0, y0);
+
+  // PV cell sub-grid on both -Z and +Z faces of the razor-thin sail
+  for (const sz of [-1, 1]) {
+    const faceZ = cz + sz * (halfZ + 0.015);
+    for (let c = 1; c < cols; c++) {
+      const gx = x0 + ((x1 - x0) * c) / cols;
+      pushSeg(detailPts, gx, faceZ, gx, faceZ, y0, y1);
+    }
+    for (let r = 1; r < rows; r++) {
+      const gy = y0 + ((y1 - y0) * r) / rows;
+      pushSeg(detailPts, x0, faceZ, x1, faceZ, gy, gy);
+    }
+  }
 }
 
 /**
@@ -645,135 +693,166 @@ export function buildMachineLineArt(
 
   switch (def.id) {
     case 'DAT_Refinery': {
-      roofHeight = 1.48;
-      addChamferPrism(extrudeGroup, hw, hd, 0, 0.54, 0.34, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.62, minH * 0.54, 16, 0.54, 1.26, 0, fillUpper, primaryPts, detailPts, {
+      // Binary real height 3.32m (3x3) -> 2.85m tall smelting furnace stack
+      roofHeight = 2.85;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 0.78, 0.34, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.62, minH * 0.52, 16, 0.78, 2.28, 0, fillUpper, primaryPts, detailPts, {
         ribCount: 8,
       });
-      addPolyDrum(extrudeGroup, minH * 0.32, minH * 0.28, 8, 1.26, roofHeight, Math.PI / 8, fillBase, primaryPts, detailPts, {
+      addPolyDrum(extrudeGroup, minH * 0.34, minH * 0.28, 8, 2.28, roofHeight, Math.PI / 8, fillBase, primaryPts, detailPts, {
         ribCount: 4,
       });
-      const r0 = minH * 0.56;
+      const r0 = minH * 0.54;
       const r1 = minH * 0.92;
       for (let i = 0; i < 4; i++) {
         const a = Math.PI / 4 + (i * Math.PI) / 2;
-        pushSeg(detailPts, Math.cos(a) * r1, Math.sin(a) * r1, Math.cos(a) * r0, Math.sin(a) * r0, 0.54, 1.2);
+        pushSeg(detailPts, Math.cos(a) * r1, Math.sin(a) * r1, Math.cos(a) * r0, Math.sin(a) * r0, 0.78, 2.15);
       }
       break;
     }
 
     case 'DAT_Assembler': {
-      roofHeight = 1.85;
-      addChamferPrism(extrudeGroup, hw, hd, 0, 0.72, 0.38, fillBase, primaryPts, detailPts);
-      addChamferPrism(extrudeGroup, hw * 0.72, hd * 0.72, 0.72, 1.38, 0.18, fillUpper, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.36, minH * 0.34, 4, 1.38, roofHeight, 0, fillBase, primaryPts, detailPts, {
+      // Binary real height 4.10m (5x5) -> 3.50m tall stepped fabricator with overhead gantry crown
+      roofHeight = 3.5;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 1.05, 0.38, fillBase, primaryPts, detailPts);
+      addChamferPrism(extrudeGroup, hw * 0.74, hd * 0.74, 1.05, 2.52, 0.22, fillUpper, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.38, minH * 0.34, 4, 2.52, roofHeight, 0, fillBase, primaryPts, detailPts, {
         ribCount: 4,
       });
-      pushSeg(detailPts, -hw * 0.72, 0, -minH * 0.36, 0, 1.39, 1.39);
-      pushSeg(detailPts, minH * 0.36, 0, hw * 0.72, 0, 1.39, 1.39);
-      pushSeg(detailPts, 0, -hd * 0.72, 0, -minH * 0.36, 1.39, 1.39);
-      pushSeg(detailPts, 0, minH * 0.36, 0, hd * 0.72, 1.39, 1.39);
+      pushSeg(detailPts, -hw * 0.74, 0, -minH * 0.38, 0, 2.53, 2.53);
+      pushSeg(detailPts, minH * 0.38, 0, hw * 0.74, 0, 2.53, 2.53);
+      pushSeg(detailPts, 0, -hd * 0.74, 0, -minH * 0.38, 2.53, 2.53);
+      pushSeg(detailPts, 0, minH * 0.38, 0, hd * 0.74, 2.53, 2.53);
       break;
     }
 
     case 'DAT_AdvancedAssembler': {
-      roofHeight = 2.65;
-      addChamferPrism(extrudeGroup, hw, hd, 0, 0.92, 0.58, fillBase, primaryPts, detailPts);
-      addChamferPrism(extrudeGroup, hw * 0.82, hd * 0.82, 0.92, 1.78, 0.32, fillUpper, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.44, minH * 0.36, 4, 1.78, 2.38, 0, fillBase, primaryPts, detailPts, {
+      // Binary real height 3.80m (9x9) -> 3.35m wide heavy multi-stage assembly hall
+      roofHeight = 3.35;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 1.02, 0.58, fillBase, primaryPts, detailPts);
+      addChamferPrism(extrudeGroup, hw * 0.82, hd * 0.82, 1.02, 2.18, 0.34, fillUpper, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.46, minH * 0.38, 4, 2.18, 2.96, 0, fillBase, primaryPts, detailPts, {
         ribCount: 4,
       });
-      addChamferPrism(extrudeGroup, minH * 0.18, minH * 0.18, 2.38, roofHeight, 0, fillUpper, primaryPts, detailPts);
-      pushSeg(detailPts, -hw * 0.82, 0, hw * 0.82, 0, 1.79, 1.79);
-      pushSeg(detailPts, 0, -hd * 0.82, 0, hd * 0.82, 1.79, 1.79);
+      addChamferPrism(extrudeGroup, minH * 0.2, minH * 0.2, 2.96, roofHeight, 0, fillUpper, primaryPts, detailPts);
+      pushSeg(detailPts, -hw * 0.82, 0, hw * 0.82, 0, 2.19, 2.19);
+      pushSeg(detailPts, 0, -hd * 0.82, 0, hd * 0.82, 2.19, 2.19);
       break;
     }
 
     case 'DAT_EnrichmentChamber': {
-      roofHeight = 2.75;
-      addChamferPrism(extrudeGroup, hw, hd, 0, 0.78, 0.72, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.78, minH * 0.74, 24, 0.78, 1.56, 0, fillUpper, primaryPts, detailPts, {
+      // Binary real height 2.49m (9x9) -> 2.22m wide, low-profile centrifuge ring (shorter than AdvancedAssembler!)
+      roofHeight = 2.22;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 0.58, 0.72, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.82, minH * 0.78, 24, 0.58, 1.38, 0, fillUpper, primaryPts, detailPts, {
         ribCount: 8,
       });
-      addPolyDrum(extrudeGroup, minH * 0.48, minH * 0.44, 16, 1.56, 2.28, 0, fillBase, primaryPts, detailPts, {
+      addPolyDrum(extrudeGroup, minH * 0.52, minH * 0.46, 16, 1.38, 1.88, 0, fillBase, primaryPts, detailPts, {
         ribCount: 8,
       });
-      addPolyDrum(extrudeGroup, minH * 0.22, minH * 0.18, 12, 2.28, roofHeight, 0, fillUpper, primaryPts, detailPts, {
+      addPolyDrum(extrudeGroup, minH * 0.24, minH * 0.18, 12, 1.88, roofHeight, 0, fillUpper, primaryPts, detailPts, {
         ribCount: 4,
       });
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI) / 3;
+        pushSeg(
+          detailPts,
+          Math.cos(a) * minH * 0.48,
+          Math.sin(a) * minH * 0.48,
+          Math.cos(a) * minH * 0.78,
+          Math.sin(a) * minH * 0.78,
+          1.39,
+          1.39
+        );
+      }
       break;
     }
 
     case 'DAT_Supercomputer': {
-      roofHeight = 2.32;
-      addChamferPrism(extrudeGroup, hw, hd, 0, 0.48, 0.38, fillBase, primaryPts, detailPts);
+      // Binary real height 4.88m (7x7) -> 4.20m towering 5-blade monolith array + overhead cryo manifold
+      roofHeight = 4.2;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 0.62, 0.42, fillBase, primaryPts, detailPts);
       const bladeCount = 5;
-      const spanX = hw * 1.48;
+      const spanX = hw * 1.5;
       for (let i = 0; i < bladeCount; i++) {
         const x = -spanX / 2 + (spanX * i) / (bladeCount - 1);
-        addRectBlock(extrudeGroup, x, 0, 0.2, hd * 0.72, 0.48, 2.08, fillUpper, primaryPts, detailPts);
+        addRectBlock(extrudeGroup, x, 0, 0.22, hd * 0.74, 0.62, 3.72, fillUpper, primaryPts, detailPts, true);
+        // Horizontal compute-bay shelf seams along the tall blade faces
+        for (const gy of [1.45, 2.25, 3.05]) {
+          pushSeg(detailPts, x - 0.23, -hd * 0.74, x - 0.23, hd * 0.74, gy, gy);
+          pushSeg(detailPts, x + 0.23, -hd * 0.74, x + 0.23, hd * 0.74, gy, gy);
+        }
       }
-      addRectBlock(extrudeGroup, 0, 0, hw * 0.86, 0.26, 2.08, roofHeight, fillBase, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, 0, 0, hw * 0.88, 0.34, 3.72, roofHeight, fillBase, primaryPts, detailPts);
       break;
     }
 
     case 'DAT_GrowthChamber': {
-      roofHeight = 2.45;
-      addChamferPrism(extrudeGroup, hw, hd, 0, 0.68, 0.68, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.76, minH * 0.7, 6, 0.68, 1.88, Math.PI / 6, fillUpper, primaryPts, detailPts, {
+      // Binary real height 2.73m (7x7) -> 2.42m low hexagonal geodesic bio-dome
+      roofHeight = 2.42;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 0.64, 0.68, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.78, minH * 0.72, 6, 0.64, 1.72, Math.PI / 6, fillUpper, primaryPts, detailPts, {
         ribCount: 6,
       });
-      addPolyDrum(extrudeGroup, minH * 0.7, minH * 0.24, 6, 1.88, roofHeight, Math.PI / 6, fillBase, primaryPts, detailPts, {
+      addPolyDrum(extrudeGroup, minH * 0.72, minH * 0.26, 6, 1.72, roofHeight, Math.PI / 6, fillBase, primaryPts, detailPts, {
         ribCount: 6,
       });
       break;
     }
 
     case 'DAT_RelicSynthesizer': {
-      roofHeight = 2.85;
-      addChamferPrism(extrudeGroup, hw, hd, 0, 0.82, 0.9, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.68, minH * 0.6, 4, 0.82, 1.65, 0, fillUpper, primaryPts, detailPts, {
+      // Binary real height 3.99m (9x9) -> 3.55m harmonic chamber with 4 tall corner emitter pylons
+      roofHeight = 3.55;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 0.88, 0.9, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.68, minH * 0.6, 4, 0.88, 2.05, 0, fillUpper, primaryPts, detailPts, {
         ribCount: 4,
       });
       const pOff = minH * 0.64;
       for (const sx of [-1, 1]) {
         for (const sz of [-1, 1]) {
-          addRectBlock(extrudeGroup, sx * pOff, sz * pOff, 0.42, 0.42, 0.82, 2.38, fillBase, primaryPts, detailPts);
+          addRectBlock(extrudeGroup, sx * pOff, sz * pOff, 0.42, 0.42, 0.88, 3.12, fillBase, primaryPts, detailPts, true);
+          pushSeg(detailPts, sx * pOff, sz * pOff, 0, 0, 3.12, roofHeight - 0.12);
         }
       }
-      addPolyDrum(extrudeGroup, minH * 0.24, minH * 0.14, 8, 1.65, roofHeight, Math.PI / 8, fillUpper, primaryPts, detailPts, {
+      addPolyDrum(extrudeGroup, minH * 0.26, minH * 0.14, 8, 2.05, roofHeight, Math.PI / 8, fillUpper, primaryPts, detailPts, {
         ribCount: 4,
       });
       break;
     }
 
     case 'DAT_ReactorMachine': {
-      roofHeight = 2.55;
-      addChamferPrism(extrudeGroup, hw, hd, 0, 0.88, 0.62, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.44, minH * 0.36, 12, 0.88, roofHeight, 0, fillUpper, primaryPts, detailPts, {
+      // Binary real height 4.54m (6x6) -> 3.95m tall armored fusion core + 3 heavy radial radiator fins
+      roofHeight = 3.95;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 1.02, 0.62, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.48, minH * 0.4, 12, 1.02, 3.42, 0, fillUpper, primaryPts, detailPts, {
+        ribCount: 6,
+      });
+      addPolyDrum(extrudeGroup, minH * 0.36, minH * 0.24, 12, 3.42, roofHeight, 0, fillBase, primaryPts, detailPts, {
         ribCount: 6,
       });
       for (let i = 0; i < 3; i++) {
         const a = (i * Math.PI * 2) / 3 - Math.PI / 2;
         const rIn = minH * 0.44;
-        const rOut = minH * 0.88;
-        pushSeg(primaryPts, Math.cos(a) * rIn, Math.sin(a) * rIn, Math.cos(a) * rOut, Math.sin(a) * rOut, 2.1, 0.88);
-        pushSeg(detailPts, Math.cos(a) * rIn, Math.sin(a) * rIn, Math.cos(a) * rOut, Math.sin(a) * rOut, 0.88, 0.88);
-        pushSeg(detailPts, Math.cos(a) * rOut, Math.sin(a) * rOut, Math.cos(a) * rOut, Math.sin(a) * rOut, 0.88, 1.35);
+        const rOut = minH * 0.92;
+        pushSeg(primaryPts, Math.cos(a) * rIn, Math.sin(a) * rIn, Math.cos(a) * rOut, Math.sin(a) * rOut, 3.25, 1.02);
+        pushSeg(primaryPts, Math.cos(a) * rOut, Math.sin(a) * rOut, Math.cos(a) * rOut, Math.sin(a) * rOut, 1.02, 1.92);
+        pushSeg(detailPts, Math.cos(a) * rIn, Math.sin(a) * rIn, Math.cos(a) * rOut, Math.sin(a) * rOut, 1.02, 1.02);
+        pushSeg(detailPts, Math.cos(a) * rIn, Math.sin(a) * rIn, Math.cos(a) * rOut, Math.sin(a) * rOut, 2.35, 1.92);
       }
       break;
     }
 
     case 'DAT_Container':
     case 'DAT_Container_2': {
+      // Binary real heights: Container 2.34m (2x2) -> 1.95m; Container_2 2.40m (4x4) -> 2.10m
       const isLarge = def.id === 'DAT_Container_2';
-      roofHeight = isLarge ? 1.68 : 1.08;
-      addChamferPrism(extrudeGroup, hw, hd, 0, roofHeight * 0.78, isLarge ? 0.28 : 0.16, fillBase, primaryPts, detailPts);
+      roofHeight = isLarge ? 2.1 : 1.95;
+      addChamferPrism(extrudeGroup, hw, hd, 0, roofHeight * 0.8, isLarge ? 0.28 : 0.16, fillBase, primaryPts, detailPts);
       addChamferPrism(
         extrudeGroup,
         hw * 0.84,
         hd * 0.84,
-        roofHeight * 0.78,
+        roofHeight * 0.8,
         roofHeight,
         isLarge ? 0.18 : 0.1,
         fillUpper,
@@ -825,63 +904,124 @@ export function buildMachineLineArt(
     }
 
     case 'DAT_Teleporter': {
-      roofHeight = 1.48;
+      // Binary real height 2.86m (4x4) -> 2.52m circular pad + twin vertical portal arch pylons + overhead lintel
+      roofHeight = 2.52;
       addChamferPrism(extrudeGroup, hw, hd, 0, 0.42, 0.52, fillBase, primaryPts, detailPts);
-      addPolyDrum(extrudeGroup, minH * 0.78, minH * 0.72, 20, 0.42, 0.96, 0, fillUpper, primaryPts, detailPts, {
+      addPolyDrum(extrudeGroup, minH * 0.76, minH * 0.72, 20, 0.42, 0.74, 0, fillUpper, primaryPts, detailPts, {
         ribCount: 8,
       });
-      addPolyDrum(extrudeGroup, minH * 0.44, minH * 0.38, 16, 0.96, roofHeight, 0, fillBase, primaryPts, detailPts, {
-        ribCount: 4,
-      });
+      pushPolygon(detailPts, minH * 0.44, 16, 0.75, 0, 0, 0);
+      // Twin portal arch pylons flanking the pad
+      const pylonZ = hd * 0.74;
+      addRectBlock(extrudeGroup, 0, -pylonZ, 0.34, 0.28, 0.42, roofHeight, fillBase, primaryPts, detailPts, true);
+      addRectBlock(extrudeGroup, 0, pylonZ, 0.34, 0.28, 0.42, roofHeight, fillBase, primaryPts, detailPts, true);
+      // Overhead portal arch lintel spanning between pylons
+      addRectBlock(extrudeGroup, 0, 0, 0.28, pylonZ + 0.28, roofHeight - 0.32, roofHeight, fillUpper, primaryPts, detailPts);
       break;
     }
 
-    case 'DAT_WorkbenchMachine':
+    case 'DAT_WorkbenchMachine': {
+      // Binary real height 2.31m (2x4) -> 1.98m stepped fabrication bench + rear tool canopy
+      roofHeight = 1.98;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 1.12, 0.18, fillBase, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, -hw * 0.28, 0, hw * 0.52, hd * 0.86, 1.12, roofHeight, fillUpper, primaryPts, detailPts);
+      break;
+    }
+
     case 'DAT_Armoury': {
-      roofHeight = def.id === 'DAT_Armoury' ? 1.42 : 1.05;
-      addChamferPrism(extrudeGroup, hw, hd, 0, roofHeight * 0.65, 0.22, fillBase, primaryPts, detailPts);
-      addChamferPrism(extrudeGroup, hw * 0.72, hd * 0.72, roofHeight * 0.65, roofHeight, 0.14, fillUpper, primaryPts, detailPts);
+      // Binary real height 2.96m (4x4) -> 2.55m armored vault + dorsal rack canopy
+      roofHeight = 2.55;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 1.48, 0.26, fillBase, primaryPts, detailPts);
+      addChamferPrism(extrudeGroup, hw * 0.74, hd * 0.74, 1.48, roofHeight, 0.16, fillUpper, primaryPts, detailPts);
+      pushSeg(detailPts, -hw * 0.74, 0, hw * 0.74, 0, roofHeight + 0.006, roofHeight + 0.006);
+      break;
+    }
+
+    case 'DAT_RelicAnalyzer': {
+      // Binary real height 2.33m (3x3) -> 2.02m octagonal relic scanner drum + optical turret
+      roofHeight = 2.02;
+      addChamferPrism(extrudeGroup, hw, hd, 0, 0.68, 0.28, fillBase, primaryPts, detailPts);
+      addPolyDrum(extrudeGroup, minH * 0.7, minH * 0.6, 8, 0.68, 1.58, Math.PI / 8, fillUpper, primaryPts, detailPts, {
+        ribCount: 8,
+      });
+      addPolyDrum(extrudeGroup, minH * 0.32, minH * 0.22, 8, 1.58, roofHeight, Math.PI / 8, fillBase, primaryPts, detailPts, {
+        ribCount: 4,
+      });
+      pushSeg(detailPts, -minH * 0.56, 0, minH * 0.56, 0, 1.59, 1.59);
+      pushSeg(detailPts, 0, -minH * 0.56, 0, minH * 0.56, 1.59, 1.59);
       break;
     }
 
     default: {
       if (def.kind === 'research') {
-        roofHeight = lw >= 9 ? 2.65 : lw >= 5 ? 1.92 : 1.52;
-        addChamferPrism(extrudeGroup, hw, hd, 0, roofHeight * 0.42, Math.min(0.45, minH * 0.24), fillBase, primaryPts, detailPts);
-
         if (def.id === 'DAT_QuantumSciLab') {
-          addPolyDrum(extrudeGroup, minH * 0.72, minH * 0.64, 24, roofHeight * 0.42, roofHeight * 0.76, 0, fillUpper, primaryPts, detailPts, {
+          // Binary real height 5.39m (9x9) -> 4.65m tallest interior building!
+          roofHeight = 4.65;
+          addChamferPrism(extrudeGroup, hw, hd, 0, 1.15, 0.62, fillBase, primaryPts, detailPts);
+          addPolyDrum(extrudeGroup, minH * 0.74, minH * 0.66, 24, 1.15, 2.95, 0, fillUpper, primaryPts, detailPts, {
             ribCount: 8,
           });
-          addPolyDrum(extrudeGroup, minH * 0.32, minH * 0.24, 12, roofHeight * 0.76, roofHeight, 0, fillBase, primaryPts, detailPts, {
+          addPolyDrum(extrudeGroup, minH * 0.34, minH * 0.24, 12, 2.95, roofHeight, 0, fillBase, primaryPts, detailPts, {
             ribCount: 6,
           });
+          for (let i = 0; i < 4; i++) {
+            const a = Math.PI / 4 + (i * Math.PI) / 2;
+            pushSeg(
+              primaryPts,
+              Math.cos(a) * minH * 0.72,
+              Math.sin(a) * minH * 0.72,
+              Math.cos(a) * minH * 0.32,
+              Math.sin(a) * minH * 0.32,
+              1.15,
+              4.15
+            );
+          }
         } else if (def.id === 'DAT_AstroSciLab') {
-          addPolyDrum(extrudeGroup, minH * 0.76, minH * 0.62, 12, roofHeight * 0.42, roofHeight * 0.78, 0, fillUpper, primaryPts, detailPts, {
-            ribCount: 6,
+          // Binary real height 1.48m (5x5) -> 1.38m sleek LOW wide celestial orrery table!
+          roofHeight = 1.38;
+          addChamferPrism(extrudeGroup, hw, hd, 0, 0.46, 0.42, fillBase, primaryPts, detailPts);
+          addPolyDrum(extrudeGroup, minH * 0.82, minH * 0.74, 16, 0.46, 1.02, 0, fillUpper, primaryPts, detailPts, {
+            ribCount: 8,
           });
-          addPolyDrum(extrudeGroup, minH * 0.62, minH * 0.2, 12, roofHeight * 0.78, roofHeight, 0, fillBase, primaryPts, detailPts, {
+          addPolyDrum(extrudeGroup, minH * 0.42, minH * 0.16, 12, 1.02, roofHeight, 0, fillBase, primaryPts, detailPts, {
             ribCount: 6,
           });
         } else if (def.id === 'DAT_XenoSciLab') {
-          addPolyDrum(extrudeGroup, minH * 0.72, minH * 0.62, 6, roofHeight * 0.42, roofHeight * 0.84, Math.PI / 6, fillUpper, primaryPts, detailPts, {
+          // Binary real height 4.61m (5x5) -> 3.95m tall hexagonal bio-containment tower!
+          roofHeight = 3.95;
+          addChamferPrism(extrudeGroup, hw, hd, 0, 0.95, 0.42, fillBase, primaryPts, detailPts);
+          addPolyDrum(extrudeGroup, minH * 0.7, minH * 0.6, 6, 0.95, 3.15, Math.PI / 6, fillUpper, primaryPts, detailPts, {
             ribCount: 6,
           });
-          addPolyDrum(extrudeGroup, minH * 0.36, minH * 0.22, 3, roofHeight * 0.84, roofHeight, 0, fillBase, primaryPts, detailPts, {
+          addPolyDrum(extrudeGroup, minH * 0.38, minH * 0.22, 3, 3.15, roofHeight, 0, fillBase, primaryPts, detailPts, {
             ribCount: 3,
           });
         } else if (def.id === 'DAT_ElectroSciLab') {
-          addPolyDrum(extrudeGroup, minH * 0.74, minH * 0.64, 4, roofHeight * 0.42, roofHeight * 0.84, 0, fillUpper, primaryPts, detailPts, {
+          // Binary real height 3.31m (5x5) -> 2.85m diamond high-voltage coil lab
+          roofHeight = 2.85;
+          addChamferPrism(extrudeGroup, hw, hd, 0, 0.85, 0.4, fillBase, primaryPts, detailPts);
+          addPolyDrum(extrudeGroup, minH * 0.74, minH * 0.64, 4, 0.85, 2.08, 0, fillUpper, primaryPts, detailPts, {
             ribCount: 4,
           });
-          addPolyDrum(extrudeGroup, minH * 0.26, minH * 0.26, 8, roofHeight * 0.84, roofHeight, 0, fillBase, primaryPts, detailPts, {
+          addPolyDrum(extrudeGroup, minH * 0.28, minH * 0.26, 8, 2.08, roofHeight, 0, fillBase, primaryPts, detailPts, {
             ribCount: 4,
           });
         } else if (def.id === 'DAT_CompSciLab') {
-          addChamferPrism(extrudeGroup, hw * 0.62, hd * 0.62, roofHeight * 0.42, roofHeight, 0.14, fillUpper, primaryPts, detailPts);
+          // Binary real height 2.64m (3x3) -> 2.28m compact dual-rack compute lab
+          roofHeight = 2.28;
+          addChamferPrism(extrudeGroup, hw, hd, 0, 0.72, 0.24, fillBase, primaryPts, detailPts);
+          addChamferPrism(extrudeGroup, hw * 0.68, hd * 0.68, 0.72, roofHeight, 0.14, fillUpper, primaryPts, detailPts, {
+            verticalToPrimary: true,
+          });
         } else {
-          addPolyDrum(extrudeGroup, minH * 0.68, minH * 0.58, 16, roofHeight * 0.42, roofHeight, 0, fillUpper, primaryPts, detailPts, {
+          // DAT_MatSciLab (3x3, real 3.01m -> 2.60m) & fallback research lab
+          roofHeight = def.id === 'DAT_MatSciLab' ? 2.6 : 2.2;
+          addChamferPrism(extrudeGroup, hw, hd, 0, roofHeight * 0.32, Math.min(0.42, minH * 0.24), fillBase, primaryPts, detailPts);
+          addPolyDrum(extrudeGroup, minH * 0.68, minH * 0.58, 16, roofHeight * 0.32, roofHeight * 0.82, 0, fillUpper, primaryPts, detailPts, {
             ribCount: 8,
+          });
+          addPolyDrum(extrudeGroup, minH * 0.42, minH * 0.34, 12, roofHeight * 0.82, roofHeight, 0, fillBase, primaryPts, detailPts, {
+            ribCount: 6,
           });
         }
         pushSeg(detailPts, -minH * 0.68, 0, minH * 0.68, 0, roofHeight + 0.005, roofHeight + 0.005);
@@ -1005,7 +1145,6 @@ export function buildStationModuleArt(
   const ld = def.sizeUnits[1] * STATION_UNIT_M;
   const hw = lw / 2;
   const hd = ld / 2;
-  const minH = Math.min(hw, hd);
 
   const extrudeGroup = new THREE.Group();
   extrudeGroup.position.set(cx, floorY, cz);
@@ -1061,182 +1200,332 @@ export function buildStationModuleArt(
     }
 
     case 'BPO_StationTurretBlock_01': {
-      // Compact mounted space plasma turret docked at -X: slim collar + compact 7m octagonal mount + tall cupola + long twin barrels!
-      roofHeight = 5.4;
-      addWestNeck(3.2, 2.8, 2.2);
-      // Compact octagonal armored gun mount centered around x = -1.2 (leaves generous open void on N/S/E!)
-      addPolyDrum(extrudeGroup, 3.8, 3.3, 8, 0, 2.4, Math.PI / 8, fillBase, primaryPts, detailPts, {
-        cx: -1.0,
+      // Binary real SM2_StationTurret_01: 12.44x9.46x9.25m + symmetric DORSAL (top) AND VENTRAL (inverted bottom) twin-barrel plasma turrets!
+      roofHeight = 8.2;
+      addWestNeck(2.6, 3.2, 2.8);
+      // Central armored gun-pod chassis docked to -X (extends from y=-2.2 to +3.6)
+      addChamferPrism(extrudeGroup, 4.6, 4.1, -2.2, 3.6, 1.25, fillBase, primaryPts, detailPts, {
+        cx: -2.0,
+      });
+
+      // Dorsal (upper) rotating turret assembly + long twin barrels (+X)
+      addPolyDrum(extrudeGroup, 3.2, 2.75, 8, 3.6, 5.2, Math.PI / 8, fillBase, primaryPts, detailPts, {
+        cx: -1.6,
         ribCount: 8,
       });
-      // Elevated turret breach housing
-      addChamferPrism(extrudeGroup, 2.3, 2.1, 2.4, 4.4, 0.55, fillUpper, primaryPts, detailPts, { cx: -1.0 });
-      addPolyDrum(extrudeGroup, 1.35, 1.05, 8, 4.4, roofHeight, Math.PI / 8, fillBase, primaryPts, detailPts, {
-        cx: -1.3,
+      addChamferPrism(extrudeGroup, 2.1, 2.35, 5.2, 7.1, 0.55, fillUpper, primaryPts, detailPts, { cx: -1.6 });
+      addPolyDrum(extrudeGroup, 1.25, 0.95, 8, 7.1, roofHeight, Math.PI / 8, fillBase, primaryPts, detailPts, {
+        cx: -1.8,
         ribCount: 4,
       });
-      // Long protruding twin plasma barrels extending outward into empty space (+X)
-      addRectBlock(extrudeGroup, 3.6, -0.95, 3.4, 0.36, 2.95, 3.65, fillUpper, primaryPts, detailPts);
-      addRectBlock(extrudeGroup, 3.6, 0.95, 3.4, 0.36, 2.95, 3.65, fillUpper, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, 3.1, -0.98, 3.9, 0.36, 5.75, 6.55, fillUpper, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, 3.1, 0.98, 3.9, 0.36, 5.75, 6.55, fillUpper, primaryPts, detailPts);
+
+      // Ventral (lower inverted) symmetric turret assembly + twin barrels (+X)
+      addPolyDrum(extrudeGroup, 2.75, 3.2, 8, -3.8, -2.2, Math.PI / 8, fillBase, primaryPts, detailPts, {
+        cx: -1.6,
+        ribCount: 8,
+      });
+      addChamferPrism(extrudeGroup, 2.1, 2.35, -5.7, -3.8, 0.55, fillUpper, primaryPts, detailPts, { cx: -1.6 });
+      addPolyDrum(extrudeGroup, 0.95, 1.25, 8, -6.5, -5.7, Math.PI / 8, fillBase, primaryPts, detailPts, {
+        cx: -1.8,
+        ribCount: 4,
+      });
+      addRectBlock(extrudeGroup, 3.1, -0.98, 3.9, 0.36, -5.15, -4.35, fillUpper, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, 3.1, 0.98, 3.9, 0.36, -5.15, -4.35, fillUpper, primaryPts, detailPts);
       break;
     }
 
     case 'BPO_CommandModule': {
-      // Compact tapered command bridge pod docked at -X (real 4m height, sleek nose + observation deck + dual spires)
-      roofHeight = 4.6;
-      addWestNeck(2.8, 3.1, 2.1);
-      addChamferPrism(extrudeGroup, 3.6, 3.8, 0, 2.5, 1.3, fillBase, primaryPts, detailPts, { cx: -1.6 });
-      // Tapered forward bridge prow (+X)
-      addChamferPrism(extrudeGroup, 2.1, 2.4, 0.25, 2.9, 0.85, fillUpper, primaryPts, detailPts, { cx: 2.3 });
-      // Upper hexagonal CIC crown
-      addPolyDrum(extrudeGroup, 2.1, 1.65, 6, 2.5, 3.7, Math.PI / 6, fillUpper, primaryPts, detailPts, {
-        cx: -1.5,
-        ribCount: 6,
-      });
-      // Twin slender comms antennae
-      pushSeg(primaryPts, -2.3, -1.1, -2.3, -1.1, 3.7, roofHeight);
-      pushSeg(primaryPts, -2.3, 1.1, -2.3, 1.1, 3.7, roofHeight - 0.45);
+      // Binary real SM2_CommandModule_Ext: 14.09x12.18x10.97m (Z in [-2.65..+8.32]), panoramic wrap-around bridge glass & central 3.17m holotable!
+      roofHeight = 10.4;
+      addWestNeck(2.2, 3.8, 2.8);
+      // Underside hull keel (-2.4..0)
+      addChamferPrism(extrudeGroup, 5.2, 4.6, -2.4, 0, 1.5, fillBase, primaryPts, detailPts, { cx: -1.2 });
+      // Main armored bridge hull (0..3.6)
+      addChamferPrism(extrudeGroup, 6.5, 5.75, 0, 3.6, 1.9, fillBase, primaryPts, detailPts, { cx: -0.9 });
+      // Wrap-around panoramic glass command deck (3.6..5.8)
+      addChamferPrism(extrudeGroup, 5.1, 5.65, 3.6, 5.8, 1.7, fillUpper, primaryPts, detailPts, { cx: 0.5 });
+      for (const gz of [-3.2, -1.6, 0, 1.6, 3.2]) {
+        pushSeg(detailPts, 5.6, gz, 5.6, gz, 3.6, 5.8);
+      }
+      // Sculpted dorsal CIC crown (5.8..8.3)
+      addChamferPrism(extrudeGroup, 4.2, 4.1, 5.8, 8.3, 1.25, fillBase, primaryPts, detailPts, { cx: -1.4 });
+      // Central 3.17x3.17m Holotable marker on crown for crisp 2D/3D bridge identity
+      pushPolygon(detailPts, 1.65, 8, 8.34, Math.PI / 8, -0.8, 0);
+      // Twin slender orbital comms antennae spires
+      pushSeg(primaryPts, -2.8, -1.4, -2.8, -1.4, 8.3, roofHeight);
+      pushSeg(primaryPts, -2.8, 1.4, -2.8, 1.4, 8.3, roofHeight - 0.8);
       break;
     }
 
     case 'BPO_ScannerModule': {
-      // Compact -X mount + sleek cantilevered sensor boom + circular parabolic radar dish floating in open space
-      roofHeight = 4.9;
-      addWestNeck(3.2, 2.5, 1.9);
-      // Structural boom arm
-      addRectBlock(extrudeGroup, -2.2, 0, 2.6, 1.15, 0.35, 1.65, fillBase, primaryPts, detailPts);
-      // Sculpted parabolic dish centered at x = +1.4 (compact ~4.1m radius with crisp dark void around it)
-      addPolyDrum(extrudeGroup, 1.8, 4.1, 16, 1.4, 3.4, 0, fillUpper, primaryPts, detailPts, {
-        cx: 1.4,
+      // Shares 14.09x12.18m command-chassis base with underside keel + dorsal parabolic deep-space radar array for unmistakable CAD separation
+      roofHeight = 10.8;
+      addWestNeck(2.2, 3.4, 2.6);
+      addChamferPrism(extrudeGroup, 5.0, 4.4, -2.2, 0, 1.4, fillBase, primaryPts, detailPts, { cx: -1.3 });
+      addChamferPrism(extrudeGroup, 6.1, 5.3, 0, 3.6, 1.8, fillBase, primaryPts, detailPts, { cx: -1.0 });
+      addChamferPrism(extrudeGroup, 4.5, 4.8, 3.6, 5.8, 1.5, fillUpper, primaryPts, detailPts, { cx: 0.2 });
+      // Raised rotary sensor pedestal + large parabolic radar dish (6.0..8.8)
+      addPolyDrum(extrudeGroup, 1.9, 4.35, 16, 5.8, 8.5, 0, fillUpper, primaryPts, detailPts, {
+        cx: 0.6,
         ribCount: 8,
       });
-      // Receiver tripod & emitter needle
-      pushSeg(primaryPts, 1.4, 0, 1.4, 0, 3.4, roofHeight);
-      pushSeg(detailPts, 1.4 - 2.4, 0, 1.4, 0, 3.4, roofHeight - 0.2);
-      pushSeg(detailPts, 1.4 + 2.4, 0, 1.4, 0, 3.4, roofHeight - 0.2);
-      pushSeg(detailPts, 1.4, -2.4, 1.4, 0, 3.4, roofHeight - 0.2);
-      pushSeg(detailPts, 1.4, 2.4, 1.4, 0, 3.4, roofHeight - 0.2);
+      // Receiver tripod & deep-space emitter spire
+      pushSeg(primaryPts, 0.6, 0, 0.6, 0, 8.5, roofHeight);
+      for (const [ox, oz] of [
+        [-2.7, 0],
+        [2.7, 0],
+        [0, -2.7],
+        [0, 2.7],
+      ]) {
+        pushSeg(detailPts, 0.6 + ox, oz, 0.6, 0, 8.5, roofHeight - 0.25);
+      }
       break;
     }
 
     case 'BPO_MiningDroneBayBlock':
     case 'BPO_MiningDroneBayBlock_2': {
-      // Compact docked mining drone bay with open forward (+X) launch apron & twin/quad drone bays (NOT a 16x16 block!)
+      // Binary real SM2_DroneBay_01 = 15.98x14.7x7.23m (2 sloped roof hatches); _02 = 21.98x14.7x7.23m (+6m forward extension, 4 hatches in 2x2!)
       const mk2 = def.id.endsWith('_2');
-      roofHeight = mk2 ? 4.3 : 3.4;
-      addWestNeck(2.4, 3.2, 2.3);
-      const bodyHalfX = mk2 ? 4.2 : 3.4;
-      const bodyHalfZ = mk2 ? 5.2 : 4.1;
-      const bodyCx = -hw + 2.2 + bodyHalfX;
-      addChamferPrism(extrudeGroup, bodyHalfX, bodyHalfZ, 0, roofHeight, 0.9, fillBase, primaryPts, detailPts, {
+      roofHeight = 6.9;
+      const bodyHalfX = mk2 ? 10.75 : 7.75;
+      const bodyCx = mk2 ? 2.85 : -0.05;
+      const bodyHalfZ = 7.05;
+
+      // Full-width armored drone hangar hull (y in [-0.6..+4.2])
+      addChamferPrism(extrudeGroup, bodyHalfX, bodyHalfZ, -0.6, 4.2, 1.35, fillBase, primaryPts, detailPts, {
         cx: bodyCx,
       });
-      // Twin open forward launch guide rails extending into empty space on +X
-      const armCx = bodyCx + bodyHalfX + 1.7;
-      addRectBlock(extrudeGroup, armCx, -bodyHalfZ + 0.9, 1.8, 0.65, 0, 1.5, fillUpper, primaryPts, detailPts);
-      addRectBlock(extrudeGroup, armCx, bodyHalfZ - 0.9, 1.8, 0.65, 0, 1.5, fillUpper, primaryPts, detailPts);
-      // Drone launch hatch divisions on deck
-      pushSeg(detailPts, bodyCx, -bodyHalfZ * 0.85, bodyCx, bodyHalfZ * 0.85, roofHeight + 0.02);
-      if (mk2) {
-        pushSeg(detailPts, bodyCx - bodyHalfX * 0.85, 0, bodyCx + bodyHalfX * 0.85, 0, roofHeight + 0.02);
-      }
-      break;
-    }
-
-    case 'BPO_Dock': {
-      // Compact airlock collar on -X + twin slim open ship-docking guide arms cradling dark empty space on +X!
-      roofHeight = 3.0;
-      addWestNeck(3.2, 3.3, 2.4);
-      addPolyDrum(extrudeGroup, 2.6, 2.3, 12, 0.2, roofHeight, 0, fillUpper, primaryPts, detailPts, {
-        cx: -3.2,
-        ribCount: 6,
+      // Sloped upper launch deck superstructure (y in [4.2..6.5])
+      addChamferPrism(extrudeGroup, bodyHalfX - 1.6, bodyHalfZ - 1.0, 4.2, 6.5, 1.15, fillUpper, primaryPts, detailPts, {
+        cx: bodyCx - 0.6,
       });
-      // Open docking clamp arms flanking empty ship berth
-      addRectBlock(extrudeGroup, 1.8, -3.4, 3.8, 0.65, 0, 1.8, fillBase, primaryPts, detailPts);
-      addRectBlock(extrudeGroup, 1.8, 3.4, 3.8, 0.65, 0, 1.8, fillBase, primaryPts, detailPts);
-      // Subtle docking centerline approach marker
-      pushSeg(detailPts, -0.4, 0, 6.2, 0, 0.4, 0.4);
-      break;
-    }
+      // Forward panoramic bay control glass prow (+X)
+      const prowX = bodyCx + bodyHalfX;
+      for (const gz of [-4.2, -2.1, 0, 2.1, 4.2]) {
+        pushSeg(detailPts, prowX + 0.02, gz, prowX + 0.02, gz, 0.8, 3.8);
+      }
+      pushSeg(primaryPts, prowX + 0.02, -5.2, prowX + 0.02, 5.2, 3.8, 3.8);
+      pushSeg(primaryPts, prowX + 0.02, -5.2, prowX + 0.02, 5.2, 0.8, 0.8);
 
-    case 'BPO_SolarPanelBlock':
-    case 'BPO_SolarPanelBlock_02':
-    case 'BPO_SolarPanelBlock_03': {
-      // Slim central structural spine between -X & +X connectors + cantilevered thin photovoltaic wings with real air gaps!
-      const tier = def.id.endsWith('03') ? 3 : def.id.endsWith('02') ? 2 : 1;
-      roofHeight = tier === 3 ? 5.6 : tier === 2 ? 4.4 : 2.6;
-      const wingY = roofHeight * 0.68;
-      // Slim central spine along X connecting W (-hw) and E (+hw)
-      addChamferPrism(extrudeGroup, hw - 0.15, 1.25, 0, 1.8, 0.25, fillBase, primaryPts, detailPts);
-
-      // Cantilevered photovoltaic wings on North (-Z) and South (+Z) with crisp air gap around the spine
-      const wingCountX = tier === 3 ? 2 : 1;
-      const wingSpanX = (lw - 2.6) / wingCountX - 0.9;
-      const wingDepthZ = tier >= 2 ? hd * 0.68 : hd * 0.56;
-      const wingOffsetZ = 1.85 + wingDepthZ / 2;
-
-      for (let ix = 0; ix < wingCountX; ix++) {
-        const wx = wingCountX === 1 ? 0 : -hw / 2 + ix * hw;
+      // Sloped dorsal drone launch hatches (Mk.1: 2 bays at x=0; Mk.2: 4 bays in 2x2 at x=-0.2 & +5.8, z=±4.15)
+      const hatchXs = mk2 ? [-0.2, 5.8] : [0.2];
+      for (const hxPos of hatchXs) {
         for (const sz of [-1, 1]) {
-          // Support strut from central spine to wing
-          pushSeg(detailPts, wx, sz * 1.25, wx, sz * (1.85 + 0.1), 1.3, wingY);
-          // Thin photovoltaic wing slab
-          addRectBlock(extrudeGroup, wx, sz * wingOffsetZ, wingSpanX / 2, wingDepthZ / 2, wingY - 0.14, wingY + 0.14, fillUpper, primaryPts, detailPts);
-          // Crisp cell sub-grid lines
-          const cols = tier === 3 ? 4 : 3;
-          for (let c = 1; c < cols; c++) {
-            const lx = wx - wingSpanX / 2 + (wingSpanX * c) / cols;
-            pushSeg(detailPts, lx, sz * (wingOffsetZ - wingDepthZ / 2), lx, sz * (wingOffsetZ + wingDepthZ / 2), wingY + 0.16);
-          }
-          pushSeg(detailPts, wx - wingSpanX / 2, sz * wingOffsetZ, wx + wingSpanX / 2, sz * wingOffsetZ, wingY + 0.16);
+          addChamferPrism(extrudeGroup, 1.45, 1.4, 6.5, roofHeight, 0.22, fillBase, primaryPts, detailPts, {
+            cx: hxPos,
+            cz: sz * 4.15,
+          });
+          pushChevron(detailPts, hxPos, sz * 4.15, 1.45, roofHeight + 0.03);
         }
       }
       break;
     }
 
+    case 'BPO_Dock': {
+      // Binary real SM2_Dock_01_Ext: 16.0x11.16x7.21m (Z in [-2.68..+4.52]): streamlined 16m docking tunnel + forward airlock ring + guide fins
+      roofHeight = 4.65;
+      // Underside hull keel (-2.6..0)
+      addChamferPrism(extrudeGroup, 7.6, 4.4, -2.6, 0, 1.1, fillBase, primaryPts, detailPts);
+      // Streamlined main docking corridor spanning full 16m length (-7.9..+7.3)
+      addChamferPrism(extrudeGroup, 7.6, 5.35, 0, 3.6, 1.35, fillBase, primaryPts, detailPts, { cx: -0.25 });
+      // Upper ribbed corridor canopy (3.6..4.65)
+      addChamferPrism(extrudeGroup, 6.2, 3.5, 3.6, roofHeight, 0.9, fillUpper, primaryPts, detailPts, { cx: -0.6 });
+      // Structural hull ribs along corridor
+      for (const rx of [-4.5, -1.5, 1.5, 4.2]) {
+        pushSeg(detailPts, rx, -5.36, rx, -3.5, 3.6, roofHeight);
+        pushSeg(detailPts, rx, 5.36, rx, 3.5, 3.6, roofHeight);
+      }
+      // Forward circular docking airlock collar + twin approach guide clamps (+X)
+      addPolyDrum(extrudeGroup, 2.25, 2.05, 12, 0.6, 3.9, 0, fillUpper, primaryPts, detailPts, {
+        cx: 6.5,
+        ribCount: 6,
+      });
+      addRectBlock(extrudeGroup, 6.9, -3.3, 1.0, 0.45, 0.8, 3.2, fillUpper, primaryPts, detailPts);
+      addRectBlock(extrudeGroup, 6.9, 3.3, 1.0, 0.45, 0.8, 3.2, fillUpper, primaryPts, detailPts);
+      break;
+    }
+
+    case 'BPO_SolarPanelBlock': {
+      // Binary real SM2_SolarPanels_02 (Mk.1, 1x1x1): 16.0 x 14.69 x 3.85m — LOW HORIZONTAL twin photovoltaic wings!
+      roofHeight = 3.15;
+      const wingY = 1.95;
+      // Central X structural truss spine connecting W (-8) and E (+8)
+      addChamferPrism(extrudeGroup, hw - 0.12, 1.25, -0.65, 2.25, 0.25, fillBase, primaryPts, detailPts);
+      // Dorsal spine ridge
+      addRectBlock(extrudeGroup, 0, 0, hw - 0.6, 0.55, 2.25, roofHeight, fillUpper, primaryPts, detailPts);
+
+      // Wide horizontal cantilevered photovoltaic wings on -Z and +Z (total lateral span 14.5m!)
+      const wingSpanX = lw - 1.9;
+      const wingDepthZ = 5.35;
+      const wingOffsetZ = 1.9 + wingDepthZ / 2;
+      for (const sz of [-1, 1]) {
+        // Outrigger struts connecting central spine to horizontal wing
+        for (const sx of [-4.2, 0, 4.2]) {
+          pushSeg(detailPts, sx, sz * 1.25, sx, sz * 1.92, 1.35, wingY);
+        }
+        // Thin horizontal photovoltaic wing slab
+        addRectBlock(extrudeGroup, 0, sz * wingOffsetZ, wingSpanX / 2, wingDepthZ / 2, wingY - 0.16, wingY + 0.16, fillUpper, primaryPts, detailPts);
+        // Fine PV cell sub-grid
+        for (let c = 1; c < 4; c++) {
+          const lx = -wingSpanX / 2 + (wingSpanX * c) / 4;
+          pushSeg(detailPts, lx, sz * (wingOffsetZ - wingDepthZ / 2), lx, sz * (wingOffsetZ + wingDepthZ / 2), wingY + 0.18);
+        }
+        pushSeg(detailPts, -wingSpanX / 2, sz * wingOffsetZ, wingSpanX / 2, sz * wingOffsetZ, wingY + 0.18);
+      }
+      break;
+    }
+
+    case 'BPO_SolarPanelBlock_02': {
+      // Binary real SM2_SolarPanels_01 (Mk.2, 1x1x2): 16.0 x 6.71 x 23.93m (Z in [-10.7..+13.2])!
+      // RAZOR-THIN, SKY-PIERCING VERTICAL GIANT SAIL cutting straight through top AND bottom!
+      const sailTopY = 13.2;
+      const sailBotY = -10.6;
+      roofHeight = sailTopY + 0.25;
+
+      // Slim central X structural spine (-8..+8)
+      addChamferPrism(extrudeGroup, hw - 0.12, 1.15, -0.7, 2.2, 0.25, fillBase, primaryPts, detailPts);
+      // Narrow ±3.25m lateral stabilizer outriggers (real width 6.71m) with tension cables up & down to the vertical mast!
+      addChamferPrism(extrudeGroup, 1.15, 3.25, 0.05, 1.45, 0.3, fillBase, primaryPts, detailPts);
+      for (const sz of [-1, 1]) {
+        pushSeg(detailPts, 0, sz * 3.15, 0, sz * 0.65, 1.45, 7.8);
+        pushSeg(detailPts, 0, sz * 3.15, 0, sz * 0.65, 0.05, -5.8);
+        pushSeg(detailPts, -0.7, sz * 3.0, -5.8, sz * 0.24, 1.45, 5.2);
+        pushSeg(detailPts, 0.7, sz * 3.0, 5.8, sz * 0.24, 1.45, 5.2);
+      }
+
+      // Central reinforced vertical keel mast piercing from -10.6m to +13.2m
+      addRectBlock(extrudeGroup, 0, 0, 0.62, 0.68, sailBotY, sailTopY, fillBase, primaryPts, detailPts, true);
+
+      // Twin razor-thin (0.44m thick!) upper & lower vertical photovoltaic sail blades flanking the mast
+      addVerticalSailBlade(extrudeGroup, -7.45, -0.72, 0, 0.22, 2.25, sailTopY, fillUpper, primaryPts, detailPts, 3, 5);
+      addVerticalSailBlade(extrudeGroup, 0.72, 7.45, 0, 0.22, 2.25, sailTopY, fillUpper, primaryPts, detailPts, 3, 5);
+      addVerticalSailBlade(extrudeGroup, -7.45, -0.72, 0, 0.22, sailBotY, -0.75, fillUpper, primaryPts, detailPts, 3, 4);
+      addVerticalSailBlade(extrudeGroup, 0.72, 7.45, 0, 0.22, sailBotY, -0.75, fillUpper, primaryPts, detailPts, 3, 4);
+      break;
+    }
+
+    case 'BPO_SolarPanelBlock_03': {
+      // Binary real SM2_SolarPanels_03 (Mk.3, 2x1x2): 32.0 x 6.71 x 37.74m (Z in [-17.6..+20.1])!
+      // COLOSSAL 32m-WIDE, 37.7m-TALL DUAL-BAY RAZOR-THIN VERTICAL GIANT SAIL!
+      const sailTopY = 20.0;
+      const sailBotY = -17.5;
+      roofHeight = sailTopY + 0.35;
+
+      // Full 32m X structural spine (-16..+16)
+      addChamferPrism(extrudeGroup, hw - 0.12, 1.25, -0.8, 2.4, 0.28, fillBase, primaryPts, detailPts);
+
+      // Twin pairs of narrow ±3.3m lateral stabilizer outriggers at x = -8 and x = +8 (real width 6.71m)
+      for (const ox of [-8.0, 8.0]) {
+        addChamferPrism(extrudeGroup, 1.25, 3.3, 0.0, 1.6, 0.32, fillBase, primaryPts, detailPts, { cx: ox });
+        for (const sz of [-1, 1]) {
+          pushSeg(detailPts, ox, sz * 3.2, ox, sz * 0.26, 1.6, 12.2);
+          pushSeg(detailPts, ox, sz * 3.2, ox, sz * 0.26, 0.0, -9.8);
+          pushSeg(detailPts, ox, sz * 3.2, 0, sz * 0.72, 1.6, 14.5);
+          pushSeg(detailPts, ox, sz * 3.2, 0, sz * 0.72, 0.0, -12.0);
+        }
+      }
+
+      // Three towering vertical keel masts (center + twin outer frame towers) from -17.5m to +20.0m
+      for (const mx of [-15.1, 0, 15.1]) {
+        const mHx = mx === 0 ? 0.72 : 0.52;
+        const mHz = mx === 0 ? 0.76 : 0.62;
+        addRectBlock(extrudeGroup, mx, 0, mHx, mHz, sailBotY, sailTopY, fillBase, primaryPts, detailPts, true);
+      }
+
+      // Dual-bay colossal razor-thin (0.48m thick!) upper & lower vertical sail blades!
+      addVerticalSailBlade(extrudeGroup, -14.48, -0.82, 0, 0.24, 2.45, sailTopY, fillUpper, primaryPts, detailPts, 5, 7);
+      addVerticalSailBlade(extrudeGroup, 0.82, 14.48, 0, 0.24, 2.45, sailTopY, fillUpper, primaryPts, detailPts, 5, 7);
+      addVerticalSailBlade(extrudeGroup, -14.48, -0.82, 0, 0.24, sailBotY, -0.85, fillUpper, primaryPts, detailPts, 5, 6);
+      addVerticalSailBlade(extrudeGroup, 0.82, 14.48, 0, 0.24, sailBotY, -0.85, fillUpper, primaryPts, detailPts, 5, 6);
+      break;
+    }
+
     case 'BPO_DeepSpaceObservatory': {
-      // Grand 2x2 circular geodesic observatory ring anchored to -X XLarge neck with open void at corners!
-      roofHeight = 7.4;
-      addWestNeck(4.5, 6.2, 3.2);
-      addPolyDrum(extrudeGroup, minH * 0.72, minH * 0.66, 16, 0, 2.4, 0, fillBase, primaryPts, detailPts, {
-        cx: 1.0,
+      // Binary real SM2_DeepSpaceObservatory_Ext: 33.5 x 32.02 x 26.45m (Z in [-3.6..+22.8]), plus 2-story 14.5m tall panoramic -X glass gallery!
+      roofHeight = 22.8;
+      // 2-story panoramic observation gallery wall along -X (X in [-15.8..-10.1], Z in [-14.8..+14.8], Y in [-0.2..+14.4])
+      addChamferPrism(extrudeGroup, 2.85, 14.9, -0.2, 14.4, 0.8, fillBase, primaryPts, detailPts, {
+        cx: -13.0,
+        verticalToPrimary: true,
+      });
+      // Vertical panoramic glass mullions along the -X interior-facing gallery facade (x = -10.1)
+      for (let gz = -12; gz <= 12; gz += 4) {
+        pushSeg(detailPts, -10.1, gz, -10.1, gz, 0.6, 13.8);
+      }
+      pushSeg(primaryPts, -10.1, -14.4, -10.1, 14.4, 7.2, 7.2);
+
+      // Underside counterweight stabilizer keel (y in [-3.5..0])
+      addPolyDrum(extrudeGroup, 8.8, 11.4, 16, -3.5, 0, 0, fillBase, primaryPts, detailPts, {
+        cx: 1.8,
         ribCount: 8,
       });
-      addPolyDrum(extrudeGroup, minH * 0.64, minH * 0.56, 16, 2.4, 5.4, 0, fillUpper, primaryPts, detailPts, {
-        cx: 1.0,
+      // Massive lower observatory drum (0..7.4)
+      addPolyDrum(extrudeGroup, 13.4, 12.6, 16, 0, 7.4, 0, fillBase, primaryPts, detailPts, {
+        cx: 1.8,
         ribCount: 8,
       });
-      addPolyDrum(extrudeGroup, minH * 0.56, minH * 0.22, 16, 5.4, roofHeight, 0, fillBase, primaryPts, detailPts, {
-        cx: 1.0,
+      // Elevated rotating optical turret drum (7.4..15.2)
+      addPolyDrum(extrudeGroup, 12.2, 11.0, 16, 7.4, 15.2, 0, fillUpper, primaryPts, detailPts, {
+        cx: 1.8,
         ribCount: 8,
       });
-      // Prominent telescope slit & protruding lens barrel (+X)
-      addRectBlock(extrudeGroup, 6.8, 0, 3.2, 1.3, 4.4, 6.2, fillUpper, primaryPts, detailPts);
+      // Towering geodesic observatory dome crown (15.2..22.8)
+      addPolyDrum(extrudeGroup, 11.0, 4.2, 16, 15.2, roofHeight, 0, fillBase, primaryPts, detailPts, {
+        cx: 1.8,
+        ribCount: 8,
+      });
+      // Prominent deep-space optical telescope barrel protruding outward from the dome slit (+X)
+      addRectBlock(extrudeGroup, 10.6, 0, 4.8, 1.75, 14.4, 18.6, fillUpper, primaryPts, detailPts, true);
+      pushSeg(primaryPts, 5.8, -1.75, 15.4, -1.75, 16.5, 19.6);
+      pushSeg(primaryPts, 5.8, 1.75, 15.4, 1.75, 16.5, 19.6);
       break;
     }
 
     case 'BPO_ShipyardCore':
     case 'BPO_ShipyardCore_02':
     case 'BPO_ShipyardSide': {
-      // Open skeletal orbital drydock gantry frames (true real bounds: ShipyardSide = 9x16m offset -X, Core2 = 24x32m!)
+      // Binary real Shipyard heights = 16.0m (Z in [-4.85..+11.15]): tall vertical drydock bulkhead + front glass + BOTH upper gantries & lower keel cradles!
       const isBig = def.id === 'BPO_ShipyardCore_02';
       const isSide = def.id === 'BPO_ShipyardSide';
-      roofHeight = isBig ? 6.2 : 4.8;
-      const spineX = isSide ? -hw + 2.8 : -hw + 2.6;
-      const spineHalfX = isSide ? 2.4 : 2.2;
-      // Structural spine along -X connector side
-      addChamferPrism(extrudeGroup, spineHalfX, hd - 0.6, 0, roofHeight, 0.5, fillBase, primaryPts, detailPts, {
+      const topY = 11.15;
+      const botY = -4.65;
+      roofHeight = topY + 0.25;
+
+      const spineHalfX = isSide ? 2.4 : 2.5;
+      const spineX = -hw + spineHalfX + 0.2;
+      // Full 16m-tall drydock bulkhead spine along -X
+      addChamferPrism(extrudeGroup, spineHalfX, hd - 0.45, botY, topY, 0.55, fillBase, primaryPts, detailPts, {
         cx: spineX,
+        verticalToPrimary: true,
       });
-      // Slender cantilevered overhead gantry arms reaching out over open drydock build space (+X)
-      const armReach = isSide ? 4.8 : isBig ? 17.5 : 10.2;
+      // Panoramic drydock control window mullions along +X face of the bulkhead
+      const glassX = spineX + spineHalfX + 0.04;
+      const mullionStep = isBig ? 4.5 : 3.4;
+      for (let gz = -hd + 3.0; gz <= hd - 3.0; gz += mullionStep) {
+        pushSeg(detailPts, glassX, gz, glassX, gz, 0.4, 6.2);
+      }
+      pushSeg(primaryPts, glassX, -hd + 1.2, glassX, hd - 1.2, 6.2, 6.2);
+      pushSeg(primaryPts, glassX, -hd + 1.2, glassX, hd - 1.2, 0.4, 0.4);
+
+      // Upper overhead gantry arms + symmetric lower keel cradle arms framing the open ship-build space (+X)
+      const armReach = isSide ? 4.4 : isBig ? 18.2 : 10.6;
       const armCx = spineX + spineHalfX + armReach / 2;
-      const armHalfZ = isBig ? 1.4 : 1.0;
+      const armHalfZ = isBig ? 1.45 : 1.05;
       const zOffsets = isBig ? [-hd + 2.4, 0, hd - 2.4] : [-hd + 2.0, hd - 2.0];
+      const tipX = spineX + spineHalfX + armReach - 0.65;
+
       for (const oz of zOffsets) {
-        addRectBlock(extrudeGroup, armCx, oz, armReach / 2, armHalfZ, roofHeight - 1.15, roofHeight, fillUpper, primaryPts, detailPts);
-        // Vertical end-stanchion tick
-        addRectBlock(extrudeGroup, spineX + spineHalfX + armReach - 0.6, oz, 0.6, armHalfZ * 0.85, 0, roofHeight - 1.15, fillBase, primaryPts, detailPts);
+        // Upper overhead gantry beam (9.4..11.15)
+        addRectBlock(extrudeGroup, armCx, oz, armReach / 2, armHalfZ, topY - 1.75, topY, fillUpper, primaryPts, detailPts);
+        // Lower keel cradle beam (-4.65..-2.95)
+        addRectBlock(extrudeGroup, armCx, oz, armReach / 2, armHalfZ, botY, botY + 1.7, fillUpper, primaryPts, detailPts);
+        // Outer vertical calibration end-stanchion connecting upper & lower gantry tips
+        addRectBlock(extrudeGroup, tipX, oz, 0.65, armHalfZ * 0.85, botY + 1.7, topY - 1.75, fillBase, primaryPts, detailPts, true);
+        // Diagonal structural truss gussets at the root
+        pushSeg(detailPts, spineX + spineHalfX, oz, spineX + spineHalfX + armReach * 0.45, oz, topY - 4.2, topY - 1.75);
+        pushSeg(detailPts, spineX + spineHalfX, oz, spineX + spineHalfX + armReach * 0.45, oz, botY + 4.1, botY + 1.7);
       }
       break;
     }
