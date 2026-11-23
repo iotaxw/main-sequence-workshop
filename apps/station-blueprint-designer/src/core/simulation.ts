@@ -16,6 +16,7 @@ export type SimulationIssueSeverity = 'error' | 'warn';
 
 export type SimulationIssueCode =
   | 'external-input-needed'
+  | 'blueprint-output'
   | 'power-deficit'
   | 'orphan-belt'
   | 'dead-end-belt'
@@ -99,15 +100,29 @@ export interface PowerBreakdown {
   facilityPeakMW: number;
 }
 
+export interface ExternalOutputSpot {
+  id: string;
+  floor: number;
+  x: number;
+  y: number;
+  buildingId: string;
+  sinkKind: 'doorway' | 'elevator' | 'wall-stub' | 'open-belt';
+  items: Array<{ itemId: string; nameZh: string; ratePerSec: number }>;
+  totalRatePerSec: number;
+  capacityPerSec: number;
+}
+
 export interface SimulationReport {
   passed: boolean;
   errorCount: number;
   warnCount: number;
-  /** Count of structural/operational warnings excluding informational external-input-needed reminders */
+  /** Count of operational warnings excluding clean head/tail I/O endpoint markers */
   anomalyWarnCount: number;
   issues: SimulationIssue[];
-  /** Every spot where external raw material must be fed in (also surfaced as yellow warnings!) */
+  /** Every head spot where external raw material enters (yellow warning) */
   externalInputs: ExternalInputSpot[];
+  /** Every tail spot where blueprint output exits (yellow warning) */
+  externalOutputs: ExternalOutputSpot[];
   /** Rated peak power consumption (MW) — backward-compatible alias for power.peakDrawMW */
   totalPowerMW: number;
   /** Full binary-verified power generation & consumption breakdown */
@@ -323,9 +338,12 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   };
 
-  // Track external input sources (with their origin kind) and boundary exits
+  // Track external input sources (首) and output sinks (尾) with their exact boundary kind
   const entrySourceKind = new Map<string, ExternalInputSpot['sourceKind']>();
+  const exitSinkKind = new Map<string, ExternalOutputSpot['sinkKind']>();
   const boundaryExits = new Set<string>();
+  const openTailCandidates = new Set<string>();
+  const frontFaultIds = new Set<string>();
 
   const findEnabledMachinePortAccepting = (
     floor: number,
@@ -404,36 +422,54 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       if (machHit) {
         addEdge(b.id, machHit.building.id, speed, undefined, machHit.portIndex);
       } else if (disabledHit) {
+        frontFaultIds.add(b.id);
         pushIssue(
           'error',
-          'dead-end-belt',
+          'port-mismatch',
           `传送带 (${b.x},${b.y}) 指向了已禁用的机器/容器端口`,
           b.floor,
           b.x,
           b.y,
           b.id
         );
-      } else if (
-        (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, fx, fy, b.floor)) ||
-        elevatorPorts.has(cellKey(b.floor, fx, fy))
-      ) {
+      } else if (elevatorPorts.has(cellKey(b.floor, fx, fy))) {
+        exitSinkKind.set(b.id, 'elevator');
+        boundaryExits.add(b.id);
+      } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, fx, fy, b.floor)) {
+        exitSinkKind.set(b.id, 'doorway');
         boundaryExits.add(b.id);
       } else {
         const nb = cellMap.get(cellKey(b.floor, fx, fy));
         if (!nb) {
-          pushIssue('error', 'dead-end-belt', `传送带 (${b.x},${b.y}) 末端悬空未接入下游`, b.floor, b.x, b.y, b.id);
+          if (isBoundaryFloorMissing(doc, fx, fy, b.floor)) {
+            frontFaultIds.add(b.id);
+            pushIssue(
+              'error',
+              'dead-end-belt',
+              `传送带 (${b.x},${b.y}) 直撞实心舱壁（前方无舱门也无地板）`,
+              b.floor,
+              b.x,
+              b.y,
+              b.id
+            );
+          } else {
+            // Open buildable floor ahead: will become a YELLOW tail (尾) if part of a line, or RED isolated scrap if alone!
+            openTailCandidates.add(b.id);
+          }
         } else {
           const nbDef = defById.get(nb.id)!;
           const acc = canLogisticsAcceptFrom(nb, nbDef, b.rotation, fx, fy);
           if (acc.ok) {
             addEdge(b.id, nb.id, Math.min(speed, getTierSpeed(nbDef.tier)), undefined, acc.inPortIndex);
           } else if (acc.headOn) {
+            frontFaultIds.add(b.id);
             pushIssue('error', 'head-on-belt', `传送带 (${b.x},${b.y}) 与 (${fx},${fy}) 正面对撞`, b.floor, b.x, b.y, b.id);
           } else {
+            frontFaultIds.add(b.id);
             pushIssue(
               'error',
-              'dead-end-belt',
-              `传送带 (${b.x},${b.y}) 朝向与下游 ${nbDef.nameZh} (${fx},${fy}) 不匹配`,
+              'port-mismatch',
+              `传送带 (${b.x},${b.y}) 朝向或接口与下游 ${nbDef.nameZh} (${fx},${fy}) 不匹配`,
               b.floor,
               b.x,
               b.y,
@@ -454,19 +490,21 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
             (isBoundaryFloorMissing(doc, fx, fy, b.floor) || isBoundaryFloorMissing(doc, fx + dx, fy + dy, b.floor))) ||
           (b.undergroundMode === 'out' &&
             (isBoundaryFloorMissing(doc, bx, by, b.floor) || isBoundaryFloorMissing(doc, bx - dx, by - dy, b.floor)));
-        pushIssue(
-          isWallStub ? 'warn' : 'error',
-          'unpaired-underground',
-          isWallStub ? `穿墙预留地下带 (${b.x},${b.y}) 等待跨舱对接` : `地下带 (${b.x},${b.y}) 未找到配对出/入口`,
-          b.floor,
-          b.x,
-          b.y,
-          b.id
-        );
         if (isWallStub && b.undergroundMode === 'in') {
+          exitSinkKind.set(b.id, 'wall-stub');
           boundaryExits.add(b.id);
         } else if (isWallStub && b.undergroundMode === 'out') {
           entrySourceKind.set(b.id, 'wall-stub');
+        } else {
+          pushIssue(
+            'error',
+            'unpaired-underground',
+            `地下带 (${b.x},${b.y}) 未在 8 格射程内找到配对出/入口`,
+            b.floor,
+            b.x,
+            b.y,
+            b.id
+          );
         }
       }
 
@@ -481,12 +519,21 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           addEdge(b.id, machHit.building.id, speed, undefined, machHit.portIndex);
         } else if (disabledHit) {
           pushIssue('error', 'port-mismatch', `地下带出口 (${b.x},${b.y}) 指向已禁用端口`, b.floor, b.x, b.y, b.id);
-        } else if (isBoundaryFloorMissing(doc, fx, fy, b.floor) || elevatorPorts.has(cellKey(b.floor, fx, fy))) {
+        } else if (elevatorPorts.has(cellKey(b.floor, fx, fy))) {
+          exitSinkKind.set(b.id, 'elevator');
+          boundaryExits.add(b.id);
+        } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, fx, fy, b.floor)) {
+          exitSinkKind.set(b.id, 'doorway');
           boundaryExits.add(b.id);
         } else {
           const nb = cellMap.get(cellKey(b.floor, fx, fy));
           if (!nb) {
-            pushIssue('error', 'dead-end-belt', `地下带出口 (${b.x},${b.y}) 悬空未连接`, b.floor, b.x, b.y, b.id);
+            if (isBoundaryFloorMissing(doc, fx, fy, b.floor)) {
+              pushIssue('error', 'dead-end-belt', `地下带出口 (${b.x},${b.y}) 直撞实心舱壁`, b.floor, b.x, b.y, b.id);
+            } else if (ugPairedIds.has(b.id)) {
+              exitSinkKind.set(b.id, 'open-belt');
+              boundaryExits.add(b.id);
+            }
           } else {
             const nbDef = defById.get(nb.id)!;
             const acc = canLogisticsAcceptFrom(nb, nbDef, b.rotation, fx, fy);
@@ -641,10 +688,19 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     return hits;
   };
 
-  // 3. Classify unfed nodes:
-  //    - Filtered Containers with 0 incoming belts & >=1 outgoing belt -> general-purpose raw-input buffer source ('source-container')!
-  //    - Interior unfed belts that ACTUALLY feed a configured downstream recipe machine -> general-purpose open feed-head ('open-belt', yellow warning so players can trace mid-floor drafts!)
-  //    - Isolated / dead-end / non-consumer unfed belts or splitters -> RED 'orphan-belt' error!
+  // 3. Unified Blueprint Workbench Endpoint & Scrap Classification ("首尾标黄，中段故障标红"):
+  //    - Any belt ending on open buildable floor WITH upstream (or at doorway/elevator) -> YELLOW tail ('open-belt' exit)
+  //    - Any belt/splitter/balancer/filtered-container WITHOUT upstream that feeds downstream -> YELLOW head (raw-input entry)
+  //    - Completely isolated 1-tile belt with NEITHER upstream NOR downstream (and no doorway/front collision) -> RED 'orphan-belt'
+  for (const bid of openTailCandidates) {
+    const ins = inEdges.get(bid);
+    const hasIn = Boolean(ins && ins.length > 0);
+    if (hasIn || entrySourceKind.has(bid)) {
+      exitSinkKind.set(bid, 'open-belt');
+      boundaryExits.add(bid);
+    }
+  }
+
   for (const b of doc.buildings) {
     const def = defById.get(b.id);
     if (!def) continue;
@@ -652,6 +708,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     const hasIn = Boolean(ins && ins.length > 0);
     const outs = outEdges.get(b.id);
     const hasOut = Boolean(outs && outs.length > 0);
+    const hasExit = boundaryExits.has(b.id);
 
     if (def.kind === 'container' && !hasIn && hasOut && b.filterItems && b.filterItems.length > 0) {
       entrySourceKind.set(b.id, 'source-container');
@@ -659,15 +716,17 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
 
     if (def.kind === 'belt' && !hasIn && !entrySourceKind.has(b.id)) {
-      const hits = hasOut ? traceToCrafters(b.id, true) : [];
-      const feedsConfiguredMachine = hits.some((h) => Boolean(buildingById.get(h.crafterId)?.recipeId));
-      if (feedsConfiguredMachine) {
+      if (hasOut || hasExit) {
         entrySourceKind.set(b.id, 'open-belt');
-      } else {
-        pushIssue('error', 'orphan-belt', `悬空/无源传送带 (${b.x},${b.y})：没有任何上游供料`, b.floor, b.x, b.y, b.id);
+      } else if (!frontFaultIds.has(b.id)) {
+        pushIssue('error', 'orphan-belt', `孤立废带 (${b.x},${b.y})：既无上游也无下游连接`, b.floor, b.x, b.y, b.id);
       }
-    } else if (def.kind === 'splitter' && !hasIn) {
-      pushIssue('error', 'orphan-belt', `无源分流器 (${b.x},${b.y})：输入口没有任何上游供料`, b.floor, b.x, b.y, b.id);
+    } else if ((def.kind === 'splitter' || def.kind === 'balancer') && !hasIn && !entrySourceKind.has(b.id)) {
+      if (hasOut || hasExit) {
+        entrySourceKind.set(b.id, 'open-belt');
+      } else if (def.kind === 'balancer') {
+        pushIssue('error', 'orphan-belt', `孤立平衡器 (${b.x},${b.y})：既无上游也无下游连接`, b.floor, b.x, b.y, b.id);
+      }
     }
   }
 
@@ -1423,17 +1482,78 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         eb.y,
         eb.id
       );
+      if (bottlenecked) {
+        pushIssue(
+          'error',
+          'belt-overload',
+          `入口带宽超载 (${eb.x},${eb.y})：下游需「${nameZh}」${reqRate.toFixed(2)}/s > 上限 ${cap.toFixed(1)}/s`,
+          eb.floor,
+          eb.x,
+          eb.y,
+          eb.id
+        );
+      }
+    } else {
+      pushIssue(
+        'warn',
+        'external-input-needed',
+        `${SOURCE_KIND_ZH[sourceKind]} (${eb.x},${eb.y}) 待接入原料（下游未指定配方）`,
+        eb.floor,
+        eb.x,
+        eb.y,
+        eb.id
+      );
     }
   }
 
-  // 8. Inspect converged flow for mixed-item belts, overload, and net outputs
+  // 8. Inspect converged flow for mixed-item belts, overload, container filter mismatches, and yellow output tails (尾)
+  const SINK_KIND_ZH: Record<ExternalOutputSpot['sinkKind'], string> = {
+    doorway: '舱门尾端',
+    elevator: '电梯尾端',
+    'wall-stub': '穿墙尾端',
+    'open-belt': '敞口尾端',
+  };
+  const externalOutputs: ExternalOutputSpot[] = [];
   const cellFlows: Record<string, CellFlowInfo> = {};
   const netInputTotals = new Map<string, number>();
   const netOutputTotals = new Map<string, number>();
 
+  // Detect downgrade bottlenecks where a high-tier belt/underground pushes > downstream tier capacity
+  const chokedArrivalByNode = new Map<string, number>();
+  for (const b of doc.buildings) {
+    const def = defById.get(b.id);
+    if (!def || (def.kind !== 'belt' && def.kind !== 'underground')) continue;
+    const outs = outEdges.get(b.id) ?? [];
+    if (outs.length !== 1) continue;
+    const oe = outs[0];
+    const arrival = sumFlow(getNodeInFlow(b.id));
+    if (arrival > oe.capacity + 1e-3) {
+      chokedArrivalByNode.set(oe.toId, Math.max(chokedArrivalByNode.get(oe.toId) ?? 0, arrival));
+    }
+  }
+
   for (const b of doc.buildings) {
     const def = defById.get(b.id);
     if (!def) continue;
+
+    if (def.kind === 'container' && b.filterItems && b.filterItems.length > 0) {
+      const allowed = new Set(b.filterItems);
+      const inFlow = getNodeInFlow(b.id);
+      for (const [it, r] of inFlow.entries()) {
+        if (r > 1e-4 && !allowed.has(it)) {
+          pushIssue(
+            'error',
+            'port-mismatch',
+            `储物箱 (${b.x},${b.y}) 过滤冲突：输入了非白名单物品「${getItemNameZh(it)}」`,
+            b.floor,
+            b.x,
+            b.y,
+            b.id
+          );
+        }
+      }
+      continue;
+    }
 
     if (def.kind === 'belt' || def.kind === 'underground' || def.kind === 'splitter' || def.kind === 'balancer') {
       const laneSpeed = getTierSpeed(def.tier);
@@ -1450,7 +1570,8 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           nonZeroItems.push(it);
         }
       }
-      const overloaded = total > cap + 1e-3;
+      const effectiveArrival = Math.max(total, chokedArrivalByNode.get(b.id) ?? 0);
+      const overloaded = effectiveArrival > cap + 1e-3;
       const [w, d] = getBuildingSizeCells(def, b.rotation);
       for (let dx = 0; dx < w; dx++) {
         for (let dy = 0; dy < d; dy++) {
@@ -1476,7 +1597,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         );
       } else if (nonZeroItems.length > 1 && def.kind === 'splitter' && !hasPortFilter) {
         pushIssue(
-          'warn',
+          'error',
           'mixed-item-belt',
           `分流器 (${b.x},${b.y}) 输入混料但未配置过滤：${nonZeroItems.map(getItemNameZh).join(' + ')}`,
           b.floor,
@@ -1486,11 +1607,11 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         );
       }
 
-      if (overloaded && def.kind === 'belt') {
+      if (overloaded && (def.kind === 'belt' || def.kind === 'underground')) {
         pushIssue(
-          'warn',
+          'error',
           'belt-overload',
-          `传送带 (${b.x},${b.y}) 超载：合流 ${total.toFixed(2)}/s > 上限 ${cap.toFixed(1)}/s`,
+          `${def.nameZh} (${b.x},${b.y}) 超载：来料 ${effectiveArrival.toFixed(2)}/s > 上限 ${cap.toFixed(1)}/s`,
           b.floor,
           b.x,
           b.y,
@@ -1499,8 +1620,37 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       }
 
       if (boundaryExits.has(b.id)) {
+        const outItems: ExternalOutputSpot['items'] = [];
         for (const [it, r] of flow.entries()) {
-          if (r > 1e-4) netOutputTotals.set(it, (netOutputTotals.get(it) ?? 0) + Math.min(r, cap));
+          if (r > 1e-4) {
+            const clamped = Math.min(r, cap);
+            netOutputTotals.set(it, (netOutputTotals.get(it) ?? 0) + clamped);
+            outItems.push({
+              itemId: it,
+              nameZh: getItemNameZh(it),
+              ratePerSec: Math.round(clamped * 1000) / 1000,
+            });
+          }
+        }
+        const sinkKind = exitSinkKind.get(b.id);
+        if (sinkKind) {
+          const outSum = outItems.reduce((s, x) => s + x.ratePerSec, 0);
+          externalOutputs.push({
+            id: `out_${b.floor}_${b.x}_${b.y}`,
+            floor: b.floor,
+            x: b.x,
+            y: b.y,
+            buildingId: b.id,
+            sinkKind,
+            items: outItems,
+            totalRatePerSec: Math.round(outSum * 1000) / 1000,
+            capacityPerSec: cap,
+          });
+          const msg =
+            outItems.length > 0
+              ? `${SINK_KIND_ZH[sinkKind]} (${b.x},${b.y}) 输出 ${outItems.map((x) => `「${x.nameZh}」${x.ratePerSec.toFixed(2)}/s`).join(' + ')}`
+              : `${SINK_KIND_ZH[sinkKind]} (${b.x},${b.y}) 待接下游（暂无流率）`;
+          pushIssue('warn', 'blueprint-output', msg, b.floor, b.x, b.y, b.id);
         }
       }
     }
@@ -1616,7 +1766,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     const outs = outEdges.get(b.id) ?? [];
     if (rec.outputs.length > 0 && outs.length === 0) {
       pushIssue(
-        'warn',
+        'error',
         'machine-blocked-output',
         `${def.nameZh} (${b.x},${b.y}) 没有任何输出传送带接入（稳态效率 0%）`,
         b.floor,
@@ -1715,9 +1865,21 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     };
   });
 
+  // Sort issues so genuine RED errors always come first, then operational warnings, then YELLOW heads (首) & tails (尾)
+  const issuePriority = (i: SimulationIssue): number => {
+    if (i.severity === 'error') return 0;
+    if (i.code === 'power-deficit') return 1;
+    if (i.code === 'external-input-needed') return 2;
+    if (i.code === 'blueprint-output') return 3;
+    return 1;
+  };
+  issues.sort((a, b) => issuePriority(a) - issuePriority(b) || a.floor - b.floor || a.y - b.y || a.x - b.x);
+
   const errorCount = issues.filter((i) => i.severity === 'error').length;
   const warnCount = issues.filter((i) => i.severity === 'warn').length;
-  const anomalyWarnCount = issues.filter((i) => i.severity === 'warn' && i.code !== 'external-input-needed').length;
+  const anomalyWarnCount = issues.filter(
+    (i) => i.severity === 'warn' && i.code !== 'external-input-needed' && i.code !== 'blueprint-output'
+  ).length;
 
   return {
     passed: errorCount === 0,
@@ -1726,6 +1888,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     anomalyWarnCount,
     issues,
     externalInputs,
+    externalOutputs,
     totalPowerMW: peakDrawMW,
     power,
     machineCount,

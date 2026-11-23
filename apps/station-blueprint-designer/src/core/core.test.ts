@@ -625,15 +625,84 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     }
   });
 
-  it('catches orphan belts, dead-end belts, splitter leaks, and mixed-item contamination accurately', () => {
+  it('catches isolated orphan belts while marking open-line head/tail yellow without false red errors', () => {
     let doc = createEmptyBlueprint();
     doc = placeModuleCmd(doc, { type: 'BPO_Station_03', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
-    // Place an isolated floating belt in the middle of the room
+    // 1. Completely isolated 1-tile belt -> RED orphan-belt
     doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 10, y: 10, floor: 0, rotation: 0 }).doc;
-    const rep = simulateBlueprint(doc);
-    expect(rep.passed).toBe(false);
-    expect(rep.issues.some((i) => i.code === 'orphan-belt' && i.x === 10 && i.y === 10)).toBe(true);
-    expect(rep.issues.some((i) => i.code === 'dead-end-belt' && i.x === 10 && i.y === 10)).toBe(true);
+    const repIsolated = simulateBlueprint(doc);
+    expect(repIsolated.passed).toBe(false);
+    expect(repIsolated.issues.some((i) => i.code === 'orphan-belt' && i.severity === 'error' && i.x === 10 && i.y === 10)).toBe(true);
+
+    // 2. Extend into a 2-tile open line -> ZERO red errors; head (10,10) = yellow input, tail (11,10) = yellow output!
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 11, y: 10, floor: 0, rotation: 0 }).doc;
+    const repLine = simulateBlueprint(doc);
+    expect(repLine.passed).toBe(true);
+    expect(repLine.errorCount).toBe(0);
+    expect(repLine.issues.some((i) => i.code === 'external-input-needed' && i.severity === 'warn' && i.x === 10 && i.y === 10)).toBe(true);
+    expect(repLine.issues.some((i) => i.code === 'blueprint-output' && i.severity === 'warn' && i.x === 11 && i.y === 10)).toBe(true);
+  });
+
+  it('verifies ALL 12 red mid-line fault codes and 0 west-cabin false positives on built-in Sim-Debug diagnostic blueprint', () => {
+    const preset = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('Sim-Debug-全情况诊断台'));
+    expect(preset, 'Sim-Debug diagnostic blueprint must be present in default library').toBeDefined();
+    const rep = simulateBlueprint(preset!.doc);
+
+    // West Cabin (x < 32): Zones A-D MUST have ZERO red errors, only clean yellow heads (首) & tails (尾)!
+    const westErrors = rep.issues.filter((i) => i.severity === 'error' && i.x < 32);
+    expect(westErrors).toEqual([]);
+    for (const [hx, hy] of [
+      [4, 3],
+      [4, 8],
+      [4, 12],
+      [4, 17],
+      [3, 22],
+    ]) {
+      expect(
+        rep.issues.some((i) => i.code === 'external-input-needed' && i.severity === 'warn' && i.x === hx && i.y === hy),
+        `West head (${hx},${hy}) should be yellow external-input-needed`
+      ).toBe(true);
+    }
+    for (const [tx, ty] of [
+      [10, 3],
+      [17, 9],
+      [5, 16],
+      [7, 17],
+      [18, 22],
+    ]) {
+      expect(
+        rep.issues.some((i) => i.code === 'blueprint-output' && i.severity === 'warn' && i.x === tx && i.y === ty),
+        `West tail (${tx},${ty}) should be yellow blueprint-output`
+      ).toBe(true);
+    }
+
+    // Power verification: Solar Mk.1 (12) + Reactor (48) = 60 MW max gen vs 109.5 MW peak draw -> power-deficit warn
+    expect(rep.power.solarGenMW).toBe(12);
+    expect(rep.power.reactorGenMW).toBe(48);
+    expect(rep.power.maxGenMW).toBe(60);
+    expect(rep.issues.some((i) => i.code === 'power-deficit' && i.severity === 'warn')).toBe(true);
+
+    // East Cabin (x >= 32): ALL 12 red mid-line faults MUST fire at their exact coordinates!
+    const expectedEastFaults: Array<[string, number, number]> = [
+      ['orphan-belt', 35, 3],
+      ['head-on-belt', 39, 3],
+      ['port-mismatch', 44, 3],
+      ['dead-end-belt', 61, 1],
+      ['unpaired-underground', 35, 8],
+      ['splitter-leak', 41, 8],
+      ['mixed-item-belt', 39, 13],
+      ['machine-missing-input', 46, 11],
+      ['machine-wrong-item', 49, 18],
+      ['machine-blocked-output', 56, 12],
+      ['belt-overload', 49, 26],
+      ['port-mismatch', 60, 21],
+    ];
+    for (const [code, x, y] of expectedEastFaults) {
+      expect(
+        rep.issues.some((i) => i.code === code && i.severity === 'error' && i.x === x && i.y === y),
+        `Expected RED ${code} at (${x},${y})`
+      ).toBe(true);
+    }
   });
 
   it('computes binary-verified power draw, max generation (solar + reactor), output-bottleneck efficiency, and open-belt yellow raw-input warnings at arbitrary coordinates', () => {

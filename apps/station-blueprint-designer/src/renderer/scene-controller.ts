@@ -1234,7 +1234,7 @@ export class CadSceneController {
             x1 - 0.12, y, z0 + 0.12, x0 + 0.12, y, z1 - 0.12
           );
         } else if (issue.code === 'external-input-needed') {
-          // Crisp amber-yellow outer frame + inner diamond pip marking every raw-material input point!
+          // Crisp amber-yellow outer frame + inner diamond pip marking every raw-material HEAD (首)!
           const cx = issue.x + 0.5;
           const cz = issue.y + 0.5;
           const r = 0.24;
@@ -1247,6 +1247,22 @@ export class CadSceneController {
             cx + r, y, cz, cx, y, cz + r,
             cx, y, cz + r, cx - r, y, cz,
             cx - r, y, cz, cx, y, cz - r
+          );
+        } else if (issue.code === 'blueprint-output') {
+          // Crisp amber-yellow outer frame + nested inner square marking every blueprint output TAIL (尾)!
+          const ix0 = issue.x + 0.27;
+          const iz0 = issue.y + 0.27;
+          const ix1 = issue.x + 0.73;
+          const iz1 = issue.y + 0.73;
+          inputWarnPts.push(
+            x0, y, z0, x1, y, z0,
+            x1, y, z0, x1, y, z1,
+            x1, y, z1, x0, y, z1,
+            x0, y, z1, x0, y, z0,
+            ix0, y, iz0, ix1, y, iz0,
+            ix1, y, iz0, ix1, y, iz1,
+            ix1, y, iz1, ix0, y, iz1,
+            ix0, y, iz1, ix0, y, iz0
           );
         } else {
           warnPts.push(

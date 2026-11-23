@@ -9,14 +9,15 @@ interface SimulationPanelProps {
 }
 
 const CODE_LABEL: Record<SimulationIssue['code'], string> = {
-  'external-input-needed': '需入原料',
+  'external-input-needed': '首·需入原料',
+  'blueprint-output': '尾·产线出口',
   'power-deficit': '供电不足',
-  'orphan-belt': '悬空无源',
-  'dead-end-belt': '末端断带',
+  'orphan-belt': '孤立废带',
+  'dead-end-belt': '撞墙死路',
   'head-on-belt': '正面相撞',
-  'unpaired-underground': '下层未配对',
+  'unpaired-underground': '地下带断连',
   'splitter-leak': '分流侧漏',
-  'port-mismatch': '端口冲突',
+  'port-mismatch': '端口错接',
   'mixed-item-belt': '混料污染',
   'belt-overload': '传送超载',
   'machine-missing-input': '机器缺料',
@@ -34,17 +35,20 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, 
   const effText =
     report.configuredMachineCount > 0 ? `${Math.round(report.avgEfficiency * 1000) / 10}%` : '—';
   const inputSpotCount = report.externalInputs.length;
+  const outputSpotCount = report.externalOutputs.length;
   const p = report.power;
   const hasGen = p.maxGenMW > 0;
   const netSign = p.netBalanceMW >= 0 ? '+' : '';
 
+  const ioText =
+    inputSpotCount > 0 || outputSpotCount > 0 ? `${inputSpotCount} 进 / ${outputSpotCount} 出` : '';
   const verdictText = !report.passed
-    ? `发现 ${report.errorCount} 处阻断异常${report.warnCount ? ` · ${report.warnCount} 警告` : ''}`
+    ? `发现 ${report.errorCount} 处中段故障${ioText ? ` · ${ioText}` : ''}`
     : report.anomalyWarnCount === 0
-      ? inputSpotCount > 0
-        ? `0 错误 · 产线跑通（${inputSpotCount} 处需入原料）`
+      ? ioText
+        ? `0 故障 · 首尾接口正常（${ioText}）`
         : '异常归零 · 产线全部跑通'
-      : `0 错误 · ${report.anomalyWarnCount} 项预警${inputSpotCount ? ` · ${inputSpotCount} 处需入原料` : ''}`;
+      : `0 故障 · ${report.anomalyWarnCount} 项预警${ioText ? ` · ${ioText}` : ''}`;
 
   const powerSubParts: string[] = [];
   if (p.crafterPeakMW > 0) powerSubParts.push(`产线 ${fmtMW(p.crafterPeakMW)}`);
@@ -85,8 +89,10 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, 
             </strong>
           </div>
           <div className="sim-kpi">
-            <span className="sim-kpi-label">需入原料</span>
-            <strong className="sim-kpi-val">{inputSpotCount} 处</strong>
+            <span className="sim-kpi-label">首 / 尾接口</span>
+            <strong className="sim-kpi-val">
+              {inputSpotCount}进 / {outputSpotCount}出
+            </strong>
           </div>
         </div>
 
@@ -181,7 +187,7 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, 
                   key={issue.id}
                   type="button"
                   className={`sim-issue-item ${issue.severity}${
-                    issue.code === 'external-input-needed' ? ' input-spot' : ''
+                    issue.code === 'external-input-needed' || issue.code === 'blueprint-output' ? ' input-spot' : ''
                   }`}
                   onClick={() => onFocusIssue(issue)}
                 >

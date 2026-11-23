@@ -1,0 +1,935 @@
+{
+  "format": "station-blueprint-designer",
+  "formatVersion": 2,
+  "id": "bp_mwsn9yjs_1_3ty12",
+  "name": "Sim-Debug · 全情况模拟诊断台",
+  "description": "西舱(x<32)为正常首尾标黄示范区（单机、串联、纯物流分流、过滤箱+地下带+平衡器、电源功耗）；东舱(x>=32)为12类常见中段故障标红测试台。打开「产线模拟」即可逐项点击定位核验。",
+  "gameData": {
+    "buildId": "26639889",
+    "catalogVersion": 1
+  },
+  "modules": [
+    {
+      "id": "mod_mwsn9yjs_2_ha9f3",
+      "type": "BPO_Station_02A",
+      "gx": 0,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0,
+      "label": "西舱·首尾标黄示范"
+    },
+    {
+      "id": "mod_mwsn9yjs_3_2wbrl",
+      "type": "BPO_Station_02A",
+      "gx": 2,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0,
+      "label": "东舱·中段故障标红"
+    },
+    {
+      "id": "mod_mwsn9yjs_4_t96g0",
+      "type": "BPO_SolarPanelBlock",
+      "gx": -1,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0,
+      "label": "光伏12MW"
+    }
+  ],
+  "buildings": [
+    {
+      "id": "bld_mwsn9yjt_5_zh0ch",
+      "type": "DAT_ConveyorBelt3",
+      "x": 4,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjt_6_mr8as",
+      "type": "DAT_ConveyorBelt3",
+      "x": 5,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yju_7_jjuu0",
+      "type": "DAT_Refinery",
+      "x": 6,
+      "y": 2,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "A·单机正常"
+    },
+    {
+      "id": "bld_mwsn9yju_8_9nw77",
+      "type": "DAT_ConveyorBelt3",
+      "x": 9,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yju_9_oiark",
+      "type": "DAT_ConveyorBelt3",
+      "x": 10,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yju_a_cik5c",
+      "type": "DAT_ConveyorBelt3",
+      "x": 4,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yju_b_czqgm",
+      "type": "DAT_Refinery",
+      "x": 5,
+      "y": 7,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "B1·产钛板"
+    },
+    {
+      "id": "bld_mwsn9yju_c_i1nap",
+      "type": "DAT_ConveyorBelt3",
+      "x": 8,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yju_d_r9eiy",
+      "type": "DAT_ConveyorBelt3",
+      "x": 9,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yju_e_pshil",
+      "type": "DAT_ConveyorBelt3",
+      "x": 10,
+      "y": 8,
+      "floor": 0,
+      "rotation": 1
+    },
+    {
+      "id": "bld_mwsn9yju_f_gykjw",
+      "type": "DAT_ConveyorBelt3",
+      "x": 10,
+      "y": 9,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yju_g_2jmob",
+      "type": "DAT_ConveyorBelt3",
+      "x": 4,
+      "y": 12,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yju_h_nchwj",
+      "type": "DAT_Refinery",
+      "x": 5,
+      "y": 11,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "B2·产钛板"
+    },
+    {
+      "id": "bld_mwsn9yju_i_orcvi",
+      "type": "DAT_ConveyorBelt3",
+      "x": 8,
+      "y": 12,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjv_j_gqq7a",
+      "type": "DAT_ConveyorBelt3",
+      "x": 9,
+      "y": 12,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjv_k_jkk5x",
+      "type": "DAT_ConveyorBelt3",
+      "x": 10,
+      "y": 12,
+      "floor": 0,
+      "rotation": 3
+    },
+    {
+      "id": "bld_mwsn9yjv_l_5lbo1",
+      "type": "DAT_ConveyorBelt3",
+      "x": 10,
+      "y": 11,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjw_m_tynie",
+      "type": "DAT_Assembler",
+      "x": 11,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_LightweightFrame",
+      "label": "B3·串联框架"
+    },
+    {
+      "id": "bld_mwsn9yjw_n_8gzwz",
+      "type": "DAT_ConveyorBelt3",
+      "x": 16,
+      "y": 9,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjw_o_pz8zj",
+      "type": "DAT_ConveyorBelt3",
+      "x": 17,
+      "y": 9,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjw_p_q02lq",
+      "type": "DAT_ConveyorBelt3",
+      "x": 4,
+      "y": 17,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjw_q_5akd6",
+      "type": "DAT_Splitter_3",
+      "x": 5,
+      "y": 17,
+      "floor": 0,
+      "rotation": 0,
+      "disabledPorts": [
+        1
+      ]
+    },
+    {
+      "id": "bld_mwsn9yjw_r_d4g8j",
+      "type": "DAT_ConveyorBelt3",
+      "x": 6,
+      "y": 17,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjw_s_4jqqe",
+      "type": "DAT_ConveyorBelt3",
+      "x": 7,
+      "y": 17,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjx_t_soyif",
+      "type": "DAT_ConveyorBelt3",
+      "x": 5,
+      "y": 16,
+      "floor": 0,
+      "rotation": 3
+    },
+    {
+      "id": "bld_mwsn9yjx_u_4deov",
+      "type": "DAT_Container",
+      "x": 3,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0,
+      "label": "D·过滤源箱",
+      "filterItems": [
+        "ITEM_NickelOre"
+      ]
+    },
+    {
+      "id": "bld_mwsn9yjx_v_5o91k",
+      "type": "DAT_ConveyorBelt3",
+      "x": 5,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjx_w_x5fm1",
+      "type": "DAT_UndergroundBelt_3",
+      "x": 6,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0,
+      "undergroundMode": "in"
+    },
+    {
+      "id": "bld_mwsn9yjx_x_f8v9f",
+      "type": "DAT_UndergroundBelt_3",
+      "x": 10,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0,
+      "undergroundMode": "out"
+    },
+    {
+      "id": "bld_mwsn9yjx_y_a4zfg",
+      "type": "DAT_ConveyorBelt3",
+      "x": 11,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjx_z_nhs9t",
+      "type": "DAT_Refinery",
+      "x": 12,
+      "y": 21,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_NickelPlates",
+      "label": "D·镍板产线"
+    },
+    {
+      "id": "bld_mwsn9yjx_10_8la71",
+      "type": "DAT_ConveyorBelt3",
+      "x": 15,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjx_11_zw5o9",
+      "type": "DAT_BeltBalancer_03",
+      "x": 16,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjy_12_nm3fo",
+      "type": "DAT_ConveyorBelt3",
+      "x": 17,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjy_13_9332j",
+      "type": "DAT_ConveyorBelt3",
+      "x": 18,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjy_14_f498v",
+      "type": "DAT_ReactorMachine",
+      "x": 23,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0,
+      "label": "E·反应堆48MW"
+    },
+    {
+      "id": "bld_mwsn9yjy_15_31qw9",
+      "type": "DAT_Supercomputer",
+      "x": 22,
+      "y": 11,
+      "floor": 0,
+      "rotation": 0,
+      "label": "E·超算18MW"
+    },
+    {
+      "id": "bld_mwsn9yjz_16_46kkr",
+      "type": "DAT_ElectroSciLab",
+      "x": 23,
+      "y": 21,
+      "floor": 0,
+      "rotation": 0,
+      "label": "E·电子12MW"
+    },
+    {
+      "id": "bld_mwsn9yjz_17_lhoc0",
+      "type": "DAT_ConveyorBelt3",
+      "x": 35,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjz_18_uv1zj",
+      "type": "DAT_ConveyorBelt3",
+      "x": 39,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjz_19_v4u2o",
+      "type": "DAT_ConveyorBelt3",
+      "x": 40,
+      "y": 3,
+      "floor": 0,
+      "rotation": 2
+    },
+    {
+      "id": "bld_mwsn9yjz_1a_fogzs",
+      "type": "DAT_ConveyorBelt3",
+      "x": 43,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yjz_1b_0hmhp",
+      "type": "DAT_ConveyorBelt3",
+      "x": 44,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk0_1c_2m56i",
+      "type": "DAT_Refinery",
+      "x": 45,
+      "y": 2,
+      "floor": 0,
+      "rotation": 0,
+      "label": "F3·禁用口",
+      "disabledPorts": [
+        2
+      ]
+    },
+    {
+      "id": "bld_mwsn9yk0_1d_2qzka",
+      "type": "DAT_ConveyorBelt3",
+      "x": 61,
+      "y": 3,
+      "floor": 0,
+      "rotation": 3
+    },
+    {
+      "id": "bld_mwsn9yk0_1e_3mm2c",
+      "type": "DAT_ConveyorBelt3",
+      "x": 61,
+      "y": 2,
+      "floor": 0,
+      "rotation": 3
+    },
+    {
+      "id": "bld_mwsn9yk0_1f_9h6fk",
+      "type": "DAT_ConveyorBelt3",
+      "x": 61,
+      "y": 1,
+      "floor": 0,
+      "rotation": 3
+    },
+    {
+      "id": "bld_mwsn9yk0_1g_n11e0",
+      "type": "DAT_ConveyorBelt3",
+      "x": 34,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk0_1h_2k6vc",
+      "type": "DAT_UndergroundBelt_3",
+      "x": 35,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0,
+      "undergroundMode": "in"
+    },
+    {
+      "id": "bld_mwsn9yk0_1i_y0vq3",
+      "type": "DAT_ConveyorBelt3",
+      "x": 40,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk0_1j_gdog9",
+      "type": "DAT_Splitter_3",
+      "x": 41,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk0_1k_facqn",
+      "type": "DAT_ConveyorBelt3",
+      "x": 42,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk1_1l_34idg",
+      "type": "DAT_ConveyorBelt3",
+      "x": 34,
+      "y": 13,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk1_1m_7fiwb",
+      "type": "DAT_Refinery",
+      "x": 35,
+      "y": 12,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "F7·混料钛"
+    },
+    {
+      "id": "bld_mwsn9yk1_1n_s4vgj",
+      "type": "DAT_ConveyorBelt3",
+      "x": 38,
+      "y": 13,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk1_1o_tbfzl",
+      "type": "DAT_ConveyorBelt3",
+      "x": 39,
+      "y": 13,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk1_1p_ep768",
+      "type": "DAT_ConveyorBelt3",
+      "x": 40,
+      "y": 13,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk1_1q_9tzpu",
+      "type": "DAT_ConveyorBelt3",
+      "x": 34,
+      "y": 17,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk1_1r_yeofz",
+      "type": "DAT_Refinery",
+      "x": 35,
+      "y": 16,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_NickelPlates",
+      "label": "F7·混料镍"
+    },
+    {
+      "id": "bld_mwsn9yk2_1s_m0a2x",
+      "type": "DAT_ConveyorBelt3",
+      "x": 38,
+      "y": 17,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk2_1t_ftf9c",
+      "type": "DAT_ConveyorBelt3",
+      "x": 39,
+      "y": 17,
+      "floor": 0,
+      "rotation": 3
+    },
+    {
+      "id": "bld_mwsn9yk2_1u_1psr5",
+      "type": "DAT_ConveyorBelt3",
+      "x": 39,
+      "y": 16,
+      "floor": 0,
+      "rotation": 3
+    },
+    {
+      "id": "bld_mwsn9yk2_1v_me06q",
+      "type": "DAT_ConveyorBelt3",
+      "x": 39,
+      "y": 15,
+      "floor": 0,
+      "rotation": 3
+    },
+    {
+      "id": "bld_mwsn9yk3_1w_5ijvy",
+      "type": "DAT_ConveyorBelt3",
+      "x": 39,
+      "y": 14,
+      "floor": 0,
+      "rotation": 3
+    },
+    {
+      "id": "bld_mwsn9yk3_1x_a3n4q",
+      "type": "DAT_ConveyorBelt3",
+      "x": 45,
+      "y": 12,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk3_1y_3acdh",
+      "type": "DAT_Assembler",
+      "x": 46,
+      "y": 11,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_ConveyorBelt",
+      "label": "F8·缺原料"
+    },
+    {
+      "id": "bld_mwsn9yk3_1z_z56up",
+      "type": "DAT_ConveyorBelt3",
+      "x": 51,
+      "y": 12,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk4_20_0ftfi",
+      "type": "DAT_ConveyorBelt3",
+      "x": 44,
+      "y": 19,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk4_21_b2abb",
+      "type": "DAT_Refinery",
+      "x": 45,
+      "y": 18,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_NickelPlates",
+      "label": "F9·出镍板"
+    },
+    {
+      "id": "bld_mwsn9yk4_22_pgy44",
+      "type": "DAT_ConveyorBelt3",
+      "x": 48,
+      "y": 19,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk4_23_98ato",
+      "type": "DAT_Refinery",
+      "x": 49,
+      "y": 18,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "F9·收错料"
+    },
+    {
+      "id": "bld_mwsn9yk4_24_6wad3",
+      "type": "DAT_ConveyorBelt3",
+      "x": 52,
+      "y": 19,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk4_25_7yp64",
+      "type": "DAT_ConveyorBelt3",
+      "x": 55,
+      "y": 13,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk4_26_8ej6u",
+      "type": "DAT_Refinery",
+      "x": 56,
+      "y": 12,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "F10·出料未接"
+    },
+    {
+      "id": "bld_mwsn9yk4_27_gcket",
+      "type": "DAT_ConveyorBelt3",
+      "x": 36,
+      "y": 21,
+      "floor": 0,
+      "rotation": 1
+    },
+    {
+      "id": "bld_mwsn9yk5_28_l7zcp",
+      "type": "DAT_Refinery",
+      "x": 35,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "F11·超载1"
+    },
+    {
+      "id": "bld_mwsn9yk5_29_o2uty",
+      "type": "DAT_ConveyorBelt3",
+      "x": 36,
+      "y": 25,
+      "floor": 0,
+      "rotation": 1
+    },
+    {
+      "id": "bld_mwsn9yk5_2a_fsmlu",
+      "type": "DAT_ConveyorBelt3",
+      "x": 40,
+      "y": 21,
+      "floor": 0,
+      "rotation": 1
+    },
+    {
+      "id": "bld_mwsn9yk5_2b_u0fci",
+      "type": "DAT_Refinery",
+      "x": 39,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "F11·超载2"
+    },
+    {
+      "id": "bld_mwsn9yk5_2c_bxd4s",
+      "type": "DAT_ConveyorBelt3",
+      "x": 40,
+      "y": 25,
+      "floor": 0,
+      "rotation": 1
+    },
+    {
+      "id": "bld_mwsn9yk5_2d_x5pnd",
+      "type": "DAT_ConveyorBelt3",
+      "x": 44,
+      "y": 21,
+      "floor": 0,
+      "rotation": 1
+    },
+    {
+      "id": "bld_mwsn9yk5_2e_dpas1",
+      "type": "DAT_Refinery",
+      "x": 43,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "F11·超载3"
+    },
+    {
+      "id": "bld_mwsn9yk6_2f_j65cm",
+      "type": "DAT_ConveyorBelt3",
+      "x": 44,
+      "y": 25,
+      "floor": 0,
+      "rotation": 1
+    },
+    {
+      "id": "bld_mwsn9yk6_2g_a15w2",
+      "type": "DAT_ConveyorBelt3",
+      "x": 48,
+      "y": 21,
+      "floor": 0,
+      "rotation": 1
+    },
+    {
+      "id": "bld_mwsn9yk6_2h_conf0",
+      "type": "DAT_Refinery",
+      "x": 47,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "F11·超载4"
+    },
+    {
+      "id": "bld_mwsn9yk6_2i_bz623",
+      "type": "DAT_ConveyorBelt3",
+      "x": 48,
+      "y": 25,
+      "floor": 0,
+      "rotation": 1
+    },
+    {
+      "id": "bld_mwsn9yk6_2j_uer27",
+      "type": "DAT_ConveyorBelt3",
+      "x": 36,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2k_b1cik",
+      "type": "DAT_ConveyorBelt3",
+      "x": 37,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2l_10kod",
+      "type": "DAT_ConveyorBelt3",
+      "x": 38,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2m_ht1lv",
+      "type": "DAT_ConveyorBelt3",
+      "x": 39,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2n_up872",
+      "type": "DAT_ConveyorBelt3",
+      "x": 40,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2o_7b2k2",
+      "type": "DAT_ConveyorBelt3",
+      "x": 41,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2p_402dr",
+      "type": "DAT_ConveyorBelt3",
+      "x": 42,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2q_p8nuq",
+      "type": "DAT_ConveyorBelt3",
+      "x": 43,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2r_e76vk",
+      "type": "DAT_ConveyorBelt3",
+      "x": 44,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2s_2kd8k",
+      "type": "DAT_ConveyorBelt3",
+      "x": 45,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2t_sgr89",
+      "type": "DAT_ConveyorBelt3",
+      "x": 46,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2u_wad2b",
+      "type": "DAT_ConveyorBelt3",
+      "x": 47,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2v_fe62h",
+      "type": "DAT_ConveyorBelt3",
+      "x": 48,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2w_jap49",
+      "type": "DAT_ConveyorBelt",
+      "x": 49,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2x_6st6m",
+      "type": "DAT_ConveyorBelt",
+      "x": 50,
+      "y": 26,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2y_sottl",
+      "type": "DAT_ConveyorBelt3",
+      "x": 55,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_2z_x0ecj",
+      "type": "DAT_Refinery",
+      "x": 56,
+      "y": 21,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_TitaniumPlates",
+      "label": "F12·出钛板"
+    },
+    {
+      "id": "bld_mwsn9yk6_30_ydsdv",
+      "type": "DAT_ConveyorBelt3",
+      "x": 59,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "bld_mwsn9yk6_31_bcx7z",
+      "type": "DAT_Container",
+      "x": 60,
+      "y": 21,
+      "floor": 0,
+      "rotation": 0,
+      "label": "F12·滤镍箱",
+      "filterItems": [
+        "ITEM_NickelPlates"
+      ]
+    }
+  ]
+}
