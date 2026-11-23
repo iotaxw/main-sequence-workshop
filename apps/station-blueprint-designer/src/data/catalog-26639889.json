@@ -894,8 +894,8 @@
         {
           "floorOffset": 0,
           "shape": "rect",
-          "minX": -16,
-          "maxX": 16,
+          "minX": -15,
+          "maxX": 15,
           "minY": -13,
           "maxY": 13,
           "doorways": [

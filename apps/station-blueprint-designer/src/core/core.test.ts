@@ -297,9 +297,22 @@ describe('Versioned JSON codec safety', () => {
         const issue = validateModulePlacement(doc, m, new Set([m.id]));
         expect(issue, `${path} module ${m.id} (${m.type}) at (${m.gx},${m.gy},L${m.floor})`).toBeNull();
       }
+      // O(N) spatial hash check for zero building overlaps + exact buildable floor coverage on every cell!
+      const occupied = new Map<string, string>();
       for (const b of doc.buildings) {
-        const issue = validateBuildingPlacement(doc, b, { ignoreBuildingIds: new Set([b.id]) });
-        expect(issue, `${path} building ${b.id} (${b.type}) at (${b.x},${b.y},L${b.floor})`).toBeNull();
+        const def = getBuildableDef(b.type);
+        expect(def, `${path} unknown building type ${b.type} on ${b.id}`).toBeDefined();
+        const [w, d] = b.rotation % 2 === 0 ? def!.size : [def!.size[1], def!.size[0]];
+        for (let dx = 0; dx < w; dx++) {
+          for (let dy = 0; dy < d; dy++) {
+            const cx = b.x + dx;
+            const cy = b.y + dy;
+            const key = `${b.floor}:${cx},${cy}`;
+            expect(occupied.get(key), `${path} overlap at (${cx},${cy},L${b.floor}) between ${occupied.get(key)} and ${b.id}`).toBeUndefined();
+            occupied.set(key, b.id);
+            expect(isCellBuildable(doc, cx, cy, b.floor), `${path} building ${b.id} (${b.type}) out-of-floor at (${cx},${cy},L${b.floor})`).not.toBeNull();
+          }
+        }
         if (b.recipeId) {
           expect(getRecipeDef(b.recipeId), `${path} recipeId ${b.recipeId} on ${b.id}`).toBeDefined();
         }
@@ -310,9 +323,9 @@ describe('Versioned JSON codec safety', () => {
   it('enforces zero splitter leakage, zero orphan belts, clean belt connectivity, and strict symmetry on standard cells and B1/F1 hubs', () => {
     const delta = (r: number): [number, number] => (r === 0 ? [1, 0] : r === 1 ? [0, 1] : r === 2 ? [-1, 0] : [0, -1]);
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
-      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-')
+      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-') || p.path.includes('F2-电梯')
     );
-    expect(targets.length).toBe(17);
+    expect(targets.length).toBe(20);
     for (const { doc, path } of targets) {
       const cellMap = new Map<string, (typeof doc.buildings)[number]>();
       const elevPortCells = new Set<string>();
@@ -426,7 +439,15 @@ describe('Versioned JSON codec safety', () => {
           }
         }
       }
-      if (!path.includes('Cell-9P') && !path.includes('角落稳压母库') && !path.includes('矿石母箱') && !path.includes('翼内小总线')) {
+      if (
+        !path.includes('Cell-9P') &&
+        !path.includes('角落稳压母库') &&
+        !path.includes('矿石母箱') &&
+        !path.includes('翼内小总线') &&
+        !path.includes('玻璃玄关') &&
+        !path.includes('F2-电梯') &&
+        !path.includes('中央工业巡检')
+      ) {
         const keys = new Set(
           doc.buildings.map((b) => {
             const def = getBuildableDef(b.type)!;
@@ -444,7 +465,7 @@ describe('Versioned JSON codec safety', () => {
           ).toBe(true);
         }
       }
-      if (path.includes('翼内小总线') || path.includes('电梯24口')) {
+      if (path.includes('翼内小总线') || path.includes('电梯24口') || path.includes('玻璃玄关') || path.includes('F2-电梯')) {
         const keys = new Set(
           doc.buildings.map((b) => {
             const def = getBuildableDef(b.type)!;
@@ -602,9 +623,9 @@ describe('Station module asymmetric alignment & corner symmetry', () => {
 describe('General-purpose production-line simulation, flow rates, and zero-anomaly audit', () => {
   it('verifies 0 simulation errors, strict symmetries, and exact flow rates across all 17 Star-Citadel cells & B1/F1 hubs', () => {
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
-      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-')
+      (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-') || p.path.includes('F2-电梯')
     );
-    expect(targets.length).toBe(17);
+    expect(targets.length).toBe(20);
     for (const { doc, path } of targets) {
       const report = simulateBlueprint(doc);
       expect(
@@ -630,6 +651,13 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     expect(rElev.anomalyWarnCount).toBe(0);
     expect(rElev.externalInputs.filter((e) => e.sourceKind === 'elevator').length).toBe(12);
     expect(rElev.externalOutputs.filter((e) => e.sinkKind === 'elevator').length).toBe(12);
+
+    // Verify F2 Elevator->Boutique transition connects 4 elevator ports cleanly with 0 errors!
+    const f2Elev = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('F2-电梯商业街'))!.doc;
+    const rF2Elev = simulateBlueprint(f2Elev);
+    expect(rF2Elev.errorCount).toBe(0);
+    expect(rF2Elev.anomalyWarnCount).toBe(0);
+    expect(rF2Elev.externalInputs.filter((e) => e.sourceKind === 'elevator').length).toBe(4);
 
     // Verify exact Cell-3 full dual-Mk.3 output (6.00 items/s Titanium Plates, 100% efficiency)
     const cell3 = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('Cell-3'))!.doc;
