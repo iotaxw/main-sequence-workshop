@@ -62,6 +62,7 @@ import type {
 import { PITCH_SNAP_PRESETS } from './renderer/camera-rig';
 import { CadSceneController } from './renderer/scene-controller';
 import { CAD_THEMES, type CadThemeId, loadSavedTheme, saveTheme } from './renderer/theme';
+import { BlueprintLibraryModal } from './ui/BlueprintLibraryModal';
 import { GameInteropMenu } from './ui/GameInteropMenu';
 import { HelpDrawer } from './ui/HelpDrawer';
 import { InspectorPanel } from './ui/InspectorPanel';
@@ -121,8 +122,11 @@ export const App: React.FC = () => {
   const [clipboardBp, setClipboardBp] = useState<BlueprintDocument | null>(null);
 
   const [libraryOpen, setLibraryOpen] = useState(true);
+  const [libraryModalOpen, setLibraryModalOpen] = useState(false);
+  const [prefsMenuOpen, setPrefsMenuOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [simOpen, setSimOpen] = useState(false);
+  const prefsMenuRef = useRef<HTMLDivElement | null>(null);
   const [activeSimIssueId, setActiveSimIssueId] = useState<string | null>(null);
   const [driver, setDriver] = useState<BlueprintLibraryDriver>(() => {
     const savedGh = loadSavedGitHubConfig();
@@ -440,6 +444,17 @@ export const App: React.FC = () => {
     [commitDoc]
   );
 
+  useEffect(() => {
+    if (!prefsMenuOpen) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (prefsMenuRef.current && !prefsMenuRef.current.contains(e.target as Node)) {
+        setPrefsMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', onDocDown);
+    return () => window.removeEventListener('mousedown', onDocDown);
+  }, [prefsMenuOpen]);
+
   const copySelectionToGhost = useCallback(
     (cut: boolean) => {
       const { doc: curDoc, selection: sel } = stateRef.current;
@@ -450,16 +465,23 @@ export const App: React.FC = () => {
       }
       setClipboardBp(bp);
       setStampingLibPath(null);
-      setActiveTool({ kind: 'stamp-blueprint', blueprint: bp, name: bp.name, rotation: 0, floorOffset: 0 });
+      setActiveTool({
+        kind: 'stamp-blueprint',
+        blueprint: bp,
+        name: bp.name,
+        rotation: 0,
+        floorOffset: 0,
+        fromCut: cut,
+      });
       if (cut) {
-        const del = deleteSelectionCmd(curDoc, sel);
+        const del = deleteSelectionCmd(curDoc, sel, { cascadeBuildingsInModules: true });
         if (del.changed) {
           commitDoc(del.doc);
           setSelection(EMPTY_SELECTION);
         }
-        showToast('已剪切为幽灵蓝图（R旋转 / M镜像 / 左键盖章）');
+        showToast('已剪切搬移（左键落位 / R旋转 / M镜像 / Q/E切层 / Ctrl+Z可撤销）');
       } else {
-        showToast('已复制为幽灵蓝图（R旋转 / M镜像 / 左键盖章）');
+        showToast('已复制为幽灵蓝图（左键连续盖章 / R旋转 / M镜像 / 右键放下）');
       }
     },
     [commitDoc, showToast]
@@ -637,6 +659,28 @@ export const App: React.FC = () => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') spaceHeldRef.current = true;
       if (e.key === 'Shift') setForceReplaceHeld(true);
+
+      // Universal Esc close (works even while focused in search / text inputs!)
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (ghModal && !ghModal.busy) { setGhModal(null); return; }
+        if (saveDialog) { setSaveDialog(null); return; }
+        if (deleteConfirm) { setDeleteConfirm(null); return; }
+        if (libraryModalOpen) { setLibraryModalOpen(false); return; }
+        if (helpOpen) { setHelpOpen(false); return; }
+        if (prefsMenuOpen) { setPrefsMenuOpen(false); return; }
+        const { activeTool: curTool, selection: curSel } = stateRef.current;
+        if (curTool.kind !== 'select' || curSel.moduleIds.length > 0 || curSel.buildingIds.length > 0) {
+          handleCancelAction();
+          return;
+        }
+        if (simOpen) {
+          setSimOpen(false);
+          setActiveSimIssueId(null);
+        }
+        return;
+      }
+
       if (isTextInputFocused(e.target)) return;
 
       if (
@@ -690,12 +734,9 @@ export const App: React.FC = () => {
         return;
       }
 
-      if (e.key === 'Escape') {
+      if (lower === 'l') {
         e.preventDefault();
-        if (helpOpen) { setHelpOpen(false); return; }
-        if (saveDialog) { setSaveDialog(null); return; }
-        if (deleteConfirm) { setDeleteConfirm(null); return; }
-        handleCancelAction();
+        setLibraryModalOpen((o) => !o);
         return;
       }
       if (e.code === 'Backquote') {
@@ -914,14 +955,18 @@ export const App: React.FC = () => {
     deleteConfirm,
     fitAllStation,
     focusSelection,
+    ghModal,
     handleCancelAction,
     helpOpen,
+    libraryModalOpen,
     openSaveDialog,
     pipetteAtWorld,
+    prefsMenuOpen,
     requestDeleteSelection,
     saveDialog,
     selectEntityTool,
     showToast,
+    simOpen,
     switchViewMode,
   ]);
 
@@ -1084,7 +1129,13 @@ export const App: React.FC = () => {
       );
       if (res.changed) {
         commitDoc(res.doc);
-        showToast(`已盖章粘贴「${tool.name}」`);
+        if (tool.fromCut) {
+          setActiveTool({ kind: 'select' });
+          setStampingLibPath(null);
+          showToast(`已搬移落位「${tool.name}」（仍可按 Ctrl+V 继续粘贴）`);
+        } else {
+          showToast(`已盖章粘贴「${tool.name}」`);
+        }
       } else if (res.message) {
         showToast(res.message, 'warn');
       }
@@ -1603,50 +1654,76 @@ export const App: React.FC = () => {
   };
 
   const folderOptions = useMemo(() => collectFolderPaths(libraryTree), [libraryTree]);
+  const hasRightPanel = simOpen || selection.moduleIds.length > 0 || selection.buildingIds.length > 0;
+  const saveTargetLabel =
+    driver.mode === 'github-private'
+      ? '写入私有云库'
+      : driver.mode === 'fs-local'
+        ? '写入本地文件夹'
+        : '写入内置库';
 
   return (
     <div className="cad-shell" data-theme={theme}>
       <header className="cad-topbar">
         <div className="topbar-group">
           <span className="brand-mark">MS · CAD</span>
-          <input
-            id="doc-title"
-            name="docTitle"
-            type="text"
-            className="doc-title-input"
-            value={doc.name}
-            onChange={(e) => {
-              const name = e.target.value;
-              setHistory((h) => ({ ...h, present: { ...h.present, name } }));
-              setDirty(true);
-            }}
-            title="点击修改当前蓝图名称"
-          />
-          <span className={`dirty-pill ${dirty ? 'dirty' : 'clean'}`}>
-            {dirty ? '未保存' : activeSourcePath ? '已保存' : '草稿'}
-          </span>
-        </div>
-
-        <div className="topbar-group segmented">
+          <div className="doc-title-wrap">
+            <span
+              className={`doc-status-dot ${dirty ? 'dirty' : 'clean'}`}
+              title={dirty ? '有未保存更改' : activeSourcePath ? '已保存' : '草稿'}
+            />
+            <input
+              id="doc-title"
+              name="docTitle"
+              type="text"
+              className="doc-title-input"
+              value={doc.name}
+              onChange={(e) => {
+                const name = e.target.value;
+                setHistory((h) => ({ ...h, present: { ...h.present, name } }));
+                setDirty(true);
+              }}
+              title="点击修改当前蓝图名称"
+            />
+          </div>
           <button
             type="button"
-            className={`seg-btn ${viewMode === 'station' ? 'active' : ''}`}
-            onClick={() => switchViewMode('station')}
-            title="空间站视野 (` 或选择态 Tab)"
+            className={`cad-btn ${libraryModalOpen ? 'accent' : ''}`}
+            onClick={() => setLibraryModalOpen((o) => !o)}
+            title="打开俯视缩略图蓝图库 (L)"
           >
-            空间站
+            <span
+              className={`status-dot inline ${
+                driver.mode === 'fs-local' ? 'green' : driver.mode === 'github-private' ? 'amber' : 'blue'
+              }`}
+            />
+            蓝图库
           </button>
-          <button
-            type="button"
-            className={`seg-btn ${viewMode === 'building' ? 'active' : ''}`}
-            onClick={() => switchViewMode('building')}
-            title="建筑视野 (` 或选择态 Tab)"
-          >
-            建筑
+          <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="保存当前画布 (Ctrl+S)">
+            保存
           </button>
         </div>
 
-        <div className="topbar-group">
+        <div className="topbar-group topbar-center">
+          <div className="segmented">
+            <button
+              type="button"
+              className={`seg-btn ${viewMode === 'station' ? 'active' : ''}`}
+              onClick={() => switchViewMode('station')}
+              title="空间站视野 (` 或选择态 Tab)"
+            >
+              空间站
+            </button>
+            <button
+              type="button"
+              className={`seg-btn ${viewMode === 'building' ? 'active' : ''}`}
+              onClick={() => switchViewMode('building')}
+              title="建筑视野 (` 或选择态 Tab)"
+            >
+              建筑
+            </button>
+          </div>
+
           <div className="floor-stepper" title="焦点楼层 (Q 降 / E 升)">
             <button type="button" className="step-btn" onClick={() => setFocusFloor((f) => Math.max(-2, f - 1))}>
               Q↓
@@ -1656,50 +1733,15 @@ export const App: React.FC = () => {
               E↑
             </button>
           </div>
+
           <button
             type="button"
             className="cad-btn"
             onClick={() => setHideAbove((v) => !v)}
             title="切换是否隐藏焦点楼层以上所有层 (V)"
           >
-            {hideAbove ? '上层 · 隐藏' : '上层 · 透视'}
+            {hideAbove ? '上层 · 隐' : '上层 · 透'}
           </button>
-        </div>
-
-        <div className="topbar-group">
-          <button
-            type="button"
-            className="cad-btn"
-            onClick={() => {
-              const next = !snapEnabled;
-              setSnapEnabled(next);
-              sceneRef.current?.rig.setSnapEnabled(next);
-            }}
-            title="切换四向与固定俯角吸附 (G)"
-          >
-            {snapEnabled ? '吸附 · 开' : '吸附 · 关'}
-          </button>
-          <button
-            type="button"
-            className="cad-btn"
-            onClick={() => sceneRef.current?.rig.stepYawCardinal(1)}
-            title="顺时针切换正交朝向 90°"
-          >
-            ↻90°
-          </button>
-          <div className="pitch-pills">
-            {PITCH_SNAP_PRESETS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className="mini-pill"
-                onClick={() => sceneRef.current?.rig.setPitchPreset(p.rad)}
-                title={`切换到${p.label}`}
-              >
-                {p.label.slice(0, 2)}
-              </button>
-            ))}
-          </div>
         </div>
 
         <div className="topbar-group right-aligned">
@@ -1707,57 +1749,15 @@ export const App: React.FC = () => {
             type="button"
             className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
             onClick={() => setSimOpen((v) => !v)}
-            title="开启/关闭实时产线模拟、流量计算与零异常体检"
+            title="开启/关闭实时产线诊断与流量计算"
           >
             {simOpen
               ? simReport?.passed
-                ? '模拟 · 0异常'
-                : `模拟 · ${simReport?.errorCount ?? 0}异常`
-              : '产线模拟'}
+                ? '诊断 · 0异常'
+                : `诊断 · ${simReport?.errorCount ?? 0}异常`
+              : '产线诊断'}
           </button>
-          <button
-            type="button"
-            className="cad-btn"
-            onClick={() =>
-              setSelectionLayerMode((m) => (m === 'focus' ? 'visible' : m === 'visible' ? 'all' : 'focus'))
-            }
-            title="切换框选跨层范围 (B)"
-          >
-            框选 · {selectionLayerMode === 'focus' ? '当前层' : selectionLayerMode === 'visible' ? '可见层' : '全部层'}
-          </button>
-          <button
-            type="button"
-            className="cad-btn"
-            disabled={history.past.length === 0}
-            onClick={() => setHistory((h) => undoHistory(h))}
-            title="撤销 (Ctrl+Z)"
-          >
-            撤销
-          </button>
-          <button
-            type="button"
-            className="cad-btn"
-            disabled={history.future.length === 0}
-            onClick={() => setHistory((h) => redoHistory(h))}
-            title="重做 (Ctrl+Shift+Z)"
-          >
-            重做
-          </button>
-          <button
-            type="button"
-            className="cad-btn"
-            onClick={() => {
-              const next: CadThemeId = theme === 'platinum-gold' ? 'stealth-cad' : 'platinum-gold';
-              setTheme(next);
-              saveTheme(next);
-            }}
-            title="切换外观主题（白金香槟 / 工程白图·办公伪装）"
-          >
-            主题 · {CAD_THEMES[theme].nameZh}
-          </button>
-          <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="保存蓝图 (Ctrl+S)">
-            保存
-          </button>
+
           <GameInteropMenu
             driverMode={driver.mode}
             rootLabel={driver.rootLabel}
@@ -1768,13 +1768,124 @@ export const App: React.FC = () => {
             onMountLocalFolder={handleMountLocalFolder}
             onOpenGitHubConnect={openGitHubConnectModal}
           />
+
+          <div className="interop-anchor" ref={prefsMenuRef}>
+            <button
+              type="button"
+              className={`cad-btn ${prefsMenuOpen ? 'accent' : ''}`}
+              onClick={() => setPrefsMenuOpen((o) => !o)}
+              title="视角吸附、俯角预设、框选层域、撤销与主题"
+            >
+              视角 ▾
+            </button>
+            {prefsMenuOpen && (
+              <div className="prefs-popover">
+                <div className="prefs-section">
+                  <div className="prefs-title">相机与吸附</div>
+                  <div className="prefs-row">
+                    <button
+                      type="button"
+                      className={`cad-btn ${snapEnabled ? 'accent' : ''}`}
+                      onClick={() => {
+                        const next = !snapEnabled;
+                        setSnapEnabled(next);
+                        sceneRef.current?.rig.setSnapEnabled(next);
+                      }}
+                    >
+                      {snapEnabled ? '四向吸附 · 开 (G)' : '自由视角 · 关 (G)'}
+                    </button>
+                    <button
+                      type="button"
+                      className="cad-btn"
+                      onClick={() => sceneRef.current?.rig.stepYawCardinal(1)}
+                      title="顺时针旋转正交视角 90°"
+                    >
+                      ↻90°
+                    </button>
+                    <button
+                      type="button"
+                      className="cad-btn"
+                      onClick={() => {
+                        fitAllStation();
+                        setPrefsMenuOpen(false);
+                      }}
+                      title="适配整站 (Home)"
+                    >
+                      适配
+                    </button>
+                  </div>
+                  <div className="pitch-pills prefs-pitch">
+                    {PITCH_SNAP_PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="mini-pill"
+                        onClick={() => sceneRef.current?.rig.setPitchPreset(p.rad)}
+                        title={`切换到${p.label}`}
+                      >
+                        {p.label.slice(0, 2)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="prefs-section">
+                  <div className="prefs-title">编辑与框选</div>
+                  <div className="prefs-row">
+                    <button
+                      type="button"
+                      className="cad-btn"
+                      disabled={history.past.length === 0}
+                      onClick={() => setHistory((h) => undoHistory(h))}
+                    >
+                      撤销 (Ctrl+Z)
+                    </button>
+                    <button
+                      type="button"
+                      className="cad-btn"
+                      disabled={history.future.length === 0}
+                      onClick={() => setHistory((h) => redoHistory(h))}
+                    >
+                      重做
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="cad-btn prefs-full"
+                    onClick={() =>
+                      setSelectionLayerMode((m) => (m === 'focus' ? 'visible' : m === 'visible' ? 'all' : 'focus'))
+                    }
+                  >
+                    跨层框选 (B)：
+                    {selectionLayerMode === 'focus' ? '仅当前层' : selectionLayerMode === 'visible' ? '当前可见层' : '全部楼层'}
+                  </button>
+                </div>
+
+                <div className="prefs-section">
+                  <div className="prefs-title">外观主题</div>
+                  <button
+                    type="button"
+                    className="cad-btn prefs-full"
+                    onClick={() => {
+                      const next: CadThemeId = theme === 'platinum-gold' ? 'stealth-cad' : 'platinum-gold';
+                      setTheme(next);
+                      saveTheme(next);
+                    }}
+                  >
+                    当前：{CAD_THEMES[theme].nameZh}（点击切换）
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
-            className="cad-btn"
+            className={`cad-btn icon-pill ${helpOpen ? 'accent' : ''}`}
             onClick={() => setHelpOpen((o) => !o)}
             title="操作快捷键与帮助 (F1 / ?)"
           >
-            {helpOpen ? '关闭帮助' : '快捷键'}
+            ?
           </button>
         </div>
       </header>
@@ -1783,24 +1894,15 @@ export const App: React.FC = () => {
         <LibrarySidebar
           open={libraryOpen}
           onToggleOpen={() => setLibraryOpen((o) => !o)}
+          onOpenModal={() => setLibraryModalOpen(true)}
           driverMode={driver.mode}
           rootLabel={driver.rootLabel}
-          fsSupported={FileSystemFolderDriver.isSupported()}
           tree={libraryTree}
           activeSourcePath={activeSourcePath}
           stampingPath={stampingLibPath}
-          onMountLocalFolder={handleMountLocalFolder}
-          onOpenGitHubConnect={openGitHubConnectModal}
-          onRefresh={() => void refreshLibrary()}
           onNewBlueprint={handleNewBlueprint}
-          onCreateFolder={handleCreateFolder}
-          onImportJsonFile={handleImportJsonFile}
           onStampFromLibrary={handleStampFromLibrary}
           onOpenFromLibrary={handleOpenFromLibrary}
-          onExportFromLibrary={handleExportFromLibrary}
-          onExportSavFromLibrary={(f) => void handleExportSavFromLibrary(f)}
-          onDeleteEntry={handleDeleteLibEntry}
-          onMoveFile={handleMoveLibFile}
         />
 
         <div
@@ -1829,6 +1931,36 @@ export const App: React.FC = () => {
 
         <div className="cad-focal-vignette" aria-hidden="true" />
 
+        <div className={`cad-hud-topright ${hasRightPanel ? 'shifted' : ''}`} aria-live="off">
+          <div className="hud-row primary">
+            <span className="hud-coord">
+              {cursorWorld
+                ? `X ${Math.floor(cursorWorld.x)}  Y ${Math.floor(cursorWorld.y)}`
+                : 'X --  Y --'}
+            </span>
+            <span className="hud-sep">·</span>
+            <span className="hud-grid">
+              {cursorWorld
+                ? `G(${Math.floor(cursorWorld.x / STATION_UNIT_M)},${Math.floor(cursorWorld.y / STATION_UNIT_M)})`
+                : 'G(-,-)'}
+            </span>
+            <span className="hud-floor">L{focusFloor}</span>
+          </div>
+          <div className="hud-row secondary">
+            <span>{viewMode === 'station' ? '空间站' : '建筑'}</span>
+            <span>
+              {telemetry.yawDeg}°/{telemetry.pitchDeg}° · {telemetry.distance}m
+            </span>
+            <span>{snapEnabled ? '吸附' : '自由'}</span>
+            <span>
+              {doc.modules.length}模 · {doc.buildings.length}建
+            </span>
+            {lastAutosaveAt && (
+              <span title="最近自动恢复点">{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
+            )}
+          </div>
+        </div>
+
         <InspectorPanel
           doc={doc}
           selection={selection}
@@ -1841,6 +1973,7 @@ export const App: React.FC = () => {
             if (res.changed) commitDoc(res.doc);
           }}
           onCopySelection={() => copySelectionToGhost(false)}
+          onCutSelection={() => copySelectionToGhost(true)}
           onSaveSelectionAsBlueprint={() => openSaveDialog(true)}
           onRotateSelection={() => {
             const res = rotateSelectionInPlaceCmd(doc, selection, 1);
@@ -1894,23 +2027,11 @@ export const App: React.FC = () => {
                     : ' · Tab 组内轮换 · R 旋转 · Shift+左键覆盖'
               } · 右键取消`}
             {activeTool.kind === 'stamp-blueprint' &&
-              `幽灵蓝图「${activeTool.name}」 · 左键盖章 · Shift 覆盖 · R 旋转 · M 镜像 · 右键放下`}
+              (activeTool.fromCut
+                ? `剪切搬移「${activeTool.name}」 · 左键落位 · Shift 覆盖 · R 旋转 · M 镜像 · Q/E 切层 · Esc 取消(Ctrl+Z 撤销)`
+                : `幽灵蓝图「${activeTool.name}」 · 左键连续盖章 · Shift 覆盖 · R 旋转 · M 镜像 · 右键 / Esc 放下`)}
           </div>
         )}
-
-        <div className="cad-telemetry">
-          <span>{viewMode === 'station' ? '空间站' : '建筑'}</span>
-          <span>
-            {cursorWorld ? `${Math.floor(cursorWorld.x)}, ${Math.floor(cursorWorld.y)}` : '--'} · L{focusFloor}
-          </span>
-          <span>
-            {telemetry.yawDeg}° / {telemetry.pitchDeg}° · {telemetry.distance}m
-          </span>
-          <span>
-            {doc.modules.length}模 · {doc.buildings.length}建
-            {lastAutosaveAt ? ` · ${new Date(lastAutosaveAt).toLocaleTimeString()}` : ''}
-          </span>
-        </div>
 
         <PaletteDock
           viewMode={viewMode}
@@ -1925,6 +2046,29 @@ export const App: React.FC = () => {
 
         {toast && <div className={`cad-toast ${toast.kind}`}>{toast.text}</div>}
       </div>
+
+      <BlueprintLibraryModal
+        open={libraryModalOpen}
+        onClose={() => setLibraryModalOpen(false)}
+        driver={driver}
+        fsSupported={FileSystemFolderDriver.isSupported()}
+        tree={libraryTree}
+        theme={theme}
+        activeSourcePath={activeSourcePath}
+        stampingPath={stampingLibPath}
+        onMountLocalFolder={handleMountLocalFolder}
+        onOpenGitHubConnect={openGitHubConnectModal}
+        onRefresh={() => void refreshLibrary()}
+        onNewBlueprint={handleNewBlueprint}
+        onCreateFolder={handleCreateFolder}
+        onImportJsonFile={handleImportJsonFile}
+        onStampFromLibrary={handleStampFromLibrary}
+        onOpenFromLibrary={handleOpenFromLibrary}
+        onExportFromLibrary={handleExportFromLibrary}
+        onExportSavFromLibrary={(f) => void handleExportSavFromLibrary(f)}
+        onDeleteEntry={handleDeleteLibEntry}
+        onMoveFile={handleMoveLibFile}
+      />
 
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
 
@@ -2069,7 +2213,7 @@ export const App: React.FC = () => {
             <div className="modal-footer">
               <button type="button" className="cad-btn" onClick={() => setSaveDialog(null)}>取消</button>
               <button type="button" className="cad-btn accent" onClick={() => void executeSaveDialog()}>
-                写入本地库
+                {saveTargetLabel}
               </button>
             </div>
           </div>

@@ -34,6 +34,7 @@ interface InspectorPanelProps {
   onUpdateBuilding: (ids: string[], patch: BuildingConfigPatch) => void;
   onUpdateModuleLabel: (id: string, label: string) => void;
   onCopySelection: () => void;
+  onCutSelection: () => void;
   onSaveSelectionAsBlueprint: () => void;
   onRotateSelection: () => void;
   onDeleteSelection: () => void;
@@ -188,6 +189,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onUpdateBuilding,
   onUpdateModuleLabel,
   onCopySelection,
+  onCutSelection,
   onSaveSelectionAsBlueprint,
   onRotateSelection,
   onDeleteSelection,
@@ -590,9 +592,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         </div>
 
         <div className="inspector-footer">
-          <button type="button" className="cad-btn" onClick={onRotateSelection}>旋转 (R)</button>
-          <button type="button" className="cad-btn" onClick={onCopySelection}>复制 (Ctrl+C)</button>
-          <button type="button" className="cad-btn danger" onClick={onDeleteSelection}>删除 (Del)</button>
+          <button type="button" className="cad-btn" onClick={onRotateSelection} title="原地旋转 (R)">旋转 (R)</button>
+          <button type="button" className="cad-btn" onClick={onCutSelection} title="剪切并搬移到新位置 (Ctrl+X)">剪切搬移</button>
+          <button type="button" className="cad-btn" onClick={onCopySelection} title="复制为幽灵蓝图 (Ctrl+C)">复制</button>
+          <button type="button" className="cad-btn danger" onClick={onDeleteSelection} title="删除 (Del)">删除</button>
         </div>
       </aside>
     );
@@ -640,10 +643,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           </div>
         </div>
         <div className="inspector-footer">
-          <button type="button" className="cad-btn" onClick={onRotateSelection}>旋转 (R)</button>
-          <button type="button" className="cad-btn" onClick={onCopySelection}>复制蓝图</button>
-          <button type="button" className="cad-btn accent" onClick={onSaveSelectionAsBlueprint}>存为蓝图</button>
-          <button type="button" className="cad-btn danger" onClick={onDeleteSelection}>删除</button>
+          <button type="button" className="cad-btn" onClick={onRotateSelection} title="原地旋转 (R)">旋转 (R)</button>
+          <button type="button" className="cad-btn accent" onClick={onCutSelection} title="连带内部建筑一起剪切搬移 (Ctrl+X)">剪切搬移</button>
+          <button type="button" className="cad-btn" onClick={onCopySelection} title="复制模块及内部建筑 (Ctrl+C)">复制</button>
+          <button type="button" className="cad-btn" onClick={onSaveSelectionAsBlueprint} title="保存为蓝图文件 (Ctrl+S)">存蓝图</button>
+          <button type="button" className="cad-btn danger" onClick={onDeleteSelection} title="删除 (Del)">删除</button>
         </div>
       </aside>
     );
@@ -675,11 +679,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <code>{floorLabel || '-'}</code>
         </div>
         <div className="inspector-footer vertical">
-          <button type="button" className="cad-btn accent" onClick={onCopySelection}>
+          <button type="button" className="cad-btn accent" onClick={onCutSelection}>
+            剪切搬移（连带内部建筑 · Ctrl+X）
+          </button>
+          <button type="button" className="cad-btn" onClick={onCopySelection}>
             复制为幽灵蓝图 (Ctrl+C)
           </button>
           <button type="button" className="cad-btn" onClick={onSaveSelectionAsBlueprint}>
-            保存选区到文件夹 (Ctrl+S)
+            保存选区为蓝图 (Ctrl+S)
           </button>
           <button type="button" className="cad-btn" onClick={onRotateSelection}>
             原地旋转 (R)

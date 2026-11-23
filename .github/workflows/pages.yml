@@ -52,6 +52,8 @@ jobs:
       - name: Build station blueprint designer
         working-directory: apps/station-blueprint-designer
         run: npm run build
+      - name: Test shared Rust blueprint codec
+        run: cargo test --manifest-path packages/ms-blueprint-codec/Cargo.toml
       - name: Assemble workshop site
         run: |
           mkdir -p dist

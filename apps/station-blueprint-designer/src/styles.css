@@ -112,29 +112,80 @@ body,
   color: var(--text-main);
 }
 
-/* Top Restrained CAD Bar */
+/* Top Restrained CAD Bar (Shapez 2 Slim Layout) */
 .cad-topbar {
-  height: 42px;
+  height: 40px;
   background: var(--bg-topbar);
   border-bottom: 1px solid var(--border-hairline);
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 10px;
   padding: 0 12px;
-  z-index: 30;
+  z-index: 40;
   flex-shrink: 0;
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .topbar-group {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
+.topbar-group.topbar-center {
+  margin: 0 auto;
+}
+
 .topbar-group.right-aligned {
-  margin-left: auto;
+  margin-left: 0;
+}
+
+.doc-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 6px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.doc-title-wrap:hover,
+.doc-title-wrap:focus-within {
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.doc-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.doc-status-dot.dirty {
+  background: #d8b263;
+  box-shadow: 0 0 6px rgba(216, 178, 99, 0.55);
+}
+
+.doc-status-dot.clean {
+  background: #56ba88;
+}
+
+.status-dot.inline {
+  width: 6px;
+  height: 6px;
+}
+
+.cad-btn.icon-pill {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-weight: 600;
 }
 
 .brand-mark {
@@ -1728,4 +1779,593 @@ body,
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* ================================================================
+   Topbar Camera & Preferences Popover
+   ================================================================ */
+.prefs-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 268px;
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border-subtle);
+  border-radius: 11px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+  z-index: 65;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.prefs-section {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.prefs-section:last-child {
+  border-bottom: none;
+}
+
+.prefs-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.prefs-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prefs-row .cad-btn {
+  flex: 1;
+}
+
+.prefs-pitch {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.prefs-pitch .mini-pill {
+  text-align: center;
+}
+
+.prefs-full {
+  width: 100%;
+  justify-content: space-between;
+}
+
+/* ================================================================
+   Top-Right Floating CAD Coordinate HUD (Shapez 2 Telemetry)
+   ================================================================ */
+.cad-hud-topright {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 22;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-hairline);
+  backdrop-filter: blur(8px);
+  font-family: var(--font-mono);
+  transition: right 180ms ease;
+}
+
+.cad-hud-topright.shifted {
+  right: 318px;
+}
+
+.hud-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.hud-row.primary {
+  font-size: 11px;
+  color: var(--text-bright);
+  letter-spacing: 0.02em;
+}
+
+.hud-row.secondary {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.hud-sep {
+  color: var(--text-muted);
+}
+
+.hud-grid {
+  color: var(--text-dim);
+}
+
+.hud-floor {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-bright);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ================================================================
+   Ultra-Clean Minimal Name-Only Left Blueprint Sidebar
+   ================================================================ */
+.cad-sidebar.left.slim {
+  width: 212px;
+}
+
+.lib-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.lib-source-chip:hover {
+  border-color: var(--border-mid);
+  color: var(--text-bright);
+}
+
+.lib-slim-top-actions {
+  display: flex;
+  gap: 5px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.lib-open-grid-btn {
+  flex: 1;
+}
+
+.lib-slim-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding-right: 8px;
+  cursor: pointer;
+  color: var(--text-main);
+  border-left: 2px solid transparent;
+  transition: background 110ms ease, color 110ms ease, border-color 110ms ease;
+}
+
+.lib-slim-row:hover {
+  background: var(--bg-row-hover);
+  color: var(--text-bright);
+}
+
+.lib-slim-folder {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.lib-slim-file {
+  font-size: 11.5px;
+}
+
+.lib-slim-file.editing {
+  border-left-color: var(--line-active);
+  background: var(--bg-surface);
+  color: var(--text-bright);
+}
+
+.lib-slim-file.stamping {
+  border-left-color: var(--border-focus);
+  background: var(--bg-surface-active);
+  color: var(--text-bright);
+}
+
+.lib-slim-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-slim-open {
+  opacity: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 110ms ease, background 110ms ease, color 110ms ease;
+}
+
+.lib-slim-file:hover .lib-slim-open {
+  opacity: 1;
+}
+
+.lib-slim-open:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-bright);
+}
+
+.cad-floating-left-cluster {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 24;
+  display: flex;
+  gap: 6px;
+}
+
+.cad-floating-toggle-btn {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.cad-floating-toggle-btn:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-mid);
+  color: var(--text-bright);
+}
+
+.cad-floating-toggle-btn.accent {
+  border-color: var(--border-focus);
+  color: var(--text-bright);
+}
+
+/* ================================================================
+   Shapez 2 Floating Top-Down Thumbnail Blueprint Library Modal
+   ================================================================ */
+.bpm-overlay {
+  z-index: 70;
+  backdrop-filter: blur(6px);
+}
+
+.bpm-modal {
+  width: min(1140px, 92vw);
+  height: min(760px, 86vh);
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.48);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bpm-header {
+  padding: 10px 14px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bpm-source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-surface);
+  color: var(--text-dim);
+  font-size: 10.5px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bpm-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bpm-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-hairline);
+  margin: 0 2px;
+}
+
+.bpm-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.bpm-folders {
+  width: 210px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-hairline);
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+.bpm-folder-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.bpm-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--text-main);
+  font-size: 11.5px;
+  border-left: 2px solid transparent;
+  transition: background 110ms ease, color 110ms ease, border-color 110ms ease;
+}
+
+.bpm-folder-row:hover {
+  background: var(--bg-row-hover);
+  color: var(--text-bright);
+}
+
+.bpm-folder-row.active {
+  background: var(--bg-surface-active);
+  border-left-color: var(--border-focus);
+  color: var(--text-bright);
+  font-weight: 500;
+}
+
+.bpm-folder-row.drop-target {
+  outline: 1px dashed var(--line-active);
+  background: var(--bg-surface-hover);
+}
+
+.bpm-folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bpm-folder-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.bpm-folder-actions {
+  display: none;
+  align-items: center;
+  gap: 3px;
+}
+
+.bpm-folder-row:hover .bpm-folder-actions {
+  display: inline-flex;
+}
+
+.bpm-folder-row:hover .bpm-folder-count {
+  display: none;
+}
+
+.bpm-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-canvas);
+}
+
+.bpm-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-hairline);
+  background: var(--bg-panel);
+}
+
+.bpm-search {
+  width: 240px;
+  max-width: 45%;
+}
+
+.bpm-meta-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bpm-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  align-content: start;
+  gap: 12px;
+}
+
+.bpm-empty {
+  grid-column: 1 / -1;
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.bpm-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.bpm-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-mid);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.bpm-card.editing {
+  border-color: var(--line-active);
+}
+
+.bpm-card.stamping {
+  border-color: var(--border-focus);
+}
+
+.bpm-card-thumb {
+  position: relative;
+  aspect-ratio: 5 / 3;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-hairline);
+  overflow: hidden;
+}
+
+.bp-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.bp-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.bp-thumb-placeholder-svg {
+  width: 72px;
+  height: 44px;
+  opacity: 0.55;
+}
+
+.bpm-card-badge {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  font-size: 9.5px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-bright);
+}
+
+.bpm-card-badge.editing {
+  border-color: var(--line-active);
+  color: var(--line-active);
+}
+
+.bpm-card-badge.stamping {
+  border-color: var(--border-focus);
+}
+
+.bpm-card-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.bpm-card:hover .bpm-card-actions {
+  opacity: 1;
+}
+
+.bpm-card-btn {
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.bpm-card-btn:hover {
+  border-color: var(--border-mid);
+  color: var(--text-bright);
+}
+
+.bpm-card-btn.danger:hover {
+  border-color: var(--line-disabled);
+  color: var(--text-danger);
+}
+
+.bpm-card-footer {
+  padding: 8px 10px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bpm-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.bpm-card-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }

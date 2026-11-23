@@ -224,7 +224,14 @@ export type ActiveTool =
       portFilters?: Record<number, string>;
       filterItems?: string[];
     }
-  | { kind: 'stamp-blueprint'; blueprint: BlueprintDocument; name: string; rotation: Rotation; floorOffset: number };
+  | {
+      kind: 'stamp-blueprint';
+      blueprint: BlueprintDocument;
+      name: string;
+      rotation: Rotation;
+      floorOffset: number;
+      fromCut?: boolean;
+    };
 
 export interface LibraryFileEntry {
   kind: 'file';

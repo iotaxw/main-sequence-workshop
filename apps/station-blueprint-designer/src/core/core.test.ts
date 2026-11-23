@@ -258,6 +258,47 @@ describe('Multi-layer selection, blueprint extraction/transform/stamping, port c
     expect(del.doc.modules.length).toBe(0);
     expect(del.doc.buildings.length).toBe(0);
   });
+
+  it('atomically cuts a station module together with its interior buildings (shapez 2 Ctrl+X move flow)', () => {
+    let doc = createEmptyBlueprint();
+    const mRes = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 });
+    doc = mRes.doc;
+    const modId = mRes.addedModuleIds![0];
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_Assembler',
+      x: 6,
+      y: 6,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_HullPlates',
+      label: 'A1',
+    }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 11, y: 8, floor: 0, rotation: 0 }).doc;
+
+    const sel = { moduleIds: [modId], buildingIds: [] };
+    const bp = extractSelectionAsBlueprint(doc, sel, '剪贴板蓝图')!;
+    expect(bp.modules.length).toBe(1);
+    expect(bp.buildings.length).toBe(2);
+
+    const afterCut = deleteSelectionCmd(doc, sel, { cascadeBuildingsInModules: true });
+    expect(afterCut.changed).toBe(true);
+    expect(afterCut.doc.modules.length).toBe(0);
+    expect(afterCut.doc.buildings.length).toBe(0);
+
+    const moved = stampBlueprintCmd(afterCut.doc, bp, { x: 32, y: 16, floor: 1 });
+    expect(moved.changed).toBe(true);
+    expect(moved.doc.modules.length).toBe(1);
+    expect(moved.doc.modules[0].gx).toBe(2);
+    expect(moved.doc.modules[0].gy).toBe(1);
+    expect(moved.doc.modules[0].floor).toBe(1);
+    expect(moved.doc.buildings.length).toBe(2);
+    const movedAsm = moved.doc.buildings.find((b) => b.type === 'DAT_Assembler')!;
+    expect(movedAsm.x).toBe(38);
+    expect(movedAsm.y).toBe(22);
+    expect(movedAsm.floor).toBe(1);
+    expect(movedAsm.recipeId).toBe('REC_HullPlates');
+    expect(movedAsm.label).toBe('A1');
+  });
 });
 
 describe('Versioned JSON codec safety', () => {
