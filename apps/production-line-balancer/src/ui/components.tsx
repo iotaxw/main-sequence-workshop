@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   Dataset,
   DatasetIndex,
@@ -143,18 +143,21 @@ export function MachineCard({ machine, machines }: {
   );
 }
 
-export function RecipeCard({ row, index, onSwitch }: {
+export function RecipeCard({ row, index, activeForkItemId, onSwitch }: {
   row: RecipeRow;
   index: DatasetIndex;
-  onSwitch: (itemId: string) => void;
+  activeForkItemId?: string | null;
+  onSwitch: (itemId: string, anchor: HTMLElement) => void;
 }) {
   const { t } = useLanguage();
   const recipe = index.recipes.get(row.recipeId)!;
   const machine = index.machines.get(row.machineId)!;
   const primaryOutput = recipe.outputs.find(output => !output.isByproduct) ?? recipe.outputs[0]!;
-  const hasAlternatives = (index.recipesByOutput.get(primaryOutput.itemId)?.length ?? 0) > 1;
+  const alternatives = index.recipesByOutput.get(primaryOutput.itemId) ?? [];
+  const hasAlternatives = alternatives.length > 1;
+  const isOpen = hasAlternatives && activeForkItemId === primaryOutput.itemId;
   return (
-    <article className="recipe-card" aria-label={recipe.id}>
+    <article className={`recipe-card${isOpen ? ' recipe-card--editing' : ''}`} aria-label={recipe.id}>
       <div className="recipe-card__recipe">
         <RecipeFormula recipe={recipe} index={index} />
       </div>
@@ -162,8 +165,16 @@ export function RecipeCard({ row, index, onSwitch }: {
         <MachineCard machine={machine} machines={row.machines} />
         <span className="recipe-card__action">
           {hasAlternatives && (
-            <button className="icon-button recipe-card__switch" onClick={() => onSwitch(primaryOutput.itemId)} aria-label={t('switchRecipe')} title={t('switchRecipe')}>
-              <UiIcon name="fork" />
+            <button
+              className={`recipe-card__switch${isOpen ? ' recipe-card__switch--open' : ''}`}
+              onClick={event => onSwitch(primaryOutput.itemId, event.currentTarget)}
+              aria-label={t('switchRecipe')}
+              aria-expanded={isOpen}
+              aria-haspopup="dialog"
+              title={t('switchRecipe')}
+            >
+              <UiIcon name="fork" size={12} />
+              <span>{alternatives.length}</span>
             </button>
           )}
         </span>
@@ -172,10 +183,11 @@ export function RecipeCard({ row, index, onSwitch }: {
   );
 }
 
-export function RecipeGrid({ rows, index, onSwitch }: {
+export function RecipeGrid({ rows, index, activeForkItemId, onSwitch }: {
   rows: RecipeRow[];
   index: DatasetIndex;
-  onSwitch: (itemId: string) => void;
+  activeForkItemId?: string | null;
+  onSwitch: (itemId: string, anchor: HTMLElement) => void;
 }) {
   const { t } = useLanguage();
   const groups = useMemo(() => {
@@ -227,7 +239,7 @@ export function RecipeGrid({ rows, index, onSwitch }: {
             {tier === '↻' ? <UiIcon name="recycle" /> : <span>{tier.padStart(2, '0')}</span>}
           </div>
           <div className="card-grid">
-            {group.map(row => <RecipeCard key={row.recipeId} row={row} index={index} onSwitch={onSwitch} />)}
+            {group.map(row => <RecipeCard key={row.recipeId} row={row} index={index} activeForkItemId={activeForkItemId} onSwitch={onSwitch} />)}
           </div>
         </section>
       ))}
@@ -235,28 +247,122 @@ export function RecipeGrid({ rows, index, onSwitch }: {
   );
 }
 
-export function ForkPicker({ fork, index, onSelect }: {
+export function ForkPopover({ fork, index, activeRecipeId, anchorEl, onSelect, onRemoveRecycle, onClose }: {
   fork: Fork;
   index: DatasetIndex;
+  activeRecipeId?: string;
+  anchorEl: HTMLElement | null;
   onSelect: (recipeId: string) => void;
+  onRemoveRecycle?: () => void;
+  onClose: () => void;
 }) {
   const { language, t } = useLanguage();
   const item = index.items.get(fork.itemId)!;
   const heading = t(fork.kind === 'recycle' ? 'selectRecycle' : 'selectProduce');
+  const panelRef = useRef<HTMLElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const compute = () => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const pad = 12;
+      const preferredW = fork.recipeIds.length > 1 ? Math.min(680, vw - pad * 2) : Math.min(360, vw - pad * 2);
+      const panelH = panelRef.current?.offsetHeight ?? 210;
+      const anchorRect = anchorEl?.getBoundingClientRect() ?? null;
+      if (!anchorRect || vw <= 560) {
+        setPos({
+          top: Math.max(pad, Math.min(vh - panelH - pad, vh * 0.28)),
+          left: Math.max(pad, (vw - preferredW) / 2),
+          width: preferredW,
+        });
+        return;
+      }
+      const spaceBelow = vh - anchorRect.bottom - pad;
+      const cardRect = anchorEl?.closest('.recipe-card')?.getBoundingClientRect() ?? anchorRect;
+      const spaceRight = vw - cardRect.right - pad;
+      let rawTop: number;
+      let rawLeft: number;
+      if (spaceBelow >= panelH + 8) {
+        rawTop = anchorRect.bottom + 8;
+        rawLeft = anchorRect.left + anchorRect.width * 0.5 - preferredW * 0.5;
+      } else if (spaceRight >= preferredW + 10) {
+        rawTop = cardRect.top;
+        rawLeft = cardRect.right + 10;
+      } else if (anchorRect.top > panelH + pad) {
+        rawTop = cardRect.top - panelH - 8;
+        rawLeft = anchorRect.left + anchorRect.width * 0.5 - preferredW * 0.5;
+      } else {
+        rawTop = anchorRect.bottom + 8;
+        rawLeft = anchorRect.left + anchorRect.width * 0.5 - preferredW * 0.5;
+      }
+      const top = Math.max(pad, Math.min(vh - panelH - pad, rawTop));
+      const left = Math.max(pad, Math.min(vw - preferredW - pad, rawLeft));
+      setPos({ top, left, width: preferredW });
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    window.addEventListener('scroll', compute, true);
+    return () => {
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('scroll', compute, true);
+    };
+  }, [anchorEl, fork.recipeIds.length]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    const onPointer = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (panelRef.current?.contains(target)) return;
+      if (anchorEl?.contains(target)) return;
+      onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onPointer);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onPointer);
+    };
+  }, [anchorEl, onClose]);
+
   return (
-    <section className={`panel fork-picker fork-picker--${fork.kind}`} aria-label={heading}>
-      <header className="panel__head">
+    <section
+      ref={panelRef}
+      className={`panel fork-popover fork-picker fork-picker--${fork.kind}`}
+      style={pos ? { top: `${pos.top}px`, left: `${pos.left}px`, width: `${pos.width}px` } : { visibility: 'hidden' }}
+      role="dialog"
+      aria-label={heading}
+    >
+      <header className="panel__head fork-popover__head">
         <UiIcon name={fork.kind === 'recycle' ? 'recycle' : 'fork'} />
         <span className="panel__title">{heading}</span>
         <ItemGlyph item={item} role={fork.kind === 'recycle' ? 'byproduct' : 'target'} size="small" />
         <span className="fork-picker__item">{entityName(item, language)}</span>
+        <span className="fork-popover__spacer" />
+        {fork.kind === 'recycle' && activeRecipeId && onRemoveRecycle && (
+          <button className="fork-popover__clear" onClick={onRemoveRecycle}>
+            {t('removeRecycle')}
+          </button>
+        )}
+        <button className="icon-button fork-popover__close" onClick={onClose} aria-label={t('close')} title={t('close')}>
+          <UiIcon name="close" size={12} />
+        </button>
       </header>
-      <div className="card-grid" role="radiogroup" aria-label={heading}>
+      <div className="card-grid fork-popover__grid" role="radiogroup" aria-label={heading}>
         {fork.recipeIds.map(recipeId => {
           const recipe = index.recipes.get(recipeId)!;
           const machine = index.machines.get(recipe.machineId)!;
+          const selected = recipeId === activeRecipeId;
           return (
-            <button className="recipe-card recipe-option" key={recipe.id} onClick={() => onSelect(recipeId)} role="radio" aria-checked="false">
+            <button
+              className={`recipe-card recipe-option${selected ? ' recipe-option--active' : ''}`}
+              key={recipe.id}
+              onClick={() => onSelect(recipeId)}
+              role="radio"
+              aria-checked={selected}
+            >
               <span className="recipe-card__recipe">
                 <RecipeFormula recipe={recipe} index={index} />
               </span>
@@ -264,6 +370,7 @@ export function ForkPicker({ fork, index, onSelect }: {
                 <span className="machine-card">
                   <MachineGlyph machine={machine} />
                   <span className="machine-card__name">{entityName(machine, language)}</span>
+                  {selected && <span className="recipe-option__dot" aria-hidden="true" />}
                 </span>
               </span>
             </button>
@@ -307,11 +414,11 @@ export function ItemPicker({ items, onSelect, onClose }: {
   );
 }
 
-export function SummaryStrip({ plan, index, onRecycle, onRemoveRecycle }: {
+export function SummaryStrip({ plan, index, activeRecycleItemId, onOpenRecycle }: {
   plan: SolvedPlan;
   index: DatasetIndex;
-  onRecycle: (itemId: string) => void;
-  onRemoveRecycle: (itemId: string) => void;
+  activeRecycleItemId?: string | null;
+  onOpenRecycle: (itemId: string, anchor: HTMLElement) => void;
 }) {
   const { language, t } = useLanguage();
   const machines = plan.summary.machines;
@@ -339,22 +446,43 @@ export function SummaryStrip({ plan, index, onRecycle, onRemoveRecycle }: {
           <div className="metric__flows">
             {plan.byproducts.map(flow => {
               const active = plan.recycleByItem[flow.itemId] !== undefined;
+              const isOpen = activeRecycleItemId === flow.itemId;
               return (
-                <span className="flow-chip flow-chip--byproduct" key={flow.itemId}>
+                <span className={`flow-chip flow-chip--byproduct${isOpen ? ' flow-chip--editing' : ''}`} key={flow.itemId}>
                   <ItemGlyph item={index.items.get(flow.itemId)!} role="byproduct" size="small" />
                   <RateValue value={flow.ratePerMin} />
-                  <button className={`recycle-toggle${active ? ' recycle-toggle--on' : ''}`} onClick={() => active ? onRemoveRecycle(flow.itemId) : onRecycle(flow.itemId)} aria-label={t(active ? 'removeRecycle' : 'recycle')} aria-pressed={active} title={t(active ? 'removeRecycle' : 'recycle')}>
+                  <button
+                    className={`recycle-toggle${active ? ' recycle-toggle--on' : ''}${isOpen ? ' recycle-toggle--open' : ''}`}
+                    onClick={event => onOpenRecycle(flow.itemId, event.currentTarget)}
+                    aria-label={t(active ? 'selectRecycle' : 'recycle')}
+                    aria-pressed={active}
+                    aria-expanded={isOpen}
+                    aria-haspopup="dialog"
+                    title={t(active ? 'selectRecycle' : 'recycle')}
+                  >
                     <UiIcon name="recycle" size={12} />
                   </button>
                 </span>
               );
             })}
-            {orphanRecycles.map(itemId => (
-              <button className="flow-chip flow-chip--byproduct recycle-toggle--on" key={itemId} onClick={() => onRemoveRecycle(itemId)} title={t('removeRecycle')} aria-label={t('removeRecycle')} aria-pressed="true">
-                <ItemGlyph item={index.items.get(itemId)!} role="byproduct" size="small" />
-                <UiIcon name="recycle" size={12} />
-              </button>
-            ))}
+            {orphanRecycles.map(itemId => {
+              const isOpen = activeRecycleItemId === itemId;
+              return (
+                <button
+                  className={`flow-chip flow-chip--byproduct recycle-toggle--on${isOpen ? ' flow-chip--editing' : ''}`}
+                  key={itemId}
+                  onClick={event => onOpenRecycle(itemId, event.currentTarget)}
+                  title={t('selectRecycle')}
+                  aria-label={t('selectRecycle')}
+                  aria-pressed="true"
+                  aria-expanded={isOpen}
+                  aria-haspopup="dialog"
+                >
+                  <ItemGlyph item={index.items.get(itemId)!} role="byproduct" size="small" />
+                  <UiIcon name="recycle" size={12} />
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

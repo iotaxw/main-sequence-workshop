@@ -7,7 +7,7 @@ import type { Dataset, Fork, InvalidPlan, Issue, Language, PlanResult } from './
 import { loadPlan, savePlan } from './plan-storage';
 import {
   DatasetChip,
-  ForkPicker,
+  ForkPopover,
   IssuePanel,
   ItemGlyph,
   ItemPicker,
@@ -15,11 +15,40 @@ import {
   SummaryStrip,
   UiIcon,
 } from './ui/components';
+import { resolveProduceForks } from './ui/default-recipes';
 import { entityName, label, LanguageContext, type LabelKey } from './ui/language';
 
 const dataset = datasetJson as Dataset;
 const index = indexDataset(dataset);
 const itemOrder = new Map(dataset.items.map((item, order) => [item.id, order]));
+
+interface OpenForkState {
+  fork: Fork;
+  anchorEl: HTMLElement | null;
+}
+
+function fillDefaultProduceRecipes(
+  targetItemId: string | null,
+  ratePerMin: string,
+  inputItemIds: string[],
+  recipeByItem: Record<string, string>,
+  recycleItemIds: string[],
+  recycleByItem: Record<string, string>,
+): Record<string, string> {
+  if (!targetItemId) return recipeByItem;
+  try {
+    Rational.parse(ratePerMin);
+  } catch {
+    return recipeByItem;
+  }
+  return resolveProduceForks(dataset, index, {
+    target: { itemId: targetItemId, ratePerMin },
+    inputItemIds,
+    recipeByItem,
+    recycleItemIds,
+    recycleByItem,
+  });
+}
 
 export default function App() {
   const [initial] = useState(() => loadPlan(dataset));
@@ -28,13 +57,21 @@ export default function App() {
   const [targetItemId, setTargetItemId] = useState<string | null>(initial.plan.targetItemId);
   const [ratePerMin, setRatePerMin] = useState(initial.plan.ratePerMin);
   const [inputItemIds, setInputItemIds] = useState<string[]>(initial.plan.inputItemIds);
-  const [recipeByItem, setRecipeByItem] = useState<Record<string, string>>(initial.plan.recipeByItem);
+  const [recipeByItem, setRecipeByItem] = useState<Record<string, string>>(() =>
+    fillDefaultProduceRecipes(
+      initial.plan.targetItemId,
+      initial.plan.ratePerMin,
+      initial.plan.inputItemIds,
+      initial.plan.recipeByItem,
+      initial.plan.recycleItemIds,
+      initial.plan.recycleByItem,
+    ),
+  );
   const [recycleItemIds, setRecycleItemIds] = useState<string[]>(initial.plan.recycleItemIds);
   const [recycleByItem, setRecycleByItem] = useState<Record<string, string>>(initial.plan.recycleByItem);
   const [picker, setPicker] = useState<'target' | 'input' | null>(null);
-  const [manualFork, setManualFork] = useState<Fork | null>(null);
+  const [openFork, setOpenFork] = useState<OpenForkState | null>(null);
   const firstSave = useRef(true);
-  const forkSlot = useRef<HTMLDivElement>(null);
 
   const plan = useMemo<PlanResult | null>(() => {
     if (!targetItemId) return null;
@@ -74,48 +111,100 @@ export default function App() {
     });
   }, [language, targetItemId, ratePerMin, inputItemIds, recipeByItem, recycleItemIds, recycleByItem]);
 
-  useEffect(() => {
-    if (manualFork) forkSlot.current?.scrollIntoView({ block: 'nearest' });
-  }, [manualFork]);
-
-  const activeFork = manualFork ?? (plan?.status === 'pending-forks' ? plan.fork : null);
   const effectiveRecipes = plan?.status === 'pending-forks' || plan?.status === 'solved'
     ? plan.recipeByItem
     : recipeByItem;
   const effectiveRecycles = plan?.status === 'pending-forks' || plan?.status === 'solved'
     ? plan.recycleByItem
     : recycleByItem;
+  const activeForkState: OpenForkState | null = openFork
+    ?? (plan?.status === 'pending-forks' ? { fork: plan.fork, anchorEl: null } : null);
   const target = targetItemId ? index.items.get(targetItemId) : undefined;
 
-  function selectFork(recipeId: string) {
-    if (!activeFork) return;
-    if (activeFork.kind === 'produce') {
-      setRecipeByItem({ ...effectiveRecipes, [activeFork.itemId]: recipeId });
-    } else {
-      setRecycleItemIds(previous => previous.includes(activeFork.itemId) ? previous : [...previous, activeFork.itemId]);
-      setRecycleByItem({ ...effectiveRecycles, [activeFork.itemId]: recipeId });
-    }
-    setManualFork(null);
+  function applyResolvedRecipes(
+    nextTarget: string | null,
+    nextInputs: string[],
+    nextRecipes: Record<string, string>,
+    nextRecycleIds = recycleItemIds,
+    nextRecycles = recycleByItem,
+  ) {
+    setRecipeByItem(
+      fillDefaultProduceRecipes(nextTarget, ratePerMin, nextInputs, nextRecipes, nextRecycleIds, nextRecycles),
+    );
   }
 
-  function switchRecipe(itemId: string) {
-    setManualFork({
-      itemId,
-      kind: 'produce',
-      recipeIds: index.recipesByOutput.get(itemId)?.map(recipe => recipe.id) ?? [],
+  function selectFork(recipeId: string) {
+    if (!activeForkState) return;
+    const { fork } = activeForkState;
+    if (fork.kind === 'produce') {
+      const nextRecipes = { ...effectiveRecipes, [fork.itemId]: recipeId };
+      applyResolvedRecipes(targetItemId, inputItemIds, nextRecipes);
+    } else {
+      const nextRecycleIds = recycleItemIds.includes(fork.itemId) ? recycleItemIds : [...recycleItemIds, fork.itemId];
+      const nextRecycles = { ...effectiveRecycles, [fork.itemId]: recipeId };
+      setRecycleItemIds(nextRecycleIds);
+      setRecycleByItem(nextRecycles);
+      applyResolvedRecipes(targetItemId, inputItemIds, effectiveRecipes, nextRecycleIds, nextRecycles);
+    }
+    setOpenFork(null);
+  }
+
+  function openProduceFork(itemId: string, anchorEl: HTMLElement) {
+    if (openFork?.fork.kind === 'produce' && openFork.fork.itemId === itemId) {
+      setOpenFork(null);
+      return;
+    }
+    setOpenFork({
+      fork: {
+        itemId,
+        kind: 'produce',
+        recipeIds: index.recipesByOutput.get(itemId)?.map(recipe => recipe.id) ?? [],
+      },
+      anchorEl,
+    });
+  }
+
+  function openRecycleFork(itemId: string, anchorEl: HTMLElement) {
+    if (openFork?.fork.kind === 'recycle' && openFork.fork.itemId === itemId) {
+      setOpenFork(null);
+      return;
+    }
+    const consumerIds = dataset.recipes
+      .filter(recipe => recipe.inputs.some(input => input.itemId === itemId))
+      .map(recipe => recipe.id)
+      .sort((left, right) => left.localeCompare(right));
+    if (consumerIds.length === 0) return;
+    setOpenFork({
+      fork: {
+        itemId,
+        kind: 'recycle',
+        recipeIds: consumerIds,
+      },
+      anchorEl,
     });
   }
 
   function removeRecycle(itemId: string) {
-    setRecycleItemIds(previous => previous.filter(id => id !== itemId));
-    setRecycleByItem(previous => {
-      const next = { ...previous };
-      delete next[itemId];
-      return next;
-    });
+    const nextRecycleIds = recycleItemIds.filter(id => id !== itemId);
+    const nextRecycles = { ...recycleByItem };
+    delete nextRecycles[itemId];
+    setRecycleItemIds(nextRecycleIds);
+    setRecycleByItem(nextRecycles);
+    setOpenFork(null);
+  }
+
+  function updateInputs(nextInputs: string[]) {
+    setInputItemIds(nextInputs);
+    applyResolvedRecipes(targetItemId, nextInputs, recipeByItem);
+    setOpenFork(null);
   }
 
   const t = (key: LabelKey) => label(key, language);
+  const activeForkRecipeId = activeForkState
+    ? (activeForkState.fork.kind === 'produce'
+      ? effectiveRecipes[activeForkState.fork.itemId]
+      : effectiveRecycles[activeForkState.fork.itemId])
+    : undefined;
 
   return (
     <LanguageContext.Provider value={{ language, t }}>
@@ -154,7 +243,7 @@ export default function App() {
               {[...inputItemIds].sort((left, right) => (itemOrder.get(left) ?? -1) - (itemOrder.get(right) ?? -1)).map(itemId => {
                 const item = index.items.get(itemId)!;
                 return (
-                  <button className="input-chip" key={itemId} onClick={() => setInputItemIds(previous => previous.filter(id => id !== itemId))} title={`${entityName(item, language)}：${t('removeInput')}`} aria-label={`${entityName(item, language)}：${t('removeInput')}`}>
+                  <button className="input-chip" key={itemId} onClick={() => updateInputs(inputItemIds.filter(id => id !== itemId))} title={`${entityName(item, language)}：${t('removeInput')}`} aria-label={`${entityName(item, language)}：${t('removeInput')}`}>
                     <ItemGlyph item={item} role="raw" size="small" />
                     <span className="input-chip__remove" aria-hidden="true"><UiIcon name="close" size={12} /></span>
                   </button>
@@ -181,33 +270,47 @@ export default function App() {
             <SummaryStrip
               plan={plan}
               index={index}
-              onRecycle={itemId => setRecycleItemIds(previous => previous.includes(itemId) ? previous : [...previous, itemId])}
-              onRemoveRecycle={removeRecycle}
+              activeRecycleItemId={openFork?.fork.kind === 'recycle' ? openFork.fork.itemId : null}
+              onOpenRecycle={openRecycleFork}
             />
-            <RecipeGrid rows={plan.rows} index={index} onSwitch={switchRecipe} />
+            <RecipeGrid
+              rows={plan.rows}
+              index={index}
+              activeForkItemId={openFork?.fork.kind === 'produce' ? openFork.fork.itemId : null}
+              onSwitch={openProduceFork}
+            />
           </div>
         )}
 
-        {activeFork && (
-          <div className="fork-slot" ref={forkSlot}>
-            <ForkPicker fork={activeFork} index={index} onSelect={selectFork} />
-          </div>
+        {activeForkState && (
+          <ForkPopover
+            fork={activeForkState.fork}
+            index={index}
+            activeRecipeId={activeForkRecipeId}
+            anchorEl={activeForkState.anchorEl}
+            onSelect={selectFork}
+            onRemoveRecycle={activeForkState.fork.kind === 'recycle' ? () => removeRecycle(activeForkState.fork.itemId) : undefined}
+            onClose={() => setOpenFork(null)}
+          />
         )}
 
         {picker && (
-        <ItemPicker
-          items={dataset.items}
-          onClose={() => setPicker(null)}
-          onSelect={itemId => {
-            if (picker === 'target') {
-              setTargetItemId(itemId);
-            } else {
-              setInputItemIds(previous => previous.includes(itemId) ? previous : [...previous, itemId]);
-            }
-            setPicker(null);
-          }}
-        />
-      )}
+          <ItemPicker
+            items={dataset.items}
+            onClose={() => setPicker(null)}
+            onSelect={itemId => {
+              if (picker === 'target') {
+                setTargetItemId(itemId);
+                applyResolvedRecipes(itemId, inputItemIds, recipeByItem);
+                setOpenFork(null);
+              } else {
+                const nextInputs = inputItemIds.includes(itemId) ? inputItemIds : [...inputItemIds, itemId];
+                updateInputs(nextInputs);
+              }
+              setPicker(null);
+            }}
+          />
+        )}
       </main>
     </LanguageContext.Provider>
   );
