@@ -1193,7 +1193,8 @@
       ],
       "hasFactoryFloor": false,
       "floors": [],
-      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationTurretBlock_01"
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_StationTurretBlock_01",
+      "powerKW": 6000
     },
     {
       "id": "BPO_StationArmour_01",
@@ -1474,7 +1475,8 @@
       ],
       "hasFactoryFloor": false,
       "floors": [],
-      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_MiningDroneBayBlock"
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_MiningDroneBayBlock",
+      "powerKW": 6000
     },
     {
       "id": "BPO_MiningDroneBayBlock_2",
@@ -1509,7 +1511,8 @@
       ],
       "hasFactoryFloor": false,
       "floors": [],
-      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_MiningDroneBayBlock_2"
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_MiningDroneBayBlock_2",
+      "powerKW": 12000
     },
     {
       "id": "BPO_SolarPanelBlock",
@@ -1551,7 +1554,8 @@
       ],
       "hasFactoryFloor": false,
       "floors": [],
-      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_SolarPanelBlock"
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_SolarPanelBlock",
+      "powerGenKW": 12000
     },
     {
       "id": "BPO_SolarPanelBlock_02",
@@ -1593,7 +1597,8 @@
       ],
       "hasFactoryFloor": false,
       "floors": [],
-      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_SolarPanelBlock_02"
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_SolarPanelBlock_02",
+      "powerGenKW": 48000
     },
     {
       "id": "BPO_SolarPanelBlock_03",
@@ -1635,7 +1640,8 @@
       ],
       "hasFactoryFloor": false,
       "floors": [],
-      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_SolarPanelBlock_03"
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_SolarPanelBlock_03",
+      "powerGenKW": 288000
     },
     {
       "id": "BPO_DeepSpaceObservatory",
@@ -1670,7 +1676,8 @@
       ],
       "hasFactoryFloor": false,
       "floors": [],
-      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_DeepSpaceObservatory"
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_DeepSpaceObservatory",
+      "powerKW": 96000
     },
     {
       "id": "BPO_ShipyardCore",
@@ -1903,7 +1910,8 @@
         }
       ],
       "configurablePorts": true,
-      "sourceAsset": "/Game/Data/Buildables/DAT_ReactorMachine"
+      "sourceAsset": "/Game/Data/Buildables/DAT_ReactorMachine",
+      "powerGenKW": 48000
     },
     {
       "id": "DAT_WorkbenchMachine",
@@ -2341,7 +2349,7 @@
       ],
       "configurablePorts": true,
       "sourceAsset": "/Game/Data/Buildables/DAT_Supercomputer",
-      "powerKW": 6000
+      "powerKW": 18000
     },
     {
       "id": "DAT_GrowthChamber",
@@ -2565,7 +2573,8 @@
       "crafterId": null,
       "ports": [],
       "configurablePorts": false,
-      "sourceAsset": "/Game/Data/Buildables/DAT_Teleporter"
+      "sourceAsset": "/Game/Data/Buildables/DAT_Teleporter",
+      "powerKW": 12000
     },
     {
       "id": "DAT_MatSciLab",
@@ -2593,7 +2602,8 @@
         }
       ],
       "configurablePorts": true,
-      "sourceAsset": "/Game/Data/Buildables/DAT_MatSciLab"
+      "sourceAsset": "/Game/Data/Buildables/DAT_MatSciLab",
+      "powerKW": 6000
     },
     {
       "id": "DAT_CompSciLab",
@@ -2621,7 +2631,8 @@
         }
       ],
       "configurablePorts": true,
-      "sourceAsset": "/Game/Data/Buildables/DAT_CompSciLab"
+      "sourceAsset": "/Game/Data/Buildables/DAT_CompSciLab",
+      "powerKW": 6000
     },
     {
       "id": "DAT_ElectroSciLab",
@@ -2649,7 +2660,8 @@
         }
       ],
       "configurablePorts": true,
-      "sourceAsset": "/Game/Data/Buildables/DAT_ElectroSciLab"
+      "sourceAsset": "/Game/Data/Buildables/DAT_ElectroSciLab",
+      "powerKW": 12000
     },
     {
       "id": "DAT_QuantumSciLab",
@@ -2684,7 +2696,8 @@
         }
       ],
       "configurablePorts": true,
-      "sourceAsset": "/Game/Data/Buildables/DAT_QuantumSciLab"
+      "sourceAsset": "/Game/Data/Buildables/DAT_QuantumSciLab",
+      "powerKW": 12000
     },
     {
       "id": "DAT_AstroSciLab",
@@ -2712,7 +2725,8 @@
         }
       ],
       "configurablePorts": true,
-      "sourceAsset": "/Game/Data/Buildables/DAT_AstroSciLab"
+      "sourceAsset": "/Game/Data/Buildables/DAT_AstroSciLab",
+      "powerKW": 12000
     },
     {
       "id": "DAT_XenoSciLab",
@@ -2740,7 +2754,8 @@
         }
       ],
       "configurablePorts": true,
-      "sourceAsset": "/Game/Data/Buildables/DAT_XenoSciLab"
+      "sourceAsset": "/Game/Data/Buildables/DAT_XenoSciLab",
+      "powerKW": 12000
     },
     {
       "id": "DAT_RelicAnalyzer",
@@ -2768,7 +2783,8 @@
         }
       ],
       "configurablePorts": true,
-      "sourceAsset": "/Game/Data/Buildables/DAT_RelicAnalyzer"
+      "sourceAsset": "/Game/Data/Buildables/DAT_RelicAnalyzer",
+      "powerKW": 6000
     },
     {
       "id": "DAT_ConveyorBelt",

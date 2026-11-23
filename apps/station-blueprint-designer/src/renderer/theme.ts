@@ -55,6 +55,8 @@ export interface CadThemePalette {
   dockMatchHint: number;
   validGhost: number;
   invalidGhost: number;
+  simWarnColor: number;
+  simErrorColor: number;
   selectOutline: number;
   heightFrame: number;
   refAxis: number;
@@ -109,6 +111,8 @@ export const CAD_THEMES: Record<CadThemeId, CadThemePalette> = {
     dockMatchHint: 0x67d49c,
     validGhost: 0xcfb286,
     invalidGhost: 0xc95a60,
+    simWarnColor: 0xf2b938,     // Crisp amber-yellow warning for raw-input entries & power alerts
+    simErrorColor: 0xe3545c,    // High-clarity crimson for blocking anomalies
     selectOutline: 0xd4b689,
     heightFrame: 0x283446,
     refAxis: 0x1b2534,
@@ -162,6 +166,8 @@ export const CAD_THEMES: Record<CadThemeId, CadThemePalette> = {
     dockMatchHint: 0x1f8252,
     validGhost: 0x1c5aa6,
     invalidGhost: 0xb53840,
+    simWarnColor: 0xd48308,     // High-contrast engineering amber on light drafting paper
+    simErrorColor: 0xc92a35,    // Technical drafting crimson error
     selectOutline: 0x1c5aa6,
     heightFrame: 0xbcc5d1,
     refAxis: 0xd6dce5,

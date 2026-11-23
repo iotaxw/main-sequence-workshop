@@ -118,7 +118,7 @@ export const App: React.FC = () => {
   const simOverlayIssues = useMemo(
     () =>
       simReport
-        ? simReport.issues.map((i) => ({ floor: i.floor, x: i.x, y: i.y, severity: i.severity }))
+        ? simReport.issues.map((i) => ({ floor: i.floor, x: i.x, y: i.y, severity: i.severity, code: i.code }))
         : undefined,
     [simReport]
   );

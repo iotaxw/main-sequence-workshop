@@ -54,6 +54,10 @@ export interface StationModuleDef {
   connectors: StationConnectorDef[];
   hasFactoryFloor: boolean;
   floors: StationFloorSurfaceDef[];
+  /** Verified Build 26639889 steady/peak power consumption in kW (1000 kW = 1 MW) */
+  powerKW?: number;
+  /** Verified Build 26639889 maximum power generation in kW (e.g. Solar Panels I/II/III) */
+  powerGenKW?: number;
   sourceAsset: string;
 }
 
@@ -96,6 +100,7 @@ export interface BuildableDef {
   configurablePorts: boolean;
   maxLength?: number;
   powerKW?: number;
+  powerGenKW?: number;
   sourceAsset: string;
 }
 

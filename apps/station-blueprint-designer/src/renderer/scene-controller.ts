@@ -54,7 +54,7 @@ export interface SceneRenderState {
   beltPreview: Array<{ x: number; y: number; rotation: Rotation }>;
   boxSelectRect: { minX: number; minY: number; maxX: number; maxY: number } | null;
   forceReplaceHeld: boolean;
-  simulationIssues?: Array<{ floor: number; x: number; y: number; severity: 'error' | 'warn' }>;
+  simulationIssues?: Array<{ floor: number; x: number; y: number; severity: 'error' | 'warn'; code?: string }>;
 }
 
 const labelTextureCache = new Map<string, THREE.CanvasTexture>();
@@ -1215,39 +1215,73 @@ export class CadSceneController {
     if (simIssues.length > 0) {
       const errPts: number[] = [];
       const warnPts: number[] = [];
+      const inputWarnPts: number[] = [];
       for (const issue of simIssues) {
         const op = this.layerOpacityFor(issue.floor, state.focusFloor, state.hideAbove);
         if (op <= 0.01) continue;
-        const targetPts = issue.severity === 'error' ? errPts : warnPts;
         const y = issue.floor * FLOOR_VISUAL_SPACING + 0.16;
         const x0 = issue.x + 0.08;
         const z0 = issue.y + 0.08;
         const x1 = issue.x + 0.92;
         const z1 = issue.y + 0.92;
-        targetPts.push(
-          x0, y, z0, x1, y, z0,
-          x1, y, z0, x1, y, z1,
-          x1, y, z1, x0, y, z1,
-          x0, y, z1, x0, y, z0,
-          x0 + 0.12, y, z0 + 0.12, x1 - 0.12, y, z1 - 0.12,
-          x1 - 0.12, y, z0 + 0.12, x0 + 0.12, y, z1 - 0.12
-        );
+        if (issue.severity === 'error') {
+          errPts.push(
+            x0, y, z0, x1, y, z0,
+            x1, y, z0, x1, y, z1,
+            x1, y, z1, x0, y, z1,
+            x0, y, z1, x0, y, z0,
+            x0 + 0.12, y, z0 + 0.12, x1 - 0.12, y, z1 - 0.12,
+            x1 - 0.12, y, z0 + 0.12, x0 + 0.12, y, z1 - 0.12
+          );
+        } else if (issue.code === 'external-input-needed') {
+          // Crisp amber-yellow outer frame + inner diamond pip marking every raw-material input point!
+          const cx = issue.x + 0.5;
+          const cz = issue.y + 0.5;
+          const r = 0.24;
+          inputWarnPts.push(
+            x0, y, z0, x1, y, z0,
+            x1, y, z0, x1, y, z1,
+            x1, y, z1, x0, y, z1,
+            x0, y, z1, x0, y, z0,
+            cx, y, cz - r, cx + r, y, cz,
+            cx + r, y, cz, cx, y, cz + r,
+            cx, y, cz + r, cx - r, y, cz,
+            cx - r, y, cz, cx, y, cz - r
+          );
+        } else {
+          warnPts.push(
+            x0, y, z0, x1, y, z0,
+            x1, y, z0, x1, y, z1,
+            x1, y, z1, x0, y, z1,
+            x0, y, z1, x0, y, z0,
+            x0 + 0.16, y, z0 + 0.16, x1 - 0.16, y, z1 - 0.16
+          );
+        }
       }
       if (errPts.length >= 6) {
         this.selectionGroup.add(
           createCrispLineSegments(errPts, {
-            color: palette.invalidGhost,
+            color: palette.simErrorColor,
             opacity: 0.96,
             widthPx: 2.1,
+          })
+        );
+      }
+      if (inputWarnPts.length >= 6) {
+        this.selectionGroup.add(
+          createCrispLineSegments(inputWarnPts, {
+            color: palette.simWarnColor,
+            opacity: 0.96,
+            widthPx: 1.8,
           })
         );
       }
       if (warnPts.length >= 6) {
         this.selectionGroup.add(
           createCrispLineSegments(warnPts, {
-            color: palette.lineSelected,
-            opacity: 0.88,
-            widthPx: 1.65,
+            color: palette.simWarnColor,
+            opacity: 0.92,
+            widthPx: 1.7,
           })
         );
       }

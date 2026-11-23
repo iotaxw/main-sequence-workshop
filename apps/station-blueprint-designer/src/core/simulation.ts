@@ -1,9 +1,13 @@
 import { getBuildableDef, getItemNameZh, getModuleDef, getRecipeDef } from './catalog';
 import {
   computeUndergroundLinks,
+  findModuleAtWorldPoint,
   getBuildingSizeCells,
   getBuildingWorldPorts,
+  getModuleCenterM,
   isCellBuildable,
+  normalizeRotation,
+  rotateVec2,
   rotationToDelta,
 } from './geometry';
 import type { BlueprintDocument, BuildableDef, PlacedBuilding, RecipeDef, Rotation } from './types';
@@ -11,6 +15,8 @@ import type { BlueprintDocument, BuildableDef, PlacedBuilding, RecipeDef, Rotati
 export type SimulationIssueSeverity = 'error' | 'warn';
 
 export type SimulationIssueCode =
+  | 'external-input-needed'
+  | 'power-deficit'
   | 'orphan-belt'
   | 'dead-end-belt'
   | 'head-on-belt'
@@ -32,6 +38,21 @@ export interface SimulationIssue {
   x: number;
   y: number;
   buildingId?: string;
+}
+
+export interface ExternalInputSpot {
+  id: string;
+  floor: number;
+  x: number;
+  y: number;
+  buildingId: string;
+  sourceKind: 'doorway' | 'elevator' | 'wall-stub' | 'open-belt' | 'source-container';
+  itemId: string | null;
+  nameZh: string;
+  requiredRatePerSec: number;
+  suppliedRatePerSec: number;
+  capacityPerSec: number;
+  bottlenecked: boolean;
 }
 
 export interface FlowItemRate {
@@ -57,12 +78,40 @@ export interface CellFlowInfo {
   overloaded: boolean;
 }
 
+export interface PowerBreakdown {
+  /** Rated peak power consumption of all machines, labs, teleporters, and functional station modules (MW) */
+  peakDrawMW: number;
+  /** Steady-state operating power draw weighted by machine efficiency + continuous facilities (MW) */
+  activeDrawMW: number;
+  /** Maximum rated power generation from all Solar Panels (I/II/III) and Reactors (MW) */
+  maxGenMW: number;
+  /** Max generation from Solar Panels (12 / 48 / 288 MW each) */
+  solarGenMW: number;
+  /** Max generation from Reactor Machines (48 MW each) */
+  reactorGenMW: number;
+  /** Number of generator entities (solar modules + reactors) */
+  generatorCount: number;
+  /** Net power margin against peak load: maxGenMW - peakDrawMW (MW) */
+  netBalanceMW: number;
+  /** Breakdown of peak draw by category */
+  crafterPeakMW: number;
+  labPeakMW: number;
+  facilityPeakMW: number;
+}
+
 export interface SimulationReport {
   passed: boolean;
   errorCount: number;
   warnCount: number;
+  /** Count of structural/operational warnings excluding informational external-input-needed reminders */
+  anomalyWarnCount: number;
   issues: SimulationIssue[];
+  /** Every spot where external raw material must be fed in (also surfaced as yellow warnings!) */
+  externalInputs: ExternalInputSpot[];
+  /** Rated peak power consumption (MW) — backward-compatible alias for power.peakDrawMW */
   totalPowerMW: number;
+  /** Full binary-verified power generation & consumption breakdown */
+  power: PowerBreakdown;
   machineCount: number;
   configuredMachineCount: number;
   avgEfficiency: number;
@@ -89,6 +138,7 @@ function oppositeRot(r: Rotation): Rotation {
 interface OutEdge {
   toId: string;
   portIndex?: number;
+  toPortIndex?: number;
   capacity: number;
   filterItem?: string;
 }
@@ -104,17 +154,11 @@ function collectElevatorPortCells(doc: BlueprintDocument): Set<string> {
   for (const mod of doc.modules) {
     const def = getModuleDef(mod.type);
     if (!def) continue;
-    const [suW, suD] = mod.rotation % 2 === 0 ? [def.sizeUnits[0], def.sizeUnits[1]] : [def.sizeUnits[1], def.sizeUnits[0]];
-    const cx = mod.gx * 16 + (suW * 16) / 2;
-    const cy = mod.gy * 16 + (suD * 16) / 2;
+    const [cx, cy] = getModuleCenterM(mod, def);
     for (const fl of def.floors) {
       if (!fl.elevatorPorts) continue;
       for (const ep of fl.elevatorPorts) {
-        let rx = ep.x;
-        let ry = ep.y;
-        if (mod.rotation === 1) [rx, ry] = [-ep.y, ep.x];
-        else if (mod.rotation === 2) [rx, ry] = [-ep.x, -ep.y];
-        else if (mod.rotation === 3) [rx, ry] = [ep.y, -ep.x];
+        const [rx, ry] = rotateVec2(ep.x, ep.y, mod.rotation);
         const wx = Math.floor(cx + rx);
         const wy = Math.floor(cy + ry);
         ports.add(cellKey(mod.floor + fl.floorOffset, wx, wy));
@@ -130,23 +174,14 @@ function isDoorwayThresholdCell(doc: BlueprintDocument, x: number, y: number, fl
   for (const mod of doc.modules) {
     const def = getModuleDef(mod.type);
     if (!def || !def.hasFactoryFloor) continue;
-    const [suW, suD] = mod.rotation % 2 === 0 ? [def.sizeUnits[0], def.sizeUnits[1]] : [def.sizeUnits[1], def.sizeUnits[0]];
-    const mcx = mod.gx * 16 + (suW * 16) / 2;
-    const mcy = mod.gy * 16 + (suD * 16) / 2;
-    const dx = cx - mcx;
-    const dy = cy - mcy;
-    // Transform world offset into module local coords (inverse rotation)
-    let lx = dx;
-    let ly = dy;
-    if (mod.rotation === 1) [lx, ly] = [dy, -dx];
-    else if (mod.rotation === 2) [lx, ly] = [-dx, -dy];
-    else if (mod.rotation === 3) [lx, ly] = [-dy, dx];
+    const [mcx, mcy] = getModuleCenterM(mod, def);
+    const invRot = normalizeRotation(4 - mod.rotation);
+    const [lx, ly] = rotateVec2(cx - mcx, cy - mcy, invRot);
 
     for (const fl of def.floors) {
       if (mod.floor + fl.floorOffset !== floor) continue;
       const inInnerRect = lx >= fl.minX && lx <= fl.maxX && ly >= fl.minY && ly <= fl.maxY;
       if (inInnerRect) continue;
-      // Check if cell falls in one of this module's doorway strips!
       for (const dw of fl.doorways) {
         if (dw.side === 'W' && lx >= fl.minX - 1.01 && lx < fl.minX && ly >= dw.start && ly <= dw.end) return true;
         if (dw.side === 'E' && lx > fl.maxX && lx <= fl.maxX + 1.01 && ly >= dw.start && ly <= dw.end) return true;
@@ -163,8 +198,8 @@ function isBoundaryFloorMissing(doc: BlueprintDocument, x: number, y: number, fl
 }
 
 /**
- * Pure deterministic production-line connectivity, zero-anomaly audit, and steady-state flow simulator.
- * Works on any BlueprintDocument (standalone cells, multi-module hubs, or multi-deck stations).
+ * Pure deterministic, general-purpose production-line simulator, raw-input tracer, and binary-verified power auditor.
+ * Works on ANY BlueprintDocument: standalone sub-lines, single/multi-module hubs, or massive multi-deck stations.
  */
 export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   const issues: SimulationIssue[] = [];
@@ -214,7 +249,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // Index active world ports for machines & containers -> map external adjacent cell to { building, portIndex, sideDir }
+  // Index active world ports for machines, labs, reactors & containers
   interface AdjacentPortTarget {
     building: PlacedBuilding;
     portIndex: number;
@@ -233,7 +268,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   for (const b of doc.buildings) {
     const def = defById.get(b.id);
     if (!def) continue;
-    if (def.kind !== 'crafter' && def.kind !== 'research' && def.kind !== 'container') continue;
+    if (def.kind !== 'crafter' && def.kind !== 'research' && def.kind !== 'container' && def.kind !== 'reactor') continue;
     const worldPorts = getBuildingWorldPorts(b, def);
     for (const wp of worldPorts) {
       const sideDir = SIDE_TO_ROT[wp.side];
@@ -262,14 +297,21 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   // Directed graph adjacency
   const outEdges = new Map<string, OutEdge[]>();
   const inEdges = new Map<string, InEdge[]>();
-  const addEdge = (fromId: string, toId: string, capacity: number, outPortIndex?: number, inPortIndex?: number, filterItem?: string) => {
+  const addEdge = (
+    fromId: string,
+    toId: string,
+    capacity: number,
+    outPortIndex?: number,
+    inPortIndex?: number,
+    filterItem?: string
+  ) => {
     let outs = outEdges.get(fromId);
     if (!outs) {
       outs = [];
       outEdges.set(fromId, outs);
     }
-    if (!outs.some((e) => e.toId === toId && e.portIndex === outPortIndex)) {
-      outs.push({ toId, portIndex: outPortIndex, capacity, filterItem });
+    if (!outs.some((e) => e.toId === toId && e.portIndex === outPortIndex && e.toPortIndex === inPortIndex)) {
+      outs.push({ toId, portIndex: outPortIndex, toPortIndex: inPortIndex, capacity, filterItem });
     }
     let ins = inEdges.get(toId);
     if (!ins) {
@@ -281,8 +323,8 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   };
 
-  // Track doorway boundary entries and exits
-  const boundaryEntries = new Set<string>();
+  // Track external input sources (with their origin kind) and boundary exits
+  const entrySourceKind = new Map<string, ExternalInputSpot['sourceKind']>();
   const boundaryExits = new Set<string>();
 
   const findEnabledMachinePortAccepting = (
@@ -324,7 +366,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
     if (targetDef.kind === 'balancer') {
       if (target.rotation !== pushDir) return { ok: false };
-      // Determine which input port (0 or 1) aligns with targetCellX, targetCellY
       const worldPorts = getBuildingWorldPorts(target, targetDef);
       const [pdx, pdy] = rotationToDelta(pushDir);
       for (const wp of worldPorts) {
@@ -340,7 +381,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     return { ok: false };
   };
 
-  // 2. Build directed logistics graph + detect all structural/port anomalies
+  // 2. Build directed logistics graph + detect structural/port anomalies
   for (const b of doc.buildings) {
     const def = defById.get(b.id);
     if (!def) continue;
@@ -353,15 +394,12 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       const fx = b.x + dx;
       const fy = b.y + dy;
 
-      // Check doorway / elevator boundary entry (ONLY on actual doorway threshold tiles or elevator ports!)
-      if (
-        (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, bx, by, b.floor)) ||
-        elevatorPorts.has(cellKey(b.floor, bx, by))
-      ) {
-        boundaryEntries.add(b.id);
+      if (elevatorPorts.has(cellKey(b.floor, bx, by))) {
+        entrySourceKind.set(b.id, 'elevator');
+      } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, bx, by, b.floor)) {
+        entrySourceKind.set(b.id, 'doorway');
       }
 
-      // Check forward target
       const { target: machHit, disabledHit } = findEnabledMachinePortAccepting(b.floor, b.x, b.y, b.rotation);
       if (machHit) {
         addEdge(b.id, machHit.building.id, speed, undefined, machHit.portIndex);
@@ -407,20 +445,19 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     } else if (def.kind === 'underground') {
       const [dx, dy] = rotationToDelta(b.rotation);
       if (!ugPairedIds.has(b.id)) {
-        // Wall-tunnel underground right next to module outer wall (e.g. Cell-9P x=1, y=30 facing West) is an intentional cross-room stub -> warn, else error
         const fx = b.x + dx;
         const fy = b.y + dy;
         const bx = b.x - dx;
         const by = b.y - dy;
         const isWallStub =
-          (b.undergroundMode === 'in' && (isBoundaryFloorMissing(doc, fx, fy, b.floor) || isBoundaryFloorMissing(doc, fx + dx, fy + dy, b.floor))) ||
-          (b.undergroundMode === 'out' && (isBoundaryFloorMissing(doc, bx, by, b.floor) || isBoundaryFloorMissing(doc, bx - dx, by - dy, b.floor)));
+          (b.undergroundMode === 'in' &&
+            (isBoundaryFloorMissing(doc, fx, fy, b.floor) || isBoundaryFloorMissing(doc, fx + dx, fy + dy, b.floor))) ||
+          (b.undergroundMode === 'out' &&
+            (isBoundaryFloorMissing(doc, bx, by, b.floor) || isBoundaryFloorMissing(doc, bx - dx, by - dy, b.floor)));
         pushIssue(
           isWallStub ? 'warn' : 'error',
           'unpaired-underground',
-          isWallStub
-            ? `穿墙预留地下带 (${b.x},${b.y}) 等待跨舱对接`
-            : `地下带 (${b.x},${b.y}) 未找到配对出/入口`,
+          isWallStub ? `穿墙预留地下带 (${b.x},${b.y}) 等待跨舱对接` : `地下带 (${b.x},${b.y}) 未找到配对出/入口`,
           b.floor,
           b.x,
           b.y,
@@ -429,17 +466,14 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         if (isWallStub && b.undergroundMode === 'in') {
           boundaryExits.add(b.id);
         } else if (isWallStub && b.undergroundMode === 'out') {
-          boundaryEntries.add(b.id);
+          entrySourceKind.set(b.id, 'wall-stub');
         }
       }
 
       if (b.undergroundMode === 'in') {
         const partner = ugPartnerByIn.get(b.id);
-        if (partner) {
-          addEdge(b.id, partner.id, speed);
-        }
+        if (partner) addEdge(b.id, partner.id, speed);
       } else {
-        // undergroundMode === 'out' pushes forward
         const fx = b.x + dx;
         const fy = b.y + dy;
         const { target: machHit, disabledHit } = findEnabledMachinePortAccepting(b.floor, b.x, b.y, b.rotation);
@@ -517,7 +551,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       const [dx, dy] = rotationToDelta(b.rotation);
       for (const wp of worldPorts) {
         if (wp.port.role !== 'out') continue;
-        // Cell inside balancer owning this output port
         const ownX = Math.floor(wp.worldX - dx * 0.5);
         const ownY = Math.floor(wp.worldY - dy * 0.5);
         const tx = wp.outsideCellX;
@@ -537,10 +570,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           continue;
         }
         const nb = cellMap.get(cellKey(b.floor, tx, ty));
-        if (!nb) {
-          // Intentionally unused second lane on a 2-in-1-out priority merge balancer is valid in Main Sequence!
-          continue;
-        }
+        if (!nb) continue; // Unused second lane on a 2-in-1-out priority balancer is valid
         const nbDef = defById.get(nb.id)!;
         const acc = canLogisticsAcceptFrom(nb, nbDef, b.rotation, tx, ty);
         if (acc.ok) {
@@ -550,7 +580,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         }
       }
     } else if (def.kind === 'crafter' || def.kind === 'research' || def.kind === 'container') {
-      // Connect outgoing logistics from every enabled port of this machine/container
       const worldPorts = getBuildingWorldPorts(b, def);
       for (const wp of worldPorts) {
         if (!wp.enabled) continue;
@@ -560,7 +589,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         const nb = cellMap.get(cellKey(b.floor, ax, ay));
         if (!nb) continue;
         const nbDef = defById.get(nb.id)!;
-        // If adj is a belt NOT pointing into the machine, machine can push out onto it!
         if (nbDef.kind === 'belt') {
           if (nb.rotation !== oppositeRot(sideDir)) {
             addEdge(b.id, nb.id, getTierSpeed(nbDef.tier), wp.port.index);
@@ -577,32 +605,16 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // 3. Check orphan/unfed belts (no incoming edge AND not a valid doorway/elevator entry!)
-  for (const b of doc.buildings) {
-    const def = defById.get(b.id);
-    if (!def) continue;
-    if (def.kind === 'belt') {
-      const ins = inEdges.get(b.id);
-      if ((!ins || ins.length === 0) && !boundaryEntries.has(b.id)) {
-        pushIssue('error', 'orphan-belt', `悬空/无源传送带 (${b.x},${b.y})：没有任何上游供料`, b.floor, b.x, b.y, b.id);
-      }
-    } else if (def.kind === 'splitter') {
-      const ins = inEdges.get(b.id);
-      if (!ins || ins.length === 0) {
-        pushIssue('error', 'orphan-belt', `无源分流器 (${b.x},${b.y})：输入口没有任何上游供料`, b.floor, b.x, b.y, b.id);
-      }
-    }
-  }
-
-  // 4. Infer external doorway boundary item assignments (so standalone standard cells simulate end-to-end!)
-  const entryItem = new Map<string, string>();
   const isLogistics = (id: string) => {
     const k = defById.get(id)?.kind;
     return k === 'belt' || k === 'underground' || k === 'splitter' || k === 'balancer';
   };
 
-  // Helper: trace forward from a node through logistics (optionally containers) to find reached crafters & ports
-  const traceToCrafters = (startId: string): Array<{ crafterId: string; portIndex: number; filterHint?: string }> => {
+  // Helper: trace forward from a node through logistics (and optional buffer containers) to find downstream crafters
+  const traceToCrafters = (
+    startId: string,
+    traverseContainers = false
+  ): Array<{ crafterId: string; portIndex: number; filterHint?: string }> => {
     const visited = new Set<string>([startId]);
     const queue: Array<{ id: string; filterHint?: string }> = [{ id: startId }];
     const hits: Array<{ crafterId: string; portIndex: number; filterHint?: string }> = [];
@@ -611,11 +623,16 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       for (const e of outEdges.get(cur.id) ?? []) {
         const nextDef = defById.get(e.toId);
         if (!nextDef) continue;
-        const hint = e.filterItem ?? cur.filterHint;
+        const nextB = buildingById.get(e.toId);
+        const containerHint =
+          nextDef.kind === 'container' && nextB?.filterItems && nextB.filterItems.length === 1
+            ? nextB.filterItems[0]
+            : undefined;
+        const hint = e.filterItem ?? containerHint ?? cur.filterHint;
         if (nextDef.kind === 'crafter' || nextDef.kind === 'research') {
           const inE = (inEdges.get(e.toId) ?? []).find((x) => x.fromId === cur.id);
           hits.push({ crafterId: e.toId, portIndex: inE?.portIndex ?? -1, filterHint: hint });
-        } else if (isLogistics(e.toId) && !visited.has(e.toId)) {
+        } else if ((isLogistics(e.toId) || (traverseContainers && nextDef.kind === 'container')) && !visited.has(e.toId)) {
           visited.add(e.toId);
           queue.push({ id: e.toId, filterHint: hint });
         }
@@ -623,6 +640,39 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
     return hits;
   };
+
+  // 3. Classify unfed nodes:
+  //    - Filtered Containers with 0 incoming belts & >=1 outgoing belt -> general-purpose raw-input buffer source ('source-container')!
+  //    - Interior unfed belts that ACTUALLY feed a configured downstream recipe machine -> general-purpose open feed-head ('open-belt', yellow warning so players can trace mid-floor drafts!)
+  //    - Isolated / dead-end / non-consumer unfed belts or splitters -> RED 'orphan-belt' error!
+  for (const b of doc.buildings) {
+    const def = defById.get(b.id);
+    if (!def) continue;
+    const ins = inEdges.get(b.id);
+    const hasIn = Boolean(ins && ins.length > 0);
+    const outs = outEdges.get(b.id);
+    const hasOut = Boolean(outs && outs.length > 0);
+
+    if (def.kind === 'container' && !hasIn && hasOut && b.filterItems && b.filterItems.length > 0) {
+      entrySourceKind.set(b.id, 'source-container');
+      continue;
+    }
+
+    if (def.kind === 'belt' && !hasIn && !entrySourceKind.has(b.id)) {
+      const hits = hasOut ? traceToCrafters(b.id, true) : [];
+      const feedsConfiguredMachine = hits.some((h) => Boolean(buildingById.get(h.crafterId)?.recipeId));
+      if (feedsConfiguredMachine) {
+        entrySourceKind.set(b.id, 'open-belt');
+      } else {
+        pushIssue('error', 'orphan-belt', `悬空/无源传送带 (${b.x},${b.y})：没有任何上游供料`, b.floor, b.x, b.y, b.id);
+      }
+    } else if (def.kind === 'splitter' && !hasIn) {
+      pushIssue('error', 'orphan-belt', `无源分流器 (${b.x},${b.y})：输入口没有任何上游供料`, b.floor, b.x, b.y, b.id);
+    }
+  }
+
+  // 4. General-purpose external raw-input item inference (ZERO hardcoded 32x32 magic constants!)
+  const entryItem = new Map<string, string>();
 
   // Identify upstream crafter output items feeding any logistics node directly
   const upstreamProducedByNode = new Map<string, Set<string>>();
@@ -636,9 +686,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       const e = outs[oi];
       const itemId =
         e.filterItem ??
-        (rec.outputs.length === 1
-          ? rec.outputs[0].itemId
-          : rec.outputs[oi % rec.outputs.length].itemId);
+        (rec.outputs.length === 1 ? rec.outputs[0].itemId : rec.outputs[oi % rec.outputs.length].itemId);
       const visited = new Set<string>([e.toId]);
       const q = [e.toId];
       while (q.length > 0) {
@@ -661,25 +709,47 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // Group boundary entries by their symmetric doorway signature (min(y, 31-y) on x=0/31, or min(x, 31-x) on y=0/31)
-  // so mirrored top/bottom inputs of the same cell consistently receive the exact same ingredient!
-  const sortedEntries = Array.from(boundaryEntries).sort((a, bId) => {
+  // Module-relative symmetric signature so mirrored top/bottom or left/right doorway pairs work on ANY module size & position!
+  const getEntryModuleSymSig = (eb: PlacedBuilding): { sortKey: number; symKey: string } => {
+    const host = findModuleAtWorldPoint(doc, eb.x + 0.5, eb.y + 0.5, eb.floor);
+    if (host) {
+      const mDef = getModuleDef(host.type);
+      if (mDef) {
+        const [mcx, mcy] = getModuleCenterM(host, mDef);
+        const invRot = normalizeRotation(4 - host.rotation);
+        const [lx, ly] = rotateVec2(eb.x + 0.5 - mcx, eb.y + 0.5 - mcy, invRot);
+        const ax = Math.round(Math.abs(lx) * 2);
+        const ay = Math.round(Math.abs(ly) * 2);
+        if (ax >= ay) {
+          return { sortKey: ay, symKey: `${host.id}:x${Math.round(lx * 2)}:ay${ay}` };
+        }
+        return { sortKey: ax, symKey: `${host.id}:y${Math.round(ly * 2)}:ax${ax}` };
+      }
+    }
+    return { sortKey: eb.x + eb.y, symKey: `free:${eb.floor}:${eb.x},${eb.y}` };
+  };
+
+  const sortedEntries = Array.from(entrySourceKind.keys()).sort((a, bId) => {
     const ba = buildingById.get(a)!;
     const bb = buildingById.get(bId)!;
-    const keyA = ba.x === 0 || ba.x === 31 ? Math.min(ba.y, 31 - ba.y) : Math.min(ba.x, 31 - ba.x);
-    const keyB = bb.x === 0 || bb.x === 31 ? Math.min(bb.y, 31 - bb.y) : Math.min(bb.x, 31 - bb.x);
-    return keyA - keyB || ba.floor - bb.floor || ba.x - bb.x || ba.y - bb.y;
+    const sa = getEntryModuleSymSig(ba).sortKey;
+    const sb = getEntryModuleSymSig(bb).sortKey;
+    return sa - sb || ba.floor - bb.floor || ba.x - bb.x || ba.y - bb.y;
   });
 
-  // Track which recipe inputs are already covered on each crafter (from internal upstream crafters or assigned entries)
-  const crafterAssignedPorts = new Map<string, Map<number, string>>();
+  const crafterAssignedPorts = new Map<string, Map<number, Set<string>>>();
   const assignCrafterPort = (cid: string, pIdx: number, itemId: string) => {
     let mp = crafterAssignedPorts.get(cid);
     if (!mp) {
       mp = new Map();
       crafterAssignedPorts.set(cid, mp);
     }
-    mp.set(pIdx, itemId);
+    let set = mp.get(pIdx);
+    if (!set) {
+      set = new Set();
+      mp.set(pIdx, set);
+    }
+    set.add(itemId);
   };
 
   // Pre-register internally produced items reaching each crafter
@@ -700,14 +770,30 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // Map mirror-group signature -> assigned itemId so top & bottom halves stay consistent
   const groupItemBySig = new Map<string, string>();
+  const pendingEntries: Array<{
+    eid: string;
+    eb: PlacedBuilding;
+    hits: Array<{ crafterId: string; portIndex: number; filterHint?: string }>;
+    candidateItems: string[];
+    groupSig: string;
+    sortKey: number;
+  }> = [];
+
+  // Pass 1: Assign entries with explicit source-container filters or explicit downstream filter hints first
   for (const eid of sortedEntries) {
     const eb = buildingById.get(eid)!;
-    const hits = traceToCrafters(eid);
+    const ebDef = defById.get(eid)!;
+
+    if (ebDef.kind === 'container' && eb.filterItems && eb.filterItems.length > 0) {
+      entryItem.set(eid, eb.filterItems[0]);
+      for (const h of traceToCrafters(eid, true)) assignCrafterPort(h.crafterId, h.portIndex, eb.filterItems[0]);
+      continue;
+    }
+
+    const hits = traceToCrafters(eid, true);
     if (hits.length === 0) continue;
 
-    // Check explicit filter hint first
     const explicitHint = hits.find((h) => h.filterHint)?.filterHint;
     if (explicitHint) {
       entryItem.set(eid, explicitHint);
@@ -715,13 +801,8 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       continue;
     }
 
-    // Collect intersection of required recipe inputs across all reached crafters
     const firstRec = getRecipeDef(buildingById.get(hits[0].crafterId)?.recipeId ?? '');
     if (!firstRec || firstRec.inputs.length === 0) continue;
-
-    const sigAxis = eb.x === 0 || eb.x === 31 ? `x${eb.x}:m${Math.min(eb.y, 31 - eb.y)}` : `y${eb.y}:m${Math.min(eb.x, 31 - eb.x)}`;
-    const targetRecipesSig = Array.from(new Set(hits.map((h) => buildingById.get(h.crafterId)?.recipeId ?? ''))).sort().join(',');
-    const groupSig = `${eb.floor}:${sigAxis}:${targetRecipesSig}`;
 
     const candidateItems = firstRec.inputs
       .map((i) => i.itemId)
@@ -733,19 +814,167 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       );
     if (candidateItems.length === 0) continue;
 
-    let chosen = groupItemBySig.get(groupSig);
-    if (!chosen || !candidateItems.includes(chosen)) {
-      // Pick the first candidate not yet assigned to another port of the first reached crafter
-      const alreadyOnFirst = new Set((crafterAssignedPorts.get(hits[0].crafterId) ?? new Map()).values());
-      chosen = candidateItems.find((id) => !alreadyOnFirst.has(id)) ?? candidateItems[0];
-      groupItemBySig.set(groupSig, chosen);
-    }
-    entryItem.set(eid, chosen);
-    for (const h of hits) assignCrafterPort(h.crafterId, h.portIndex, chosen);
+    const { sortKey, symKey } = getEntryModuleSymSig(eb);
+    const targetRecipesSig = Array.from(new Set(hits.map((h) => buildingById.get(h.crafterId)?.recipeId ?? '')))
+      .sort()
+      .join(',');
+    const groupSig = `${eb.floor}:${symKey}:${targetRecipesSig}`;
+
+    pendingEntries.push({ eid, eb, hits, candidateItems, groupSig, sortKey });
   }
 
-  // 5. Iterative Steady-State Flow Solver
-  // Track flow pushed along each directed edge `${fromId}->${toId}:${outPortIndex ?? -1}`
+  // Pass 2: MRV (Most Constrained First) — entries with fewer candidate items (e.g. shared across recipes -> len 1)
+  // claim their forced item BEFORE unconstrained entries, and multi-candidate entries pick the item needed by the most
+  // still-unsatisfied downstream crafters!
+  pendingEntries.sort(
+    (a, b) =>
+      a.candidateItems.length - b.candidateItems.length ||
+      a.sortKey - b.sortKey ||
+      a.eb.floor - b.eb.floor ||
+      a.eb.x - b.eb.x ||
+      a.eb.y - b.eb.y
+  );
+
+  for (const pe of pendingEntries) {
+    let chosen = groupItemBySig.get(pe.groupSig);
+    if (!chosen || !pe.candidateItems.includes(chosen)) {
+      let bestItem = pe.candidateItems[0];
+      let bestUnsatisfied = -1;
+      for (const cand of pe.candidateItems) {
+        let unsatisfied = 0;
+        for (const h of pe.hits) {
+          const assigned = crafterAssignedPorts.get(h.crafterId);
+          let hasCand = false;
+          if (assigned) {
+            for (const s of assigned.values()) {
+              if (s.has(cand)) {
+                hasCand = true;
+                break;
+              }
+            }
+          }
+          if (!hasCand) unsatisfied += 1;
+        }
+        if (unsatisfied > bestUnsatisfied) {
+          bestUnsatisfied = unsatisfied;
+          bestItem = cand;
+        }
+      }
+      chosen = bestItem;
+      groupItemBySig.set(pe.groupSig, chosen);
+    }
+    entryItem.set(pe.eid, chosen);
+    for (const h of pe.hits) assignCrafterPort(h.crafterId, h.portIndex, chosen);
+  }
+
+  // 5. General-purpose multi-output crafter port binding:
+  //    (a) Match explicit downstream filters or unique downstream recipe consumers first
+  //    (b) Match already-committed downstream collector trunks so mirrored/rotated parallel machines merge cleanly
+  //        without ever mixing two outputs (while still catching a single machine wiring both outputs onto one belt!)
+  const crafterPortOutputItem = new Map<string, Map<number, string>>();
+  const committedTrunkItem = new Map<string, string>();
+  const collectDownstreamTrunkNodes = (startId: string): string[] => {
+    const visited = new Set<string>();
+    const queue = [startId];
+    const nodes: string[] = [];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      const curDef = defById.get(cur);
+      if (!curDef || curDef.kind === 'crafter' || curDef.kind === 'research') continue;
+      nodes.push(cur);
+      for (const oe of outEdges.get(cur) ?? []) {
+        if (!oe.filterItem && !visited.has(oe.toId)) {
+          queue.push(oe.toId);
+        }
+      }
+    }
+    return nodes;
+  };
+
+  for (const b of doc.buildings) {
+    const def = defById.get(b.id);
+    if (!def || (def.kind !== 'crafter' && def.kind !== 'research') || !b.recipeId) continue;
+    const rec = getRecipeDef(b.recipeId);
+    if (!rec || rec.outputs.length <= 1) continue;
+    const outs = outEdges.get(b.id) ?? [];
+    if (outs.length === 0) continue;
+
+    const pMap = new Map<number, string>();
+    const assignedOutputItems = new Set<string>();
+    const remainingOuts: Array<{ oe: OutEdge; trunkNodes: string[] }> = [];
+
+    const bindPort = (oe: OutEdge, itemId: string, trunkNodes: string[]) => {
+      pMap.set(oe.portIndex ?? -1, itemId);
+      assignedOutputItems.add(itemId);
+      for (const nid of trunkNodes) {
+        if (!committedTrunkItem.has(nid)) {
+          committedTrunkItem.set(nid, itemId);
+        }
+      }
+    };
+
+    // Pass A: Match each outgoing branch against downstream explicit filter or unique downstream recipe consumer
+    for (const oe of outs) {
+      const trunkNodes = collectDownstreamTrunkNodes(oe.toId);
+      let matchedItem: string | undefined;
+      if (oe.filterItem && rec.outputs.some((o) => o.itemId === oe.filterItem)) {
+        matchedItem = oe.filterItem;
+      } else {
+        const downHits = traceToCrafters(oe.toId, true);
+        const hintItem = downHits.find((h) => h.filterHint && rec.outputs.some((o) => o.itemId === h.filterHint))?.filterHint;
+        if (hintItem) {
+          matchedItem = hintItem;
+        } else {
+          const consumedMatches = rec.outputs.filter((o) =>
+            downHits.some((h) => {
+              const hr = getRecipeDef(buildingById.get(h.crafterId)?.recipeId ?? '');
+              return Boolean(hr?.inputs.some((ri) => ri.itemId === o.itemId));
+            })
+          );
+          if (consumedMatches.length === 1) {
+            matchedItem = consumedMatches[0].itemId;
+          }
+        }
+      }
+      if (matchedItem && !assignedOutputItems.has(matchedItem)) {
+        bindPort(oe, matchedItem, trunkNodes);
+      } else {
+        remainingOuts.push({ oe, trunkNodes });
+      }
+    }
+
+    // Pass B: Align remaining ports with any already-committed downstream collector trunk (handles mirrored/rotated rows!)
+    const stillUnassigned: Array<{ oe: OutEdge; trunkNodes: string[] }> = [];
+    for (const item of remainingOuts) {
+      let trunkMatch: string | undefined;
+      for (const nid of item.trunkNodes) {
+        const existing = committedTrunkItem.get(nid);
+        if (existing && !assignedOutputItems.has(existing) && rec.outputs.some((o) => o.itemId === existing)) {
+          trunkMatch = existing;
+          break;
+        }
+      }
+      if (trunkMatch) {
+        bindPort(item.oe, trunkMatch, item.trunkNodes);
+      } else {
+        stillUnassigned.push(item);
+      }
+    }
+
+    // Pass C: Assign any fresh uncommitted trunks deterministically by port order
+    const unassignedOutputs = rec.outputs.filter((o) => !assignedOutputItems.has(o.itemId));
+    const fallbackOutputs = unassignedOutputs.length > 0 ? unassignedOutputs : rec.outputs;
+    const sortedRem = [...stillUnassigned].sort((a, z) => (a.oe.portIndex ?? 0) - (z.oe.portIndex ?? 0));
+    for (let i = 0; i < sortedRem.length; i++) {
+      const o = fallbackOutputs[Math.min(i, fallbackOutputs.length - 1)];
+      bindPort(sortedRem[i].oe, o.itemId, sortedRem[i].trunkNodes);
+    }
+    crafterPortOutputItem.set(b.id, pMap);
+  }
+
+  // 6. Iterative Steady-State Flow Solver (with true output-bottleneck efficiency & demand-pulled external supply!)
   type FlowMap = Map<string, number>;
   const edgeFlows = new Map<string, FlowMap>();
   const edgeKey = (fromId: string, toId: string, outPort?: number) => `${fromId}->${toId}:${outPort ?? -1}`;
@@ -760,8 +989,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     return s;
   };
 
-  // Pre-seed self-reseed cycles (e.g. XenobacteriaRecycling) with a tiny starter pulse on iteration 0
-  // so closed recycling loops ignite naturally just like priming a growth chamber with 1 seed!
   const crafterEfficiency = new Map<string, number>();
   const crafterDemandByInput = new Map<string, Map<string, number>>();
   for (const b of doc.buildings) {
@@ -777,59 +1004,11 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     crafterDemandByInput.set(b.id, dm);
   }
 
-  // Compute exact downstream demand per node (for boundary entries & priority-in balancers)
-  const getNodeInFlow = (id: string): FlowMap => {
-    const m: FlowMap = new Map();
-    if (boundaryEntries.has(id)) {
-      const itemId = entryItem.get(id);
-      if (itemId) {
-        const cap = getTierSpeed(defById.get(id)!.tier);
-        addFlow(m, itemId, cap);
-      }
-    }
-    for (const ie of inEdges.get(id) ?? []) {
-      // Find matching outgoing edge(s) from ie.fromId -> id
-      for (const oe of outEdges.get(ie.fromId) ?? []) {
-        if (oe.toId !== id) continue;
-        const fm = edgeFlows.get(edgeKey(ie.fromId, id, oe.portIndex));
-        if (!fm) continue;
-        for (const [it, r] of fm.entries()) addFlow(m, it, r);
-      }
-    }
-    return m;
-  };
-
-  // Track which crafter output port carries which recipe output (for 2-output recipes like Enzyme + Biomass)
-  const crafterPortOutputItem = new Map<string, Map<number, string>>();
-  for (const b of doc.buildings) {
-    const def = defById.get(b.id);
-    if (!def || (def.kind !== 'crafter' && def.kind !== 'research') || !b.recipeId) continue;
-    const rec = getRecipeDef(b.recipeId);
-    if (!rec || rec.outputs.length <= 1) continue;
-    const outs = outEdges.get(b.id) ?? [];
-    // Sort outputs deterministically: main output port first (smaller local port index or port with center-belt downstream)
-    const pMap = new Map<number, string>();
-    // In Cell-7B: x+2 drops into y=15/16 (Balancer), x+4 runs along y=13/18 (Biomass return).
-    // Prefer matching explicit filter or port ordering!
-    const sortedOuts = [...outs].sort((a, bEdge) => {
-      const ba = buildingById.get(a.toId);
-      const bb = buildingById.get(bEdge.toId);
-      // Lower x offset within machine -> main product; higher x offset -> byproduct
-      return (ba?.x ?? 0) - (bb?.x ?? 0) || (a.portIndex ?? 0) - (bEdge.portIndex ?? 0);
-    });
-    for (let i = 0; i < sortedOuts.length; i++) {
-      const o = rec.outputs[Math.min(i, rec.outputs.length - 1)];
-      pMap.set(sortedOuts[i].portIndex ?? i, o.itemId);
-    }
-    crafterPortOutputItem.set(b.id, pMap);
-  }
-
-  // Compute BFS-ordered traversal from sources (boundary entries + zero-input crafters) so arbitrarily long belt chains
-  // propagate end-to-end in a SINGLE pass, while multi-pass relaxation converges closed recycling loops!
+  // BFS order from external sources + zero-input crafters
   const bfsOrder: PlacedBuilding[] = [];
   const bfsSeen = new Set<string>();
   const bfsQueue: string[] = [];
-  for (const eid of boundaryEntries) {
+  for (const eid of entrySourceKind.keys()) {
     if (!bfsSeen.has(eid)) {
       bfsSeen.add(eid);
       bfsQueue.push(eid);
@@ -861,19 +1040,9 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   }
 
   // Backward DP (reverse BFS) to compute exact steady-state downstream demand per node & itemId
-  // so Splitter/Balancer manifolds model real game backpressure accurately (never falsely starving long manifolds!).
   const nodeDemand = new Map<string, Map<string, number>>();
-  const addDemand = (id: string, itemId: string, rate: number) => {
-    if (rate <= 1e-9) return;
-    let m = nodeDemand.get(id);
-    if (!m) {
-      m = new Map();
-      nodeDemand.set(id, m);
-    }
-    m.set(itemId, (m.get(itemId) ?? 0) + rate);
-  };
   const revOrder = [...bfsOrder].reverse();
-  for (let pass = 0; pass < 4; pass++) {
+  for (let pass = 0; pass < 5; pass++) {
     for (const b of revOrder) {
       const def = defById.get(b.id);
       if (!def) continue;
@@ -891,14 +1060,21 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         for (const oe of outs) {
           const childDm = nodeDemand.get(oe.toId);
           if (!childDm) continue;
+          const childDef = defById.get(oe.toId);
+          const portAllowed =
+            childDef && (childDef.kind === 'crafter' || childDef.kind === 'research')
+              ? crafterAssignedPorts.get(oe.toId)?.get(oe.toPortIndex ?? -1)
+              : undefined;
           let childSum = 0;
           for (const [it, r] of childDm.entries()) {
             if (oe.filterItem && it !== '*' && it !== oe.filterItem) continue;
+            if (portAllowed && portAllowed.size > 0 && it !== '*' && !portAllowed.has(it)) continue;
             childSum += r;
           }
           const scale = childSum > oe.capacity ? oe.capacity / childSum : 1;
           for (const [it, r] of childDm.entries()) {
             if (oe.filterItem && it !== '*' && it !== oe.filterItem) continue;
+            if (portAllowed && portAllowed.size > 0 && it !== '*' && !portAllowed.has(it)) continue;
             dm.set(it, (dm.get(it) ?? 0) + r * scale);
           }
         }
@@ -906,6 +1082,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       nodeDemand.set(b.id, dm);
     }
   }
+
   const getEdgeEffectiveCap = (oe: OutEdge, itemId: string): number => {
     const childDm = nodeDemand.get(oe.toId);
     if (!childDm) return oe.capacity;
@@ -913,7 +1090,45 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     const specific = childDm.get(itemId) ?? 0;
     return specific > 1e-9 ? Math.min(oe.capacity, specific) : 0;
   };
-  void addDemand;
+
+  // Determine external entry capacity & demand-pulled supply rate (eliminates false overload on lightly-loaded merges!)
+  const getEntryCapacity = (id: string): number => {
+    const def = defById.get(id)!;
+    if (def.kind === 'container') {
+      return (outEdges.get(id) ?? []).reduce((sum, e) => sum + e.capacity, 0);
+    }
+    return getTierSpeed(def.tier);
+  };
+
+  const getEntryDemandRate = (id: string, itemId: string): number => {
+    const dm = nodeDemand.get(id);
+    if (!dm) return getEntryCapacity(id);
+    const specific = dm.get(itemId) ?? 0;
+    if (specific > 1e-9) return specific;
+    return dm.has('*') ? getEntryCapacity(id) : 0;
+  };
+
+  const getNodeInFlow = (id: string): FlowMap => {
+    const m: FlowMap = new Map();
+    if (entrySourceKind.has(id)) {
+      const itemId = entryItem.get(id);
+      if (itemId) {
+        const cap = getEntryCapacity(id);
+        const demand = getEntryDemandRate(id, itemId);
+        // Demand-pulled supply clamped by entry belt capacity (never pushes phantom excess!)
+        addFlow(m, itemId, Math.min(cap, demand));
+      }
+    }
+    for (const ie of inEdges.get(id) ?? []) {
+      for (const oe of outEdges.get(ie.fromId) ?? []) {
+        if (oe.toId !== id) continue;
+        const fm = edgeFlows.get(edgeKey(ie.fromId, id, oe.portIndex));
+        if (!fm) continue;
+        for (const [it, r] of fm.entries()) addFlow(m, it, r);
+      }
+    }
+    return m;
+  };
 
   const ITERS = 20;
   for (let iter = 0; iter < ITERS; iter++) {
@@ -946,36 +1161,82 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         const dur = rec.durationSeconds && rec.durationSeconds > 0 ? rec.durationSeconds : 1;
         const inFlow = getNodeInFlow(b.id);
 
-        let eff = 1.0;
+        // 1) Input-limited efficiency
+        let inputEff = 1.0;
         if (rec.inputs.length > 0) {
           for (const inp of rec.inputs) {
             const need = (inp.quantity ?? 1) / dur;
             let got = inFlow.get(inp.itemId) ?? 0;
-            // Ignite closed self-recycling recipes (where output also contains inp.itemId) on iter 0!
+            // Ignite closed self-recycling loops (e.g. XenobacteriaRecycling) on iter 0
             if (iter === 0 && got < need && rec.outputs.some((o) => o.itemId === inp.itemId)) {
               got = need;
             }
-            eff = Math.min(eff, need > 0 ? got / need : 1);
+            inputEff = Math.min(inputEff, need > 0 ? got / need : 1);
           }
         }
-        eff = Math.max(0, Math.min(1, eff));
+
+        // 2) Scientific output-evacuation efficiency (disconnected or undersized output belt throttles steady-state eff!)
+        let outputEff = 1.0;
+        const portMap = crafterPortOutputItem.get(b.id);
+        if (rec.outputs.length > 0) {
+          if (outs.length === 0) {
+            outputEff = 0.0;
+          } else if (rec.outputs.length === 1) {
+            const maxOut = (rec.outputs[0].quantity ?? 1) / dur;
+            const totalOutCap = outs.reduce((s, e) => s + e.capacity, 0);
+            outputEff = maxOut > 1e-9 ? Math.min(1, totalOutCap / maxOut) : 1;
+          } else if (portMap) {
+            const capByItem = new Map<string, number>();
+            let totalOutCap = 0;
+            for (const oe of outs) {
+              totalOutCap += oe.capacity;
+              const assignedItem = portMap.get(oe.portIndex ?? -1) ?? rec.outputs[0].itemId;
+              capByItem.set(assignedItem, (capByItem.get(assignedItem) ?? 0) + oe.capacity);
+            }
+            let sumMaxOut = 0;
+            for (const o of rec.outputs) {
+              const maxO = (o.quantity ?? 1) / dur;
+              sumMaxOut += maxO;
+              const capO = capByItem.get(o.itemId) ?? 0;
+              if (maxO > 1e-9) outputEff = Math.min(outputEff, capO / maxO);
+            }
+            if (sumMaxOut > 1e-9) outputEff = Math.min(outputEff, totalOutCap / sumMaxOut);
+          }
+        }
+
+        const eff = Math.max(0, Math.min(1, Math.min(inputEff, outputEff)));
         crafterEfficiency.set(b.id, eff);
 
         if (outs.length === 0) continue;
-        const portMap = crafterPortOutputItem.get(b.id);
-        for (const oe of outs) {
-          const fm: FlowMap = new Map();
-          if (rec.outputs.length === 1) {
-            const o = rec.outputs[0];
-            const totalOut = eff * ((o.quantity ?? 1) / dur);
-            addFlow(fm, o.itemId, Math.min(oe.capacity, totalOut / outs.length));
-          } else if (portMap) {
-            const assignedItem = portMap.get(oe.portIndex ?? -1);
-            const o = rec.outputs.find((x) => x.itemId === assignedItem) ?? rec.outputs[0];
-            const totalOut = eff * ((o.quantity ?? 1) / dur);
-            addFlow(fm, o.itemId, Math.min(oe.capacity, totalOut));
+        if (rec.outputs.length === 1) {
+          const o = rec.outputs[0];
+          const totalOut = eff * ((o.quantity ?? 1) / dur);
+          const totalOutCap = outs.reduce((s, e) => s + e.capacity, 0);
+          for (const oe of outs) {
+            const fm: FlowMap = new Map();
+            const share = totalOutCap > 1e-9 ? totalOut * (oe.capacity / totalOutCap) : totalOut / outs.length;
+            addFlow(fm, o.itemId, Math.min(oe.capacity, share));
+            setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
           }
-          setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
+        } else if (portMap) {
+          const outsByItem = new Map<string, OutEdge[]>();
+          for (const oe of outs) {
+            const assignedItem = portMap.get(oe.portIndex ?? -1) ?? rec.outputs[0].itemId;
+            const list = outsByItem.get(assignedItem);
+            if (list) list.push(oe);
+            else outsByItem.set(assignedItem, [oe]);
+          }
+          for (const [itemId, itemOuts] of outsByItem.entries()) {
+            const o = rec.outputs.find((x) => x.itemId === itemId) ?? rec.outputs[0];
+            const totalOut = eff * ((o.quantity ?? 1) / dur);
+            const sumCap = itemOuts.reduce((s, e) => s + e.capacity, 0);
+            for (const oe of itemOuts) {
+              const fm: FlowMap = new Map();
+              const share = sumCap > 1e-9 ? totalOut * (oe.capacity / sumCap) : totalOut / itemOuts.length;
+              addFlow(fm, o.itemId, Math.min(oe.capacity, share));
+              setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
+            }
+          }
         }
         continue;
       }
@@ -1000,7 +1261,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         for (const [it, r] of inFlow.entries()) {
           if (!filterSet || filterSet.has(it)) addFlow(allowed, it, r);
         }
-        // Distribute evenly across outgoing belts up to each belt capacity
         for (const oe of outs) {
           const fm: FlowMap = new Map();
           const shareScale = 1 / outs.length;
@@ -1020,7 +1280,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       }
 
       if (def.kind === 'splitter' || def.kind === 'balancer') {
-        // Compute available input flow (honoring Balancer priorityIn + downstream backpressure demand!)
         let combinedIn: FlowMap = new Map();
         if (def.kind === 'balancer' && b.priorityIn !== undefined) {
           const ownDm = nodeDemand.get(b.id);
@@ -1036,7 +1295,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
               for (const [it, r] of fm.entries()) addFlow(dest, it, r);
             }
           }
-          // Effective throughput cap respects both physical belt capacity and downstream demand!
           let demandCap = maxOutCap;
           if (ownDm && !ownDm.has('*')) {
             let dmSum = 0;
@@ -1055,7 +1313,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           combinedIn = getNodeInFlow(b.id);
         }
 
-        // Route each item honoring portFilters, priorityOut, and max-min fair water-filling backpressure!
         const outMaps = new Map<OutEdge, FlowMap>();
         for (const oe of outs) outMaps.set(oe, new Map());
 
@@ -1067,7 +1324,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           if (eligible.length === 0) continue;
 
           let remaining = rate;
-          // 1) Fill priorityOut first up to its backpressure-limited demand!
           if (b.priorityOut !== undefined) {
             const prioEdge = eligible.find((e) => e.portIndex === b.priorityOut);
             if (prioEdge) {
@@ -1079,7 +1335,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
               remaining -= send;
             }
           }
-          // 2) Water-filling split across remaining eligible outputs (saturates smaller-demand branches & overflows cleanly!)
           let active = eligible.filter((e) => e.portIndex !== b.priorityOut);
           for (let wf = 0; wf < 4 && remaining > 1e-9 && active.length > 0; wf++) {
             const share = remaining / active.length;
@@ -1098,7 +1353,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
               }
             }
             if (nextActive.length === active.length) {
-              // All remaining active edges can absorb the equal share
               for (const oe of nextActive) {
                 addFlow(outMaps.get(oe)!, itemId, share);
                 remaining -= share;
@@ -1119,7 +1373,60 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     if (iter > 1 && maxDelta < 1e-5) break;
   }
 
-  // 6. Inspect converged flow for mixed-item belts, overload, missing/wrong machine inputs, blocked outputs
+  // 7. Emit yellow 'external-input-needed' warnings at EVERY external raw-material entry spot!
+  const externalInputs: ExternalInputSpot[] = [];
+  const SOURCE_KIND_ZH: Record<ExternalInputSpot['sourceKind'], string> = {
+    doorway: '舱门入口',
+    elevator: '电梯接口',
+    'wall-stub': '穿墙地下口',
+    'open-belt': '待接原料端',
+    'source-container': '原料箱源',
+  };
+
+  for (const eid of sortedEntries) {
+    const eb = buildingById.get(eid)!;
+    const sourceKind = entrySourceKind.get(eid)!;
+    const itemId = entryItem.get(eid) ?? null;
+    const cap = getEntryCapacity(eid);
+    const reqRate = itemId ? getEntryDemandRate(eid, itemId) : 0;
+    const supRate = itemId ? Math.min(cap, reqRate) : 0;
+    const bottlenecked = itemId !== null && reqRate > cap + 1e-3;
+    const nameZh = itemId ? getItemNameZh(itemId) : '未指定原料';
+
+    // Only emit a yellow raw-input warning when this entry actually needs an item (or is an open-belt / source-container).
+    // Note: in a 0-recipe pass-through hub (e.g. B1 highway), doorway entries still mark clearly where external lanes enter!
+    const spotId = `ext_${eb.floor}_${eb.x}_${eb.y}`;
+    externalInputs.push({
+      id: spotId,
+      floor: eb.floor,
+      x: eb.x,
+      y: eb.y,
+      buildingId: eb.id,
+      sourceKind,
+      itemId,
+      nameZh,
+      requiredRatePerSec: Math.round(reqRate * 1000) / 1000,
+      suppliedRatePerSec: Math.round(supRate * 1000) / 1000,
+      capacityPerSec: Math.round(cap * 1000) / 1000,
+      bottlenecked,
+    });
+
+    if (itemId) {
+      const beltsText = `${(reqRate / 3.0).toFixed(2)} 满带`;
+      const capWarn = bottlenecked ? `（超单带上限 ${cap.toFixed(1)}/s！）` : '';
+      pushIssue(
+        'warn',
+        'external-input-needed',
+        `${SOURCE_KIND_ZH[sourceKind]} (${eb.x},${eb.y}) 需入「${nameZh}」· ${reqRate.toFixed(2)}/s（${beltsText}）${capWarn}`,
+        eb.floor,
+        eb.x,
+        eb.y,
+        eb.id
+      );
+    }
+  }
+
+  // 8. Inspect converged flow for mixed-item belts, overload, and net outputs
   const cellFlows: Record<string, CellFlowInfo> = {};
   const netInputTotals = new Map<string, number>();
   const netOutputTotals = new Map<string, number>();
@@ -1129,7 +1436,9 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     if (!def) continue;
 
     if (def.kind === 'belt' || def.kind === 'underground' || def.kind === 'splitter' || def.kind === 'balancer') {
-      const cap = getTierSpeed(def.tier);
+      const laneSpeed = getTierSpeed(def.tier);
+      // Belt Balancer has 2 full-speed parallel lanes (2 * tierSpeed total throughput!)
+      const cap = def.kind === 'balancer' ? laneSpeed * 2 : laneSpeed;
       const flow = getNodeInFlow(b.id);
       const itemsObj: Record<string, number> = {};
       let total = 0;
@@ -1154,7 +1463,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         }
       }
 
-      // Mixed-item contamination check on belts (unless node is a filter splitter intentionally separating mixed items)
       const hasPortFilter = b.portFilters && Object.keys(b.portFilters).length > 0;
       if (nonZeroItems.length > 1 && def.kind === 'belt') {
         pushIssue(
@@ -1182,7 +1490,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         pushIssue(
           'warn',
           'belt-overload',
-          `传送带 (${b.x},${b.y}) 超载：需求/合流 ${total.toFixed(2)}/s > 上限 ${cap.toFixed(1)}/s`,
+          `传送带 (${b.x},${b.y}) 超载：合流 ${total.toFixed(2)}/s > 上限 ${cap.toFixed(1)}/s`,
           b.floor,
           b.x,
           b.y,
@@ -1190,7 +1498,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         );
       }
 
-      // Accumulate net external boundary exits
       if (boundaryExits.has(b.id)) {
         for (const [it, r] of flow.entries()) {
           if (r > 1e-4) netOutputTotals.set(it, (netOutputTotals.get(it) ?? 0) + Math.min(r, cap));
@@ -1199,23 +1506,65 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // Evaluate machines (power, efficiency, missing/wrong inputs, blocked outputs) & net consumed inputs
-  let totalPowerKW = 0;
+  // 9. Scientific Power Budget (Peak Draw, Active Draw, Max Power Generation across ALL Buildings & Station Modules!)
+  let crafterPeakKW = 0;
+  let crafterActiveKW = 0;
+  let labPeakKW = 0;
+  let labActiveKW = 0;
+  let facilityPeakKW = 0;
+  let solarGenKW = 0;
+  let reactorGenKW = 0;
+  let generatorCount = 0;
+
+  // Station modules power draw & max solar generation
+  for (const mod of doc.modules) {
+    const mDef = getModuleDef(mod.type);
+    if (!mDef) continue;
+    if (mDef.powerKW) facilityPeakKW += mDef.powerKW;
+    if (mDef.powerGenKW) {
+      solarGenKW += mDef.powerGenKW;
+      generatorCount++;
+    }
+  }
+
   let machineCount = 0;
   let configuredMachineCount = 0;
   let effSum = 0;
 
-  const byRecipeMap = new Map<
-    string,
-    { rec: RecipeDef; count: number; effSum: number }
-  >();
+  const byRecipeMap = new Map<string, { rec: RecipeDef; count: number; effSum: number }>();
 
   for (const b of doc.buildings) {
     const def = defById.get(b.id);
     if (!def) continue;
-    if (def.kind !== 'crafter' && def.kind !== 'research') continue;
+
+    // Reactor maximum generation (48 MW each)
+    if (def.powerGenKW) {
+      reactorGenKW += def.powerGenKW;
+      generatorCount++;
+    }
+
+    // Continuous facility draw (e.g. Teleporter = 12 MW)
+    if (def.kind === 'teleporter' && def.powerKW) {
+      facilityPeakKW += def.powerKW;
+      continue;
+    }
+
+    if (def.kind === 'research') {
+      machineCount++;
+      const pKW = def.powerKW ?? 0;
+      labPeakKW += pKW;
+      const inFlow = getNodeInFlow(b.id);
+      if (sumFlow(inFlow) > 1e-4) {
+        labActiveKW += pKW;
+      }
+      continue;
+    }
+
+    if (def.kind !== 'crafter') continue;
     machineCount++;
-    if (def.powerKW) totalPowerKW += def.powerKW;
+    const pKW = def.powerKW ?? 0;
+    crafterPeakKW += pKW;
+
     if (!b.recipeId) continue;
     const rec = getRecipeDef(b.recipeId);
     if (!rec) continue;
@@ -1223,6 +1572,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     const dur = rec.durationSeconds && rec.durationSeconds > 0 ? rec.durationSeconds : 1;
     const eff = crafterEfficiency.get(b.id) ?? 0;
     effSum += eff;
+    crafterActiveKW += pKW * eff;
 
     let entry = byRecipeMap.get(rec.id);
     if (!entry) {
@@ -1234,7 +1584,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
 
     const inFlow = getNodeInFlow(b.id);
     const reqSet = new Set(rec.inputs.map((i) => i.itemId));
-    // Check wrong item entering machine
     for (const [it, r] of inFlow.entries()) {
       if (r > 1e-4 && !reqSet.has(it)) {
         pushIssue(
@@ -1248,7 +1597,6 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         );
       }
     }
-    // Check missing required inputs
     for (const inp of rec.inputs) {
       const got = inFlow.get(inp.itemId) ?? 0;
       if (got <= 1e-4) {
@@ -1262,17 +1610,15 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           b.id
         );
       }
-      // Track actual consumed external input rate (net external = consumed - internally produced)
       const consumed = eff * ((inp.quantity ?? 1) / dur);
       netInputTotals.set(inp.itemId, (netInputTotals.get(inp.itemId) ?? 0) + consumed);
     }
-    // Check blocked / disconnected output
     const outs = outEdges.get(b.id) ?? [];
     if (rec.outputs.length > 0 && outs.length === 0) {
       pushIssue(
         'warn',
         'machine-blocked-output',
-        `${def.nameZh} (${b.x},${b.y}) 没有任何输出传送带接入`,
+        `${def.nameZh} (${b.x},${b.y}) 没有任何输出传送带接入（稳态效率 0%）`,
         b.floor,
         b.x,
         b.y,
@@ -1281,8 +1627,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // Subtract internal production from netInputTotals so chained recipes (like B1 2:1 Enricher or Bio reseed)
-  // report true NET external inputs!
+  // Subtract internal production from netInputTotals so chained recipes report true NET external inputs
   for (const { rec, effSum: rEffSum } of byRecipeMap.values()) {
     const dur = rec.durationSeconds && rec.durationSeconds > 0 ? rec.durationSeconds : 1;
     for (const o of rec.outputs) {
@@ -1295,6 +1640,40 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       }
     }
   }
+
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  const peakDrawMW = round2((crafterPeakKW + labPeakKW + facilityPeakKW) / 1000);
+  const activeDrawMW = round2((crafterActiveKW + labActiveKW + facilityPeakKW) / 1000);
+  const solarGenMW = round2(solarGenKW / 1000);
+  const reactorGenMW = round2(reactorGenKW / 1000);
+  const maxGenMW = round2((solarGenKW + reactorGenKW) / 1000);
+  const netBalanceMW = round2(maxGenMW - peakDrawMW);
+
+  if (maxGenMW > 0 && netBalanceMW < -1e-2) {
+    // Anchor power deficit warning on first module/building if present
+    const anchor = doc.buildings[0] ?? (doc.modules[0] ? { floor: doc.modules[0].floor, x: doc.modules[0].gx * 16, y: doc.modules[0].gy * 16 } : { floor: 0, x: 0, y: 0 });
+    pushIssue(
+      'warn',
+      'power-deficit',
+      `供电缺口：最大发电 ${maxGenMW.toFixed(1)} MW < 峰值满载功耗 ${peakDrawMW.toFixed(1)} MW（缺 ${Math.abs(netBalanceMW).toFixed(1)} MW）`,
+      anchor.floor,
+      anchor.x,
+      anchor.y
+    );
+  }
+
+  const power: PowerBreakdown = {
+    peakDrawMW,
+    activeDrawMW,
+    maxGenMW,
+    solarGenMW,
+    reactorGenMW,
+    generatorCount,
+    netBalanceMW,
+    crafterPeakMW: round2(crafterPeakKW / 1000),
+    labPeakMW: round2(labPeakKW / 1000),
+    facilityPeakMW: round2(facilityPeakKW / 1000),
+  };
 
   const toRateList = (m: Map<string, number>): FlowItemRate[] =>
     Array.from(m.entries())
@@ -1338,13 +1717,17 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
 
   const errorCount = issues.filter((i) => i.severity === 'error').length;
   const warnCount = issues.filter((i) => i.severity === 'warn').length;
+  const anomalyWarnCount = issues.filter((i) => i.severity === 'warn' && i.code !== 'external-input-needed').length;
 
   return {
     passed: errorCount === 0,
     errorCount,
     warnCount,
+    anomalyWarnCount,
     issues,
-    totalPowerMW: Math.round((totalPowerKW / 1000) * 100) / 100,
+    externalInputs,
+    totalPowerMW: peakDrawMW,
+    power,
     machineCount,
     configuredMachineCount,
     avgEfficiency: configuredMachineCount > 0 ? Math.round((effSum / configuredMachineCount) * 1000) / 1000 : 1,

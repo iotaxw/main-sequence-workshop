@@ -1415,9 +1415,47 @@ body,
 
 .sim-kpi-val {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-bright);
   font-weight: 600;
+}
+
+.sim-power-bar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sim-power-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sim-power-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-bright);
+  font-weight: 600;
+}
+
+.sim-power-val.ok {
+  color: var(--line-active);
+}
+
+.sim-power-val.warn {
+  color: #e5a93c;
+}
+
+.sim-power-sub {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  line-height: 1.35;
 }
 
 .sim-section {
@@ -1502,7 +1540,20 @@ body,
 }
 
 .sim-issue-item.warn .sim-issue-badge {
-  color: var(--line-warn);
+  color: #e5a93c;
+}
+
+.sim-issue-item.input-spot {
+  border-left: 2px solid #e5a93c;
+}
+
+.cad-shell[data-theme='stealth-cad'] .sim-issue-item.warn .sim-issue-badge,
+.cad-shell[data-theme='stealth-cad'] .sim-power-val.warn {
+  color: #b4690e;
+}
+
+.cad-shell[data-theme='stealth-cad'] .sim-issue-item.input-spot {
+  border-left-color: #d48308;
 }
 
 .sim-issue-badge {

@@ -584,19 +584,22 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     expect(r3.avgEfficiency).toBe(1);
     expect(r3.netOutputs.find((o) => o.itemId === 'ITEM_TitaniumPlates')?.ratePerSec).toBeCloseTo(6.0, 2);
 
-    // Verify Cell-9Q runs with 0 errors, 0 warnings, and 100% efficiency across all 6 Advanced Assemblers
+    // Verify Cell-9Q runs with 0 errors, 0 anomaly warnings, 100% efficiency, and surfaces yellow raw-input entry warnings!
     const cell9q = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('Cell-9Q'))!.doc;
     const r9q = simulateBlueprint(cell9q);
     expect(r9q.errorCount).toBe(0);
-    expect(r9q.warnCount).toBe(0);
+    expect(r9q.anomalyWarnCount).toBe(0);
+    expect(r9q.externalInputs.length).toBeGreaterThan(0);
+    expect(r9q.issues.some((i) => i.code === 'external-input-needed' && i.severity === 'warn')).toBe(true);
     expect(r9q.avgEfficiency).toBe(1);
     expect(r9q.configuredMachineCount).toBe(6);
 
-    // Verify B1 2:1 Ore Enricher with Priority Balancers: 100% efficiency, Protomatter-only net input (0 external raw ore!), 1.333/s enriched output
+    // Verify B1 2:1 Ore Enricher with Priority Balancers: 0 errors, 0 anomaly warnings, 100% efficiency, Protomatter-only net input!
     const b1Ore = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('B1-矿石2比1'))!.doc;
     const rOre = simulateBlueprint(b1Ore);
     expect(rOre.errorCount).toBe(0);
-    expect(rOre.warnCount).toBe(0);
+    expect(rOre.anomalyWarnCount).toBe(0);
+    expect(rOre.externalInputs.some((e) => e.itemId === 'ITEM_Protomatter')).toBe(true);
     expect(rOre.avgEfficiency).toBe(1);
     expect(rOre.netInputs.map((i) => i.itemId)).toEqual(['ITEM_Protomatter']);
     expect(rOre.netOutputs.find((o) => o.itemId === 'ITEM_EnrichedTitaniumOre')?.ratePerSec).toBeCloseTo(4 / 3, 2);
@@ -631,5 +634,65 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     expect(rep.passed).toBe(false);
     expect(rep.issues.some((i) => i.code === 'orphan-belt' && i.x === 10 && i.y === 10)).toBe(true);
     expect(rep.issues.some((i) => i.code === 'dead-end-belt' && i.x === 10 && i.y === 10)).toBe(true);
+  });
+
+  it('computes binary-verified power draw, max generation (solar + reactor), output-bottleneck efficiency, and open-belt yellow raw-input warnings at arbitrary coordinates', () => {
+    // 1. Arbitrary offset module (gx=3, gy=-2 => x in [48..64], y in [-32..-16]) — ZERO 32x32 origin assumption!
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 3, gy: -2, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_SolarPanelBlock', gx: 2, gy: -2, floor: 0, rotation: 0 }).doc; // 12 MW max
+    doc = placeModuleCmd(doc, { type: 'BPO_SolarPanelBlock_02', gx: 2, gy: -1, floor: 0, rotation: 0 }).doc; // 48 MW max
+    doc = placeModuleCmd(doc, { type: 'BPO_DeepSpaceObservatory', gx: 5, gy: -2, floor: 0, rotation: 0 }).doc; // 96 MW draw
+
+    // Place Supercomputer (18 MW!) + QuantumSciLab (12 MW) + Reactor (48 MW gen) + Refinery (4.5 MW) with open feed belt
+    const sc = placeBuildingCmd(doc, { type: 'DAT_Supercomputer', x: 52, y: -28, floor: 0, rotation: 0 });
+    doc = sc.doc;
+    const lab = placeBuildingCmd(doc, { type: 'DAT_QuantumSciLab', x: 60, y: -28, floor: 0, rotation: 0 });
+    doc = lab.doc;
+    const rct = placeBuildingCmd(doc, { type: 'DAT_ReactorMachine', x: 60, y: -12, floor: 0, rotation: 0 });
+    doc = rct.doc;
+
+    // Refinery at (52, -16) with recipe REC_TitaniumPlates (input: TitaniumOre 1/2s = 0.5/s, output: TitaniumPlates 0.5/s)
+    const refRes = placeBuildingCmd(doc, {
+      type: 'DAT_Refinery',
+      x: 52,
+      y: -16,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_TitaniumPlates',
+    });
+    doc = refRes.doc;
+    // Open feed belt entering West port of Refinery (51, -15) -> should emit YELLOW 'external-input-needed' (NOT red orphan-belt!)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 51, y: -15, floor: 0, rotation: 0 }).doc;
+
+    // Case A: Refinery has NO output belt -> steady-state efficiency MUST be 0% (output bottleneck!)
+    const repBlocked = simulateBlueprint(doc);
+    expect(repBlocked.avgEfficiency).toBe(0);
+    expect(repBlocked.issues.some((i) => i.code === 'external-input-needed' && i.severity === 'warn' && i.x === 51 && i.y === -15)).toBe(true);
+    expect(repBlocked.issues.some((i) => i.code === 'orphan-belt' && i.x === 51 && i.y === -15)).toBe(false);
+
+    // Verify exact binary power numbers:
+    // Max gen = Solar1 (12) + Solar2 (48) + Reactor (48) = 108 MW
+    // Peak draw = Observatory (96) + Supercomputer (18) + QuantumLab (12) + Refinery (4.5) = 130.5 MW -> deficit 22.5 MW!
+    expect(repBlocked.power.solarGenMW).toBe(60);
+    expect(repBlocked.power.reactorGenMW).toBe(48);
+    expect(repBlocked.power.maxGenMW).toBe(108);
+    expect(repBlocked.power.peakDrawMW).toBe(130.5);
+    expect(repBlocked.power.netBalanceMW).toBe(-22.5);
+    expect(repBlocked.issues.some((i) => i.code === 'power-deficit' && i.severity === 'warn')).toBe(true);
+
+    // Case B: Connect output belt from Refinery (55, -15) to Container (56, -16) + add Solar Mk.3 (+288 MW) -> eff = 100%, surplus power!
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 55, y: -15, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_Container', x: 56, y: -16, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_SolarPanelBlock_03', gx: 1, gy: 0, floor: 0, rotation: 0 }).doc; // +288 MW max
+
+    const repRun = simulateBlueprint(doc);
+    expect(repRun.errorCount).toBe(0);
+    expect(repRun.avgEfficiency).toBe(1);
+    expect(repRun.power.maxGenMW).toBe(396);
+    expect(repRun.power.netBalanceMW).toBe(265.5);
+    expect(repRun.issues.some((i) => i.code === 'power-deficit')).toBe(false);
+    // Active power = Observatory (96) + Refinery active (4.5 * 1.0) = 100.5 MW (unconfigured Supercomputer & idle Lab draw 0 active)
+    expect(repRun.power.activeDrawMW).toBe(100.5);
   });
 });
