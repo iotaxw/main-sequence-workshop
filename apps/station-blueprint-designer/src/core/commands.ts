@@ -8,6 +8,7 @@ import {
   isPortToggleable,
   normalizeRotation,
   rotateVec2,
+  rotationToDelta,
   STATION_UNIT_M,
   validateBuildingPlacement,
   validateModulePlacement,
@@ -28,6 +29,7 @@ function cloneBuildingExtras(b: {
   label?: string;
   disabledPorts?: number[];
   undergroundMode?: 'in' | 'out';
+  undergroundPartnerId?: string;
   priorityIn?: number;
   priorityOut?: number;
   portFilters?: Record<number, string>;
@@ -38,6 +40,7 @@ function cloneBuildingExtras(b: {
   if (b.label) out.label = b.label;
   if (b.disabledPorts && b.disabledPorts.length > 0) out.disabledPorts = [...b.disabledPorts];
   if (b.undergroundMode) out.undergroundMode = b.undergroundMode;
+  if (b.undergroundPartnerId) out.undergroundPartnerId = b.undergroundPartnerId;
   if (b.priorityIn !== undefined) out.priorityIn = b.priorityIn;
   if (b.priorityOut !== undefined) out.priorityOut = b.priorityOut;
   if (b.portFilters && Object.keys(b.portFilters).length > 0) out.portFilters = { ...b.portFilters };
@@ -136,12 +139,13 @@ export function placeBuildingCmd(
     label?: string;
     disabledPorts?: number[];
     undergroundMode?: 'in' | 'out';
+    undergroundPartnerId?: string;
     priorityIn?: number;
     priorityOut?: number;
     portFilters?: Record<number, string>;
     filterItems?: string[];
   },
-  options: { allowBeltReplace?: boolean; allowForceReplace?: boolean } = {}
+  options: { allowBeltReplace?: boolean; allowForceReplace?: boolean; preserveEncodedPartner?: boolean } = {}
 ): CommandResult {
   const issue = validateBuildingPlacement(doc, spec, options);
   if (issue) {
@@ -151,28 +155,92 @@ export function placeBuildingCmd(
   const [w, d] = getBuildingSizeCells(def, spec.rotation);
 
   let remaining = doc.buildings;
+  const removeIds = new Set<string>();
   if (options.allowForceReplace || (options.allowBeltReplace && def.kind === 'belt')) {
     const overlapping = findOverlappingBuildings(doc, spec.x, spec.y, w, d, spec.floor);
-    const removeIds = new Set(
-      overlapping
-        .filter((b) => options.allowForceReplace || getBuildableDef(b.type)?.kind === 'belt')
-        .map((b) => b.id)
-    );
+    for (const b of overlapping) {
+      if (options.allowForceReplace || getBuildableDef(b.type)?.kind === 'belt') {
+        removeIds.add(b.id);
+      }
+    }
     if (removeIds.size > 0) {
-      remaining = doc.buildings.filter((b) => !removeIds.has(b.id));
+      remaining = doc.buildings
+        .filter((b) => !removeIds.has(b.id))
+        .map((b) => {
+          if (b.undergroundPartnerId && removeIds.has(b.undergroundPartnerId)) {
+            const copy = { ...b };
+            delete copy.undergroundPartnerId;
+            return copy;
+          }
+          return b;
+        });
     }
   }
 
   const cleanDisabled = sanitizeDisabledPorts(def, spec.disabledPorts);
+  const rot = normalizeRotation(spec.rotation);
   const building: PlacedBuilding = {
     id: createEntityId('bld'),
     type: spec.type,
     x: spec.x,
     y: spec.y,
     floor: spec.floor,
-    rotation: normalizeRotation(spec.rotation),
+    rotation: rot,
     ...cloneBuildingExtras({ ...spec, disabledPorts: cleanDisabled }),
   };
+
+  // Explicit encoding-time pairing for underground belts (supports braided parallel runs on the same straight line!)
+  if (def.kind === 'underground' && !options.preserveEncodedPartner) {
+    const mode = building.undergroundMode ?? 'in';
+    building.undergroundMode = mode;
+    const maxLen = def.maxLength ?? 8;
+    const [dx, dy] = rotationToDelta(rot);
+    const isPartnerInline = (cand: PlacedBuilding): boolean => {
+      const cDef = getBuildableDef(cand.type);
+      if (!cDef || cDef.kind !== 'underground') return false;
+      if (cand.floor !== building.floor || cand.rotation !== rot) return false;
+      const cMode = cand.undergroundMode ?? 'in';
+      if (cMode === mode) return false;
+      const entry = mode === 'in' ? building : cand;
+      const exit = mode === 'out' ? building : cand;
+      const rx = exit.x - entry.x;
+      const ry = exit.y - entry.y;
+      const along = rx * dx + ry * dy;
+      const perp = Math.abs(rx * dy - ry * dx);
+      return perp === 0 && along >= 1 && along <= maxLen;
+    };
+
+    let matchedPartnerId: string | undefined;
+    if (spec.undergroundPartnerId) {
+      const pref = remaining.find((b) => b.id === spec.undergroundPartnerId);
+      if (pref && !pref.undergroundPartnerId && isPartnerInline(pref)) {
+        matchedPartnerId = pref.id;
+      }
+    }
+    if (!matchedPartnerId) {
+      // Auto-bind nearest compatible unpaired same-tier partner inline within maxLength
+      let bestDist = maxLen + 1;
+      for (const cand of remaining) {
+        if (cand.undergroundPartnerId) continue;
+        const cDef = getBuildableDef(cand.type);
+        if (!cDef || cDef.tier !== def.tier) continue;
+        if (!isPartnerInline(cand)) continue;
+        const dist = Math.abs(cand.x - building.x) + Math.abs(cand.y - building.y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          matchedPartnerId = cand.id;
+        }
+      }
+    }
+    if (matchedPartnerId) {
+      building.undergroundPartnerId = matchedPartnerId;
+      remaining = remaining.map((b) =>
+        b.id === matchedPartnerId ? { ...b, undergroundPartnerId: building.id } : b
+      );
+    } else {
+      delete building.undergroundPartnerId;
+    }
+  }
 
   return {
     doc: { ...doc, buildings: [...remaining, building] },
@@ -228,7 +296,16 @@ export function deleteSelectionCmd(
   }
 
   const nextModules = doc.modules.filter((m) => !modSet.has(m.id));
-  const nextBuildings = doc.buildings.filter((b) => !bldSet.has(b.id));
+  const nextBuildings = doc.buildings
+    .filter((b) => !bldSet.has(b.id))
+    .map((b) => {
+      if (b.undergroundPartnerId && bldSet.has(b.undergroundPartnerId)) {
+        const copy = { ...b };
+        delete copy.undergroundPartnerId;
+        return copy;
+      }
+      return b;
+    });
   const changed = nextModules.length !== doc.modules.length || nextBuildings.length !== doc.buildings.length;
   return {
     doc: changed ? { ...doc, modules: nextModules, buildings: nextBuildings } : doc,
@@ -433,6 +510,14 @@ export function extractSelectionAsBlueprint(
   for (const b of selectedBuildings) minFloor = Math.min(minFloor, b.floor);
   if (!Number.isFinite(minFloor)) minFloor = 0;
 
+  const sanitizeExtractedPartner = (b: PlacedBuilding): Partial<PlacedBuilding> => {
+    const extras = cloneBuildingExtras(b);
+    if (extras.undergroundPartnerId && !bldSet.has(extras.undergroundPartnerId)) {
+      delete extras.undergroundPartnerId;
+    }
+    return extras;
+  };
+
   if (selectedModules.length > 0) {
     let minGx = Infinity;
     let minGy = Infinity;
@@ -454,13 +539,16 @@ export function extractSelectionAsBlueprint(
         gy: m.gy - minGy,
         floor: m.floor - minFloor,
       })),
-      buildings: selectedBuildings.map((b) => ({
-        ...b,
-        x: b.x - shiftXM,
-        y: b.y - shiftYM,
-        floor: b.floor - minFloor,
-        ...cloneBuildingExtras(b),
-      })),
+      buildings: selectedBuildings.map((b) => {
+        const copy: PlacedBuilding = {
+          ...b,
+          x: b.x - shiftXM,
+          y: b.y - shiftYM,
+          floor: b.floor - minFloor,
+        };
+        delete copy.undergroundPartnerId;
+        return { ...copy, ...sanitizeExtractedPartner(b) };
+      }),
     };
   }
 
@@ -478,13 +566,16 @@ export function extractSelectionAsBlueprint(
     name,
     gameData: { ...doc.gameData },
     modules: [],
-    buildings: selectedBuildings.map((b) => ({
-      ...b,
-      x: b.x - minX,
-      y: b.y - minY,
-      floor: b.floor - minFloor,
-      ...cloneBuildingExtras(b),
-    })),
+    buildings: selectedBuildings.map((b) => {
+      const copy: PlacedBuilding = {
+        ...b,
+        x: b.x - minX,
+        y: b.y - minY,
+        floor: b.floor - minFloor,
+      };
+      delete copy.undergroundPartnerId;
+      return { ...copy, ...sanitizeExtractedPartner(b) };
+    }),
   };
 }
 
@@ -621,14 +712,27 @@ export function computeStampCandidates(
     floor: m.floor + anchor.floor,
   }));
 
-  const buildings: PlacedBuilding[] = bp.buildings.map((b) => ({
-    ...b,
-    id: createEntityId('bld'),
-    x: b.x + shiftX,
-    y: b.y + shiftY,
-    floor: b.floor + anchor.floor,
-    ...cloneBuildingExtras(b),
-  }));
+  const bldIdMap = new Map<string, string>();
+  for (const b of bp.buildings) {
+    bldIdMap.set(b.id, createEntityId('bld'));
+  }
+  const buildings: PlacedBuilding[] = bp.buildings.map((b) => {
+    const extras = cloneBuildingExtras(b);
+    if (extras.undergroundPartnerId) {
+      const remapped = bldIdMap.get(extras.undergroundPartnerId);
+      if (remapped) extras.undergroundPartnerId = remapped;
+      else delete extras.undergroundPartnerId;
+    }
+    const copy: PlacedBuilding = {
+      ...b,
+      id: bldIdMap.get(b.id)!,
+      x: b.x + shiftX,
+      y: b.y + shiftY,
+      floor: b.floor + anchor.floor,
+    };
+    delete copy.undergroundPartnerId;
+    return { ...copy, ...extras };
+  });
 
   return { modules, buildings };
 }
@@ -655,17 +759,40 @@ export function stampBlueprintCmd(
     }
   }
 
+  const candToPlacedId = new Map<string, string>();
   for (const b of candBlds) {
     const res = placeBuildingCmd(cur, b, {
       allowBeltReplace: true,
       allowForceReplace: options.forceReplace,
+      preserveEncodedPartner: Boolean(b.undergroundPartnerId),
     });
     if (res.changed) {
       cur = res.doc;
-      if (res.addedBuildingIds) addedBldIds.push(...res.addedBuildingIds);
+      if (res.addedBuildingIds && res.addedBuildingIds.length > 0) {
+        addedBldIds.push(...res.addedBuildingIds);
+        candToPlacedId.set(b.id, res.addedBuildingIds[0]);
+      }
     } else if (!options.forceReplace) {
       return { doc, changed: false, message: res.message || '蓝图建筑位置冲突或超出地板' };
     }
+  }
+
+  // Remap preserved undergroundPartnerId from candidate IDs to final placed building IDs
+  if (candToPlacedId.size > 0) {
+    const placedSet = new Set(addedBldIds);
+    cur = {
+      ...cur,
+      buildings: cur.buildings.map((b) => {
+        if (!placedSet.has(b.id) || !b.undergroundPartnerId) return b;
+        const mapped = candToPlacedId.get(b.undergroundPartnerId);
+        if (mapped && mapped !== b.id) {
+          return { ...b, undergroundPartnerId: mapped };
+        }
+        const copy = { ...b };
+        delete copy.undergroundPartnerId;
+        return copy;
+      }),
+    };
   }
 
   return {

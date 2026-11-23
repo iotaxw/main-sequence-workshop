@@ -643,38 +643,29 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     expect(repLine.issues.some((i) => i.code === 'blueprint-output' && i.severity === 'warn' && i.x === 11 && i.y === 10)).toBe(true);
   });
 
-  it('verifies ALL 12 red mid-line fault codes and 0 west-cabin false positives on built-in Sim-Debug diagnostic blueprint', () => {
+  it('verifies ALL new real-game simulation rules, braided encoded undergrounds, and zero west-cabin errors on Sim-Debug blueprint', () => {
     const preset = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('Sim-Debug-全情况诊断台'));
     expect(preset, 'Sim-Debug diagnostic blueprint must be present in default library').toBeDefined();
     const rep = simulateBlueprint(preset!.doc);
 
-    // West Cabin (x < 32): Zones A-D MUST have ZERO red errors, only clean yellow heads (首) & tails (尾)!
+    // 1. West Cabin (x < 32): ZERO red errors across Zones A-E, braided undergrounds, and unfed 2-stage template!
     const westErrors = rep.issues.filter((i) => i.severity === 'error' && i.x < 32);
     expect(westErrors).toEqual([]);
-    for (const [hx, hy] of [
-      [4, 3],
-      [4, 8],
-      [4, 12],
-      [4, 17],
-      [3, 22],
-    ]) {
-      expect(
-        rep.issues.some((i) => i.code === 'external-input-needed' && i.severity === 'warn' && i.x === hx && i.y === hy),
-        `West head (${hx},${hy}) should be yellow external-input-needed`
-      ).toBe(true);
-    }
-    for (const [tx, ty] of [
-      [10, 3],
-      [17, 9],
-      [5, 16],
-      [7, 17],
-      [18, 22],
-    ]) {
-      expect(
-        rep.issues.some((i) => i.code === 'blueprint-output' && i.severity === 'warn' && i.x === tx && i.y === ty),
-        `West tail (${tx},${ty}) should be yellow blueprint-output`
-      ).toBe(true);
-    }
+
+    // Braided parallel same-line undergrounds on y=28 pair cleanly via explicit undergroundPartnerId: (4->10) & (6->8)!
+    const y28Links = computeUndergroundLinks(preset!.doc).filter((l) => l.y1 === 28.5);
+    expect(y28Links.length).toBe(2);
+    expect(y28Links.some((l) => l.x1 === 4.5 && l.x2 === 10.5)).toBe(true);
+    expect(y28Links.some((l) => l.x1 === 6.5 && l.x2 === 8.5)).toBe(true);
+
+    // Unfed 2-stage template (Refinery (13,26) -> Assembler (17,26) -> Tail (22,27)):
+    // ONLY Refinery head gets YELLOW external-input-needed; middle Assembler has ZERO errors and tail emits LightweightFrame!
+    expect(
+      rep.issues.some((i) => i.code === 'external-input-needed' && i.severity === 'warn' && i.x === 13 && i.y === 26)
+    ).toBe(true);
+    expect(rep.issues.some((i) => i.x === 17 && i.y === 26 && i.severity === 'error')).toBe(false);
+    const d2Tail = rep.externalOutputs.find((o) => o.x === 22 && o.y === 27);
+    expect(d2Tail?.items.some((it) => it.itemId === 'ITEM_LightweightFrame')).toBe(true);
 
     // Power verification: Solar Mk.1 (12, min 20%=2.4) + Reactor (48) = 60 MW max / 50.4 MW min gen
     expect(rep.power.solarGenMW).toBe(12);
@@ -688,16 +679,31 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     expect(zoneBHint, 'Zone B Assembler (11,8) should report deterministic ~75% upstream surplus hint').toBeDefined();
     expect(zoneBHint!.estDutyRatio).toBeCloseTo(0.75, 2);
 
-    // East Cabin (x >= 32): ALL 12 red mid-line faults MUST fire at their exact coordinates!
+    // 2. East Cabin YELLOW rules:
+    //    - F3a: Belt into disabled port (44,3) -> YELLOW 'disabled-port-input' (still feeds Refinery!)
+    //    - F6: Open splitter port (41,8) -> ZERO red splitter-leak!
+    //    - F7: Mixed belt -> YELLOW 'mixed-item-belt' ONLY at exact merge origin (39,13), NOT on downstream (40,13)!
+    //    - F8: Unwired Assembler input (46,11) -> YELLOW 'external-input-needed', ZERO red error!
+    expect(
+      rep.issues.some((i) => i.code === 'disabled-port-input' && i.severity === 'warn' && i.x === 44 && i.y === 3)
+    ).toBe(true);
+    expect(rep.issues.some((i) => i.code === 'splitter-leak' && i.x === 41 && i.y === 8)).toBe(false);
+    expect(
+      rep.issues.some((i) => i.code === 'mixed-item-belt' && i.severity === 'warn' && i.x === 39 && i.y === 13)
+    ).toBe(true);
+    expect(rep.issues.some((i) => i.code === 'mixed-item-belt' && i.x === 40 && i.y === 13)).toBe(false);
+    expect(
+      rep.issues.some((i) => i.code === 'external-input-needed' && i.severity === 'warn' && i.x === 46 && i.y === 11)
+    ).toBe(true);
+    expect(rep.issues.some((i) => i.severity === 'error' && i.x === 46 && i.y === 11)).toBe(false);
+
+    // 3. East Cabin RED mid-line faults MUST fire at their exact coordinates!
     const expectedEastFaults: Array<[string, number, number]> = [
       ['orphan-belt', 35, 3],
       ['head-on-belt', 39, 3],
-      ['port-mismatch', 44, 3],
+      ['port-mismatch', 44, 2],
       ['dead-end-belt', 61, 1],
       ['unpaired-underground', 35, 8],
-      ['splitter-leak', 41, 8],
-      ['mixed-item-belt', 39, 13],
-      ['machine-missing-input', 46, 11],
       ['machine-wrong-item', 49, 18],
       ['machine-blocked-output', 56, 12],
       ['belt-overload', 49, 26],
@@ -709,6 +715,20 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
         `Expected RED ${code} at (${x},${y})`
       ).toBe(true);
     }
+
+    // 4. Verify braided encoded undergrounds survive extract -> rotate -> stamp intact!
+    const braidedIds = preset!.doc.buildings.filter((b) => b.y === 28 && b.x >= 4 && b.x <= 10).map((b) => b.id);
+    const sub = extractSelectionAsBlueprint(preset!.doc, { moduleIds: [], buildingIds: braidedIds }, 'braided')!;
+    const rotSub = rotateBlueprint(sub, 1);
+    let targetDoc = createEmptyBlueprint();
+    targetDoc = placeModuleCmd(targetDoc, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    const stamped = stampBlueprintCmd(targetDoc, rotSub, { x: 10, y: 10, floor: 0 });
+    expect(stamped.changed).toBe(true);
+    const stampedLinks = computeUndergroundLinks(stamped.doc);
+    expect(stampedLinks.length).toBe(2);
+    // Straddling spans: length 6 (4->10) and length 2 (6->8) preserved after 90-deg rotation & stamp!
+    const spans = stampedLinks.map((l) => Math.abs(l.x2 - l.x1) + Math.abs(l.y2 - l.y1)).sort((a, z) => a - z);
+    expect(spans).toEqual([2, 6]);
   });
 
   it('computes binary-verified power draw, max generation (solar + reactor), output-bottleneck efficiency, and open-belt yellow raw-input warnings at arbitrary coordinates', () => {

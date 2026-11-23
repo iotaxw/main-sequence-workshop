@@ -1535,6 +1535,24 @@ body,
   border-color: var(--border-mid);
 }
 
+.sim-issue-item.active {
+  border-color: var(--line-active);
+  background: rgba(100, 168, 255, 0.14);
+  box-shadow: 0 0 0 1px var(--line-active);
+}
+
+.sim-issue-item.active.error {
+  border-color: var(--line-disabled);
+  background: rgba(227, 84, 92, 0.16);
+  box-shadow: 0 0 0 1px var(--line-disabled);
+}
+
+.sim-issue-item.active.warn {
+  border-color: #e5a93c;
+  background: rgba(229, 169, 60, 0.16);
+  box-shadow: 0 0 0 1px #e5a93c;
+}
+
 .sim-issue-item.error .sim-issue-badge {
   color: var(--line-disabled);
 }

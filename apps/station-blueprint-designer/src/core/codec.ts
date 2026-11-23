@@ -123,6 +123,7 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
 
   const buildings: PlacedBuilding[] = [];
   const seenBldIds = new Set<string>();
+  const idRemap = new Map<string, string>();
   for (let i = 0; i < rawBuildings.length; i++) {
     const b = rawBuildings[i] as Record<string, unknown>;
     if (!b || typeof b !== 'object' || typeof b.type !== 'string') {
@@ -135,7 +136,9 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
     if (!bDef) {
       warnings.push(`包含未知建筑类型「${b.type}」，已原样保留。`);
     }
-    const bid = typeof b.id === 'string' && b.id && !seenBldIds.has(b.id) ? b.id : createEntityId('bld');
+    const rawId = typeof b.id === 'string' && b.id ? b.id : '';
+    const bid = rawId && !seenBldIds.has(rawId) ? rawId : createEntityId('bld');
+    if (rawId && !idRemap.has(rawId)) idRemap.set(rawId, bid);
     seenBldIds.add(bid);
     const disabledPorts = Array.isArray(b.disabledPorts)
       ? b.disabledPorts.filter((p): p is number => {
@@ -171,11 +174,25 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
       ...(typeof b.label === 'string' && b.label ? { label: b.label } : {}),
       ...(disabledPorts && disabledPorts.length > 0 ? { disabledPorts } : {}),
       ...(b.undergroundMode === 'in' || b.undergroundMode === 'out' ? { undergroundMode: b.undergroundMode } : {}),
+      ...(typeof b.undergroundPartnerId === 'string' && b.undergroundPartnerId
+        ? { undergroundPartnerId: b.undergroundPartnerId }
+        : {}),
       ...(isFiniteInt(b.priorityIn) && b.priorityIn >= 0 ? { priorityIn: b.priorityIn } : {}),
       ...(isFiniteInt(b.priorityOut) && b.priorityOut >= 0 ? { priorityOut: b.priorityOut } : {}),
       ...(portFilters ? { portFilters } : {}),
       ...(filterItems && filterItems.length > 0 ? { filterItems } : {}),
     });
+  }
+
+  // Remap & sanitize encoded undergroundPartnerId references after all building IDs are collected
+  for (const b of buildings) {
+    if (!b.undergroundPartnerId) continue;
+    const mapped = idRemap.get(b.undergroundPartnerId) ?? b.undergroundPartnerId;
+    if (seenBldIds.has(mapped) && mapped !== b.id) {
+      b.undergroundPartnerId = mapped;
+    } else {
+      delete b.undergroundPartnerId;
+    }
   }
 
   const knownKeys = new Set([

@@ -17,6 +17,7 @@ export type SimulationIssueSeverity = 'error' | 'warn';
 export type SimulationIssueCode =
   | 'external-input-needed'
   | 'blueprint-output'
+  | 'disabled-port-input'
   | 'power-deficit'
   | 'orphan-belt'
   | 'dead-end-belt'
@@ -47,7 +48,7 @@ export interface ExternalInputSpot {
   x: number;
   y: number;
   buildingId: string;
-  sourceKind: 'doorway' | 'elevator' | 'wall-stub' | 'open-belt' | 'source-container';
+  sourceKind: 'doorway' | 'elevator' | 'wall-stub' | 'open-belt' | 'source-container' | 'machine-head';
   itemId: string | null;
   nameZh: string;
   requiredRatePerSec: number;
@@ -443,11 +444,12 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       if (machHit) {
         addEdge(b.id, machHit.building.id, speed, undefined, machHit.portIndex);
       } else if (disabledHit) {
-        frontFaultIds.add(b.id);
+        // Real game rule: disabling a machine/container port ONLY blocks output, NOT input! Connect normally + yellow warn.
+        addEdge(b.id, disabledHit.building.id, speed, undefined, disabledHit.portIndex);
         pushIssue(
-          'error',
-          'port-mismatch',
-          `传送带 (${b.x},${b.y}) 指向了已禁用的机器/容器端口`,
+          'warn',
+          'disabled-port-input',
+          `传送带 (${b.x},${b.y}) 接入了已禁用输出的端口（实机仅禁出，仍可正常进料）`,
           b.floor,
           b.x,
           b.y,
@@ -539,7 +541,16 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         if (machHit) {
           addEdge(b.id, machHit.building.id, speed, undefined, machHit.portIndex);
         } else if (disabledHit) {
-          pushIssue('error', 'port-mismatch', `地下带出口 (${b.x},${b.y}) 指向已禁用端口`, b.floor, b.x, b.y, b.id);
+          addEdge(b.id, disabledHit.building.id, speed, undefined, disabledHit.portIndex);
+          pushIssue(
+            'warn',
+            'disabled-port-input',
+            `地下带出口 (${b.x},${b.y}) 接入了已禁用输出的端口（实机仅禁出，仍可正常进料）`,
+            b.floor,
+            b.x,
+            b.y,
+            b.id
+          );
         } else if (elevatorPorts.has(cellKey(b.floor, fx, fy))) {
           exitSinkKind.set(b.id, 'elevator');
           boundaryExits.add(b.id);
@@ -582,24 +593,11 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           continue;
         }
         if (disabledHit) {
-          pushIssue('error', 'splitter-leak', `分流器 (${b.x},${b.y}) 活跃口 #${pIdx} 指向已禁用机器端口`, b.floor, b.x, b.y, b.id);
-          continue;
-        }
-        if (isBoundaryFloorMissing(doc, tx, ty, b.floor) || elevatorPorts.has(cellKey(b.floor, tx, ty))) {
-          boundaryExits.add(b.id);
-          continue;
-        }
-        const nb = cellMap.get(cellKey(b.floor, tx, ty));
-        if (!nb) {
-          pushIssue('error', 'splitter-leak', `分流器 (${b.x},${b.y}) 未禁用侧口 #${pIdx} 指向空地`, b.floor, b.x, b.y, b.id);
-          continue;
-        }
-        const nbDef = defById.get(nb.id)!;
-        if (nbDef.kind === 'belt' && nb.rotation !== pDir) {
+          addEdge(b.id, disabledHit.building.id, speed, pIdx, disabledHit.portIndex, filterItem);
           pushIssue(
-            'error',
-            'splitter-leak',
-            `分流器 (${b.x},${b.y}) 活跃口 #${pIdx} 侧漏撞上异向传送带 (${tx},${ty})`,
+            'warn',
+            'disabled-port-input',
+            `分流器 (${b.x},${b.y}) 出口 #${pIdx} 接入了已禁用输出的端口（实机仅禁出，仍可正常进料）`,
             b.floor,
             b.x,
             b.y,
@@ -607,12 +605,19 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           );
           continue;
         }
+        if (isBoundaryFloorMissing(doc, tx, ty, b.floor) || elevatorPorts.has(cellKey(b.floor, tx, ty))) {
+          boundaryExits.add(b.id);
+          continue;
+        }
+        const nb = cellMap.get(cellKey(b.floor, tx, ty));
+        if (!nb) continue; // Real game rule: open splitter port facing empty space does not spill/error
+        const nbDef = defById.get(nb.id)!;
         const acc = canLogisticsAcceptFrom(nb, nbDef, pDir, tx, ty);
         if (acc.ok) {
+          // Connects cleanly; if it side-loads a different item onto a belt, mixed-item-belt flags the merge spot yellow!
           addEdge(b.id, nb.id, Math.min(speed, getTierSpeed(nbDef.tier)), pIdx, acc.inPortIndex, filterItem);
-        } else {
-          pushIssue('error', 'splitter-leak', `分流器 (${b.x},${b.y}) 活跃口 #${pIdx} 与 (${tx},${ty}) 方向冲突`, b.floor, b.x, b.y, b.id);
         }
+        // Other non-accepting collisions on a splitter port simply do not output (no red error)
       }
     } else if (def.kind === 'balancer') {
       const worldPorts = getBuildingWorldPorts(b, def);
@@ -630,7 +635,16 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           continue;
         }
         if (disabledHit) {
-          pushIssue('error', 'port-mismatch', `平衡器 (${b.x},${b.y}) 出口 #${wp.port.index} 指向已禁用机器端口`, b.floor, b.x, b.y, b.id);
+          addEdge(b.id, disabledHit.building.id, speed, wp.port.index, disabledHit.portIndex, filterItem);
+          pushIssue(
+            'warn',
+            'disabled-port-input',
+            `平衡器 (${b.x},${b.y}) 出口 #${wp.port.index} 接入了已禁用输出的端口（实机仅禁出，仍可正常进料）`,
+            b.floor,
+            b.x,
+            b.y,
+            b.id
+          );
           continue;
         }
         if (isBoundaryFloorMissing(doc, tx, ty, b.floor) || elevatorPorts.has(cellKey(b.floor, tx, ty))) {
@@ -1225,6 +1239,53 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     return m;
   };
 
+  // Pre-identify open raw-input heads directly on configured machines (e.g. unfed sub-line templates!)
+  // If a machine has NO incoming belt delivering `inp.itemId` AND has NO wrong-item producer wired into it,
+  // treat that missing input as a YELLOW open head ('machine-head') and virtually supply `need` so downstream
+  // machines in an unfed multi-stage template trace cleanly without cascading false red errors!
+  const machineHeadInputs = new Map<string, Set<string>>();
+  for (const b of doc.buildings) {
+    const def = defById.get(b.id);
+    if (!def || def.kind !== 'crafter' || !b.recipeId) continue;
+    const rec = getRecipeDef(b.recipeId);
+    if (!rec || rec.inputs.length === 0) continue;
+    const reqSet = new Set(rec.inputs.map((ri) => ri.itemId));
+
+    // Check whether any incoming edge delivers a wrong item produced upstream
+    let hasWrongUpstream = false;
+    for (const ie of inEdges.get(b.id) ?? []) {
+      const upProd = upstreamProducedByNode.get(ie.fromId);
+      if (upProd) {
+        for (const it of upProd) {
+          if (!reqSet.has(it)) {
+            hasWrongUpstream = true;
+            break;
+          }
+        }
+      }
+      if (hasWrongUpstream) break;
+    }
+    if (hasWrongUpstream) continue;
+
+    const assignedItems = new Set<string>();
+    const pMap = crafterAssignedPorts.get(b.id);
+    if (pMap) {
+      for (const s of pMap.values()) {
+        for (const it of s) assignedItems.add(it);
+      }
+    }
+    for (const inp of rec.inputs) {
+      if (!assignedItems.has(inp.itemId)) {
+        let s = machineHeadInputs.get(b.id);
+        if (!s) {
+          s = new Set();
+          machineHeadInputs.set(b.id, s);
+        }
+        s.add(inp.itemId);
+      }
+    }
+  }
+
   const ITERS = 20;
   for (let iter = 0; iter < ITERS; iter++) {
     let maxDelta = 0;
@@ -1255,13 +1316,17 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         if (!rec) continue;
         const dur = rec.durationSeconds && rec.durationSeconds > 0 ? rec.durationSeconds : 1;
         const inFlow = getNodeInFlow(b.id);
+        const headSet = machineHeadInputs.get(b.id);
 
-        // 1) Input-limited efficiency
+        // 1) Input-limited efficiency (unfed machine-head inputs are virtually supplied so downstream traces cleanly!)
         let inputEff = 1.0;
         if (rec.inputs.length > 0) {
           for (const inp of rec.inputs) {
             const need = (inp.quantity ?? 1) / dur;
             let got = inFlow.get(inp.itemId) ?? 0;
+            if (got <= 1e-4 && headSet?.has(inp.itemId)) {
+              got = need;
+            }
             // Ignite closed self-recycling loops (e.g. XenobacteriaRecycling) on iter 0
             if (iter === 0 && got < need && rec.outputs.some((o) => o.itemId === inp.itemId)) {
               got = need;
@@ -1478,6 +1543,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     'wall-stub': '穿墙地下口',
     'open-belt': '待接原料端',
     'source-container': '原料箱源',
+    'machine-head': '机器首端',
   };
 
   // Identify backup/seed external entries that feed ONLY into the secondary (0%-drawn) input of a priorityIn balancer
@@ -1618,6 +1684,21 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
+  // Precompute mixed logistics nodes so mixed-item-belt ONLY flags the exact merge origin (混合位), not every downstream tile!
+  const mixedLogisticsIds = new Set<string>();
+  for (const b of doc.buildings) {
+    const def = defById.get(b.id);
+    if (!def) continue;
+    if (def.kind === 'belt' || def.kind === 'underground' || def.kind === 'splitter' || def.kind === 'balancer') {
+      const flow = getNodeInFlow(b.id);
+      let count = 0;
+      for (const r of flow.values()) {
+        if (r > 1e-4) count++;
+      }
+      if (count > 1) mixedLogisticsIds.add(b.id);
+    }
+  }
+
   for (const b of doc.buildings) {
     const def = defById.get(b.id);
     if (!def) continue;
@@ -1685,21 +1766,22 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       }
 
       const hasPortFilter = b.portFilters && Object.keys(b.portFilters).length > 0;
-      if (nonZeroItems.length > 1 && def.kind === 'belt') {
+      const upstreamAlreadyMixed = (inEdges.get(b.id) ?? []).some((ie) => mixedLogisticsIds.has(ie.fromId));
+      if (nonZeroItems.length > 1 && !upstreamAlreadyMixed && def.kind === 'belt') {
         pushIssue(
-          'error',
+          'warn',
           'mixed-item-belt',
-          `传送带 (${b.x},${b.y}) 发生混料：${nonZeroItems.map(getItemNameZh).join(' + ')}`,
+          `混料位 (${b.x},${b.y}) 发生混料：${nonZeroItems.map(getItemNameZh).join(' + ')}`,
           b.floor,
           b.x,
           b.y,
           b.id
         );
-      } else if (nonZeroItems.length > 1 && def.kind === 'splitter' && !hasPortFilter) {
+      } else if (nonZeroItems.length > 1 && !upstreamAlreadyMixed && def.kind === 'splitter' && !hasPortFilter) {
         pushIssue(
-          'error',
+          'warn',
           'mixed-item-belt',
-          `分流器 (${b.x},${b.y}) 输入混料但未配置过滤：${nonZeroItems.map(getItemNameZh).join(' + ')}`,
+          `分流器混料位 (${b.x},${b.y}) 未配置过滤：${nonZeroItems.map(getItemNameZh).join(' + ')}`,
           b.floor,
           b.x,
           b.y,
@@ -1852,12 +1934,39 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         );
       }
     }
+    const headSet = machineHeadInputs.get(b.id);
     for (const inp of rec.inputs) {
       const need = (inp.quantity ?? 1) / dur;
       const got = inFlow.get(inp.itemId) ?? 0;
-      if (got <= 1e-4) {
+      if (got <= 1e-4 && headSet?.has(inp.itemId)) {
+        // Unified head logic: unfed machine input is a YELLOW 'external-input-needed' head (not a red mid-line error!)
+        netInputTotals.set(inp.itemId, (netInputTotals.get(inp.itemId) ?? 0) + need);
+        externalInputs.push({
+          id: `ext_m_${b.id}_${inp.itemId}`,
+          floor: b.floor,
+          x: b.x,
+          y: b.y,
+          buildingId: b.id,
+          sourceKind: 'machine-head',
+          itemId: inp.itemId,
+          nameZh: inp.nameZh,
+          requiredRatePerSec: Math.round(need * 1000) / 1000,
+          suppliedRatePerSec: Math.round(need * 1000) / 1000,
+          capacityPerSec: 3.0,
+          bottlenecked: false,
+        });
         pushIssue(
-          'error',
+          'warn',
+          'external-input-needed',
+          `机器首端 ${def.nameZh} (${b.x},${b.y}) 需接入「${inp.nameZh}」· ${need.toFixed(2)}/s（${(need / 3.0).toFixed(2)} 满带）`,
+          b.floor,
+          b.x,
+          b.y,
+          b.id
+        );
+      } else if (got <= 1e-4) {
+        pushIssue(
+          'warn',
           'machine-missing-input',
           `${def.nameZh} (${b.x},${b.y}) 缺少原料：${inp.nameZh}`,
           b.floor,

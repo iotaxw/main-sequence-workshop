@@ -154,6 +154,8 @@ export interface PlacedBuilding {
   disabledPorts?: number[];
   /** Underground belt role when placed as entry/exit */
   undergroundMode?: 'in' | 'out';
+  /** Explicit encoded partner building ID for underground in/out pairs (supports parallel/braided same-line runs) */
+  undergroundPartnerId?: string;
   /** Prioritized input port index (e.g. Belt Balancer input lane 0 or 1) */
   priorityIn?: number;
   /** Prioritized output port index (e.g. Splitter output 1/2/3 or Balancer output 2/3) */
@@ -195,6 +197,7 @@ export type ActiveTool =
       buildingType: string;
       rotation: Rotation;
       undergroundMode?: 'in' | 'out';
+      pendingUndergroundInId?: string;
       recipeId?: string;
       label?: string;
       disabledPorts?: number[];

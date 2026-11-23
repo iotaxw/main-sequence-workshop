@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { SimulationIssue, SimulationReport } from '../core/simulation';
 
 interface SimulationPanelProps {
   open: boolean;
   report: SimulationReport | null;
+  activeIssueId?: string | null;
   onClose: () => void;
   onFocusIssue: (issue: SimulationIssue) => void;
 }
@@ -11,6 +12,7 @@ interface SimulationPanelProps {
 const CODE_LABEL: Record<SimulationIssue['code'], string> = {
   'external-input-needed': '首·需入原料',
   'blueprint-output': '尾·产线出口',
+  'disabled-port-input': '禁用口进料',
   'power-deficit': '供电不足',
   'orphan-belt': '孤立废带',
   'dead-end-belt': '撞墙死路',
@@ -18,7 +20,7 @@ const CODE_LABEL: Record<SimulationIssue['code'], string> = {
   'unpaired-underground': '地下带断连',
   'splitter-leak': '分流侧漏',
   'port-mismatch': '端口错接',
-  'mixed-item-belt': '混料污染',
+  'mixed-item-belt': '混料位',
   'belt-overload': '传送超载',
   'machine-missing-input': '机器缺料',
   'machine-wrong-item': '机器错料',
@@ -29,7 +31,23 @@ function fmtMW(mw: number): string {
   return Math.abs(mw) >= 100 ? mw.toFixed(0) : mw.toFixed(1);
 }
 
-export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, onClose, onFocusIssue }) => {
+export const SimulationPanel: React.FC<SimulationPanelProps> = ({
+  open,
+  report,
+  activeIssueId,
+  onClose,
+  onFocusIssue,
+}) => {
+  const issueRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  useEffect(() => {
+    if (!open || !activeIssueId) return;
+    const el = issueRefs.current.get(activeIssueId);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [open, activeIssueId]);
+
   if (!open || !report) return null;
 
   const effText =
@@ -207,32 +225,42 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({ open, report, 
 
         <div className="sim-section">
           <div className="section-label">
-            提示与异常清单（{report.issues.length}）{report.issues.length > 0 ? ' · 点击定位' : ''}
+            提示与异常清单（{report.issues.length}）{report.issues.length > 0 ? ' · 点击画布或列表双向定位' : ''}
           </div>
           {report.issues.length === 0 ? (
-            <div className="sim-empty">无断带、无悬空、无侧漏、无混料，且无需额外入料。</div>
+            <div className="sim-empty">无断带、无悬空、无错接，且无需额外入料。</div>
           ) : (
-            <div className="sim-issue-list">
-              {report.issues.slice(0, 80).map((issue) => (
-                <button
-                  key={issue.id}
-                  type="button"
-                  className={`sim-issue-item ${issue.severity}${
-                    issue.code === 'external-input-needed' || issue.code === 'blueprint-output' ? ' input-spot' : ''
-                  }`}
-                  onClick={() => onFocusIssue(issue)}
-                >
-                  <span className="sim-issue-badge">{CODE_LABEL[issue.code]}</span>
-                  <span className="sim-issue-msg">{issue.message}</span>
-                  <span className="sim-issue-coord">
-                    L{issue.floor} ({issue.x},{issue.y})
-                  </span>
-                </button>
-              ))}
-              {report.issues.length > 80 && (
-                <div className="sim-empty">其余 {report.issues.length - 80} 条提示/异常已折叠…</div>
-              )}
-            </div>
+            (() => {
+              const activeIdx = activeIssueId ? report.issues.findIndex((i) => i.id === activeIssueId) : -1;
+              const limit = activeIdx >= 80 ? activeIdx + 5 : 80;
+              return (
+                <div className="sim-issue-list">
+                  {report.issues.slice(0, limit).map((issue) => (
+                    <button
+                      key={issue.id}
+                      ref={(node) => {
+                        if (node) issueRefs.current.set(issue.id, node);
+                        else issueRefs.current.delete(issue.id);
+                      }}
+                      type="button"
+                      className={`sim-issue-item ${issue.severity}${
+                        issue.code === 'external-input-needed' || issue.code === 'blueprint-output' ? ' input-spot' : ''
+                      }${issue.id === activeIssueId ? ' active' : ''}`}
+                      onClick={() => onFocusIssue(issue)}
+                    >
+                      <span className="sim-issue-badge">{CODE_LABEL[issue.code]}</span>
+                      <span className="sim-issue-msg">{issue.message}</span>
+                      <span className="sim-issue-coord">
+                        L{issue.floor} ({issue.x},{issue.y})
+                      </span>
+                    </button>
+                  ))}
+                  {report.issues.length > limit && (
+                    <div className="sim-empty">其余 {report.issues.length - limit} 条提示/异常已折叠…</div>
+                  )}
+                </div>
+              );
+            })()
           )}
         </div>
       </div>

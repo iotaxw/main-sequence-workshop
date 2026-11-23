@@ -424,32 +424,77 @@ export interface UndergroundLink {
   tier: 1 | 2 | 3;
 }
 
-/** Pair underground belt entries with nearest matching exits within MaxLength (8 cells) */
+/**
+ * Compute underground belt links:
+ * 1. Explicit encoded pairs (`undergroundPartnerId`) take priority — supports multiple parallel/braided
+ *    underground belts sharing the exact same straight line with zero ambiguity!
+ * 2. Fallback for legacy/unencoded blueprints pairs remaining undergrounds same-tier first, then nearest
+ *    inline matching 'out' within `maxLength` (default 8 cells).
+ */
 export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink[] {
   const undergrounds = doc.buildings.filter((b) => getBuildableDef(b.type)?.kind === 'underground');
+  const byId = new Map(undergrounds.map((u) => [u.id, u]));
   const links: UndergroundLink[] = [];
   const used = new Set<string>();
 
+  const isInlineValid = (entry: PlacedBuilding, exit: PlacedBuilding, maxLen: number): boolean => {
+    if (entry.id === exit.id) return false;
+    if (entry.floor !== exit.floor || entry.rotation !== exit.rotation) return false;
+    if (entry.undergroundMode === 'out' || exit.undergroundMode !== 'out') return false;
+    const [dx, dy] = rotationToDelta(entry.rotation);
+    const rx = exit.x - entry.x;
+    const ry = exit.y - entry.y;
+    const along = rx * dx + ry * dy;
+    const perp = Math.abs(rx * dy - ry * dx);
+    return perp === 0 && along >= 1 && along <= maxLen;
+  };
+
+  // Pass 1: Explicit encoded pairs (undergroundPartnerId)
   for (const entry of undergrounds) {
-    if (used.has(entry.id)) continue;
+    if (used.has(entry.id) || entry.undergroundMode === 'out' || !entry.undergroundPartnerId) continue;
+    const partner = byId.get(entry.undergroundPartnerId);
+    if (!partner || used.has(partner.id)) continue;
     const def = getBuildableDef(entry.type)!;
-    if (entry.undergroundMode === 'out') continue;
+    const maxLen = def.maxLength ?? 8;
+    if (!isInlineValid(entry, partner, maxLen)) continue;
+    used.add(entry.id);
+    used.add(partner.id);
+    links.push({
+      fromId: entry.id,
+      toId: partner.id,
+      floor: entry.floor,
+      x1: entry.x + 0.5,
+      y1: entry.y + 0.5,
+      x2: partner.x + 0.5,
+      y2: partner.y + 0.5,
+      tier: def.tier,
+    });
+  }
+
+  // Pass 2: Backward-compatible fallback for unencoded undergrounds (prefer same-tier first, then nearest inline)
+  for (const entry of undergrounds) {
+    if (used.has(entry.id) || entry.undergroundMode === 'out') continue;
+    const def = getBuildableDef(entry.type)!;
     const [dx, dy] = rotationToDelta(entry.rotation);
     const maxLen = def.maxLength ?? 8;
 
     let best: PlacedBuilding | null = null;
+    let bestSameTier = false;
     let bestDist = maxLen + 1;
     for (const candidate of undergrounds) {
       if (candidate.id === entry.id || used.has(candidate.id)) continue;
-      if (candidate.floor !== entry.floor) continue;
-      if (candidate.rotation !== entry.rotation) continue;
-      if (candidate.undergroundMode !== 'out') continue;
-      const rx = candidate.x - entry.x;
-      const ry = candidate.y - entry.y;
-      const along = rx * dx + ry * dy;
-      const perp = Math.abs(rx * dy - ry * dx);
-      if (perp === 0 && along >= 1 && along <= maxLen && along < bestDist) {
+      if (candidate.undergroundPartnerId && byId.has(candidate.undergroundPartnerId)) continue;
+      if (!isInlineValid(entry, candidate, maxLen)) continue;
+      const candDef = getBuildableDef(candidate.type);
+      const sameTier = candDef?.tier === def.tier;
+      const along = (candidate.x - entry.x) * dx + (candidate.y - entry.y) * dy;
+      if (
+        !best ||
+        (sameTier && !bestSameTier) ||
+        (sameTier === bestSameTier && along < bestDist)
+      ) {
         best = candidate;
+        bestSameTier = sameTier;
         bestDist = along;
       }
     }

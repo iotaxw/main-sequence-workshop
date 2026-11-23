@@ -111,6 +111,7 @@ export const App: React.FC = () => {
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [helpOpen, setHelpOpen] = useState(false);
   const [simOpen, setSimOpen] = useState(false);
+  const [activeSimIssueId, setActiveSimIssueId] = useState<string | null>(null);
   const [driver, setDriver] = useState<BlueprintLibraryDriver>(() => new VirtualFolderDriver());
   const [libraryTree, setLibraryTree] = useState<LibraryNode[]>([]);
 
@@ -118,9 +119,16 @@ export const App: React.FC = () => {
   const simOverlayIssues = useMemo(
     () =>
       simReport
-        ? simReport.issues.map((i) => ({ floor: i.floor, x: i.x, y: i.y, severity: i.severity, code: i.code }))
+        ? simReport.issues.map((i) => ({
+            floor: i.floor,
+            x: i.x,
+            y: i.y,
+            severity: i.severity,
+            code: i.code,
+            active: i.id === activeSimIssueId,
+          }))
         : undefined,
-    [simReport]
+    [simReport, activeSimIssueId]
   );
 
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
@@ -156,6 +164,8 @@ export const App: React.FC = () => {
     activeTool,
     lastGroupMember,
     clipboardBp,
+    simReport,
+    activeSimIssueId,
   });
   stateRef.current = {
     doc,
@@ -167,6 +177,8 @@ export const App: React.FC = () => {
     activeTool,
     lastGroupMember,
     clipboardBp,
+    simReport,
+    activeSimIssueId,
   };
 
   const dragRef = useRef<{
@@ -1001,6 +1013,7 @@ export const App: React.FC = () => {
       const [w, d] = getBuildingSizeCells(def, tool.rotation);
       const bx = Math.floor(world.x - w / 2 + 0.5);
       const by = Math.floor(world.y - d / 2 + 0.5);
+      const ugMode = def.kind === 'underground' ? (tool.undergroundMode ?? 'in') : undefined;
       const res = placeBuildingCmd(
         curDoc,
         {
@@ -1009,7 +1022,10 @@ export const App: React.FC = () => {
           y: by,
           floor: fl,
           rotation: tool.rotation,
-          undergroundMode: def.kind === 'underground' ? (tool.undergroundMode ?? 'in') : undefined,
+          undergroundMode: ugMode,
+          ...(def.kind === 'underground' && ugMode === 'out' && tool.pendingUndergroundInId
+            ? { undergroundPartnerId: tool.pendingUndergroundInId }
+            : {}),
           ...(tool.recipeId ? { recipeId: tool.recipeId } : {}),
           ...(tool.label ? { label: tool.label } : {}),
           ...(tool.disabledPorts && tool.disabledPorts.length > 0 ? { disabledPorts: [...tool.disabledPorts] } : {}),
@@ -1023,7 +1039,12 @@ export const App: React.FC = () => {
       if (res.changed) {
         commitDoc(res.doc);
         if (def.kind === 'underground') {
-          setActiveTool({ ...tool, undergroundMode: tool.undergroundMode === 'out' ? 'in' : 'out' });
+          const nextMode = ugMode === 'out' ? 'in' : 'out';
+          setActiveTool({
+            ...tool,
+            undergroundMode: nextMode,
+            pendingUndergroundInId: ugMode === 'in' ? res.addedBuildingIds?.[0] : undefined,
+          });
         }
       } else if (res.message) {
         showToast(res.message, 'warn');
@@ -1173,8 +1194,31 @@ export const App: React.FC = () => {
           setSelection(hitSel);
         }
       } else if (world) {
+        const cellX = Math.floor(world.x);
+        const cellY = Math.floor(world.y);
+        const clickedBld = findBuildingAtCell(curDoc, cellX, cellY, fl);
+
+        // Canvas -> Panel click tracking: clicking any yellow/red simulation marker (or any tile of a flagged machine)
+        // immediately tracks & scrolls to the corresponding warning/error in SimulationPanel!
+        const curSim = stateRef.current.simReport;
+        if (curSim && curSim.issues.length > 0) {
+          const hits = curSim.issues.filter(
+            (i) =>
+              i.floor === fl &&
+              ((i.x === cellX && i.y === cellY) || (clickedBld !== null && i.buildingId === clickedBld.id))
+          );
+          if (hits.length > 0) {
+            const curIdx = hits.findIndex((i) => i.id === stateRef.current.activeSimIssueId);
+            const picked = hits[(curIdx + 1) % hits.length];
+            setActiveSimIssueId(picked.id);
+            showToast(picked.message, picked.severity === 'error' ? 'error' : 'warn');
+          } else {
+            setActiveSimIssueId(null);
+          }
+        }
+
         if (vm === 'building') {
-          const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), fl);
+          const b = clickedBld;
           if (b) {
             if (e.shiftKey) {
               const exists = prevSel.buildingIds.includes(b.id);
@@ -1606,8 +1650,13 @@ export const App: React.FC = () => {
         <SimulationPanel
           open={simOpen}
           report={simReport}
-          onClose={() => setSimOpen(false)}
+          activeIssueId={activeSimIssueId}
+          onClose={() => {
+            setSimOpen(false);
+            setActiveSimIssueId(null);
+          }}
           onFocusIssue={(issue: SimulationIssue) => {
+            setActiveSimIssueId(issue.id);
             setFocusFloor(issue.floor);
             switchViewMode('building', [issue.x + 0.5, issue.y + 0.5]);
             if (issue.buildingId) {

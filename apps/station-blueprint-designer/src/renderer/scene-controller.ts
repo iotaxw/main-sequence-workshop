@@ -54,7 +54,14 @@ export interface SceneRenderState {
   beltPreview: Array<{ x: number; y: number; rotation: Rotation }>;
   boxSelectRect: { minX: number; minY: number; maxX: number; maxY: number } | null;
   forceReplaceHeld: boolean;
-  simulationIssues?: Array<{ floor: number; x: number; y: number; severity: 'error' | 'warn'; code?: string }>;
+  simulationIssues?: Array<{
+    floor: number;
+    x: number;
+    y: number;
+    severity: 'error' | 'warn';
+    code?: string;
+    active?: boolean;
+  }>;
 }
 
 const labelTextureCache = new Map<string, THREE.CanvasTexture>();
@@ -1224,6 +1231,19 @@ export class CadSceneController {
         const z0 = issue.y + 0.08;
         const x1 = issue.x + 0.92;
         const z1 = issue.y + 0.92;
+        if (issue.active) {
+          const ax0 = issue.x - 0.08;
+          const az0 = issue.y - 0.08;
+          const ax1 = issue.x + 1.08;
+          const az1 = issue.y + 1.08;
+          const targetPts = issue.severity === 'error' ? errPts : inputWarnPts;
+          targetPts.push(
+            ax0, y + 0.03, az0, ax1, y + 0.03, az0,
+            ax1, y + 0.03, az0, ax1, y + 0.03, az1,
+            ax1, y + 0.03, az1, ax0, y + 0.03, az1,
+            ax0, y + 0.03, az1, ax0, y + 0.03, az0
+          );
+        }
         if (issue.severity === 'error') {
           errPts.push(
             x0, y, z0, x1, y, z0,
