@@ -325,7 +325,7 @@ describe('Versioned JSON codec safety', () => {
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
       (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-') || p.path.includes('F2-电梯')
     );
-    expect(targets.length).toBe(20);
+    expect(targets.length).toBe(21);
     for (const { doc, path } of targets) {
       const cellMap = new Map<string, (typeof doc.buildings)[number]>();
       const elevPortCells = new Set<string>();
@@ -624,7 +624,7 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     const targets = DEFAULT_LIBRARY_PRESETS.filter(
       (p) => p.path.includes('标准生产细胞/') || p.path.includes('B1-') || p.path.includes('F1-') || p.path.includes('F2-电梯')
     );
-    expect(targets.length).toBe(20);
+    expect(targets.length).toBe(21);
     for (const { doc, path } of targets) {
       const report = simulateBlueprint(doc);
       expect(
