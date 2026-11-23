@@ -298,26 +298,56 @@ describe('Versioned JSON codec safety', () => {
         const issue = validateModulePlacement(doc, m, new Set([m.id]));
         expect(issue, `${path} module ${m.id} (${m.type}) at (${m.gx},${m.gy},L${m.floor})`).toBeNull();
       }
-      // O(N) spatial hash check for zero building overlaps + exact buildable floor coverage on every cell!
+      // O(N) spatial hash check for zero building overlaps + O(1)-bucketed exact buildable floor coverage!
+      const modBuckets = new Map<string, typeof doc.modules>();
+      for (const m of doc.modules) {
+        const md = getModuleDef(m.type);
+        if (!md) continue;
+        const wu = m.rotation % 2 === 0 ? md.sizeUnits[0] : md.sizeUnits[1];
+        const du = m.rotation % 2 === 0 ? md.sizeUnits[1] : md.sizeUnits[0];
+        for (const fl of md.floors) {
+          const f = m.floor + fl.floorOffset;
+          for (let ux = m.gx; ux < m.gx + wu; ux++) {
+            for (let uy = m.gy; uy < m.gy + du; uy++) {
+              const bk = `${f}:${ux},${uy}`;
+              const list = modBuckets.get(bk);
+              if (list) list.push(m);
+              else modBuckets.set(bk, [m]);
+            }
+          }
+        }
+      }
       const occupied = new Map<string, string>();
+      const violations: string[] = [];
       for (const b of doc.buildings) {
         const def = getBuildableDef(b.type);
-        expect(def, `${path} unknown building type ${b.type} on ${b.id}`).toBeDefined();
-        const [w, d] = b.rotation % 2 === 0 ? def!.size : [def!.size[1], def!.size[0]];
+        if (!def) {
+          violations.push(`${path} unknown building type ${b.type} on ${b.id}`);
+          continue;
+        }
+        const [w, d] = b.rotation % 2 === 0 ? def.size : [def.size[1], def.size[0]];
         for (let dx = 0; dx < w; dx++) {
           for (let dy = 0; dy < d; dy++) {
             const cx = b.x + dx;
             const cy = b.y + dy;
             const key = `${b.floor}:${cx},${cy}`;
-            expect(occupied.get(key), `${path} overlap at (${cx},${cy},L${b.floor}) between ${occupied.get(key)} and ${b.id}`).toBeUndefined();
-            occupied.set(key, b.id);
-            expect(isCellBuildable(doc, cx, cy, b.floor), `${path} building ${b.id} (${b.type}) out-of-floor at (${cx},${cy},L${b.floor})`).not.toBeNull();
+            const prev = occupied.get(key);
+            if (prev) {
+              violations.push(`${path} overlap at (${cx},${cy},L${b.floor}) between ${prev} and ${b.id}`);
+            } else {
+              occupied.set(key, b.id);
+            }
+            const bucketMods = modBuckets.get(`${b.floor}:${Math.floor(cx / 16)},${Math.floor(cy / 16)}`) ?? [];
+            if (!isCellBuildable({ ...doc, modules: bucketMods }, cx, cy, b.floor)) {
+              violations.push(`${path} building ${b.id} (${b.type}) out-of-floor at (${cx},${cy},L${b.floor})`);
+            }
           }
         }
-        if (b.recipeId) {
-          expect(getRecipeDef(b.recipeId), `${path} recipeId ${b.recipeId} on ${b.id}`).toBeDefined();
+        if (b.recipeId && !getRecipeDef(b.recipeId)) {
+          violations.push(`${path} recipeId ${b.recipeId} on ${b.id}`);
         }
       }
+      expect(violations, `${path} layout violations`).toEqual([]);
     }
   });
 
@@ -652,12 +682,19 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     expect(rElev.externalInputs.filter((e) => e.sourceKind === 'elevator').length).toBe(12);
     expect(rElev.externalOutputs.filter((e) => e.sinkKind === 'elevator').length).toBe(12);
 
-    // Verify F2 Elevator->Boutique transition connects 4 elevator ports cleanly with 0 errors!
+    // Verify F2 Elevator->Boutique transition connects all 12 northern elevator ports cleanly with 0 errors!
     const f2Elev = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('F2-电梯商业街'))!.doc;
     const rF2Elev = simulateBlueprint(f2Elev);
     expect(rF2Elev.errorCount).toBe(0);
     expect(rF2Elev.anomalyWarnCount).toBe(0);
-    expect(rF2Elev.externalInputs.filter((e) => e.sourceKind === 'elevator').length).toBe(4);
+    expect(rF2Elev.externalInputs.filter((e) => e.sourceKind === 'elevator').length).toBe(12);
+
+    // Verify F2 Boutique Street feeds all 12 showcase containers via 12 pure zero-crossing lanes with 0 errors!
+    const f2Street = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('F2-巨窗星光商业街'))!.doc;
+    const rF2Street = simulateBlueprint(f2Street);
+    expect(rF2Street.errorCount).toBe(0);
+    expect(rF2Street.anomalyWarnCount).toBe(0);
+    expect(rF2Street.externalInputs.length).toBe(12);
 
     // Verify exact Cell-3 full dual-Mk.3 output (6.00 items/s Titanium Plates, 100% efficiency)
     const cell3 = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('Cell-3'))!.doc;

@@ -65,6 +65,17 @@ describe('Offline Full-Station Simulation Sub-App (station-blueprint-designer/of
       `\nPass 5 (Global Integrity): ${report.integrity.moduleCount} modules, ${report.integrity.buildingCount} buildings, ${report.integrity.occupiedCells} cells, overlaps=${report.integrity.overlaps}, outOfFloor=${report.integrity.outOfFloor}, turrets=${report.integrity.outwardTurretCount}/8 outward`
     );
 
+    console.log(
+      `\nPass 6 (3-Deck Closed-Loop & 96-Shaft Elevators): ${report.closedLoop.totalUsedShafts}/96 shafts used (${report.closedLoop.totalFreeShafts} EA free), ${report.closedLoop.reachableBoutiqueCount}/${report.closedLoop.activeBoutiqueCount} F2 active containers reachable, biomass zero-surplus=${report.closedLoop.biomassLoop.zeroSurplusProven} (net=${report.closedLoop.biomassLoop.closedLoopNetBiomassPerSec.toFixed(3)}/s)`
+    );
+    for (const e of report.closedLoop.elevators) {
+      console.log(
+        `  - ${e.elevatorLabel}: ${e.usedShafts}/24 shafts (${e.freeShafts} free, ${e.f2DirectBays} F2 bays), missingWingInputs=${e.missingWingInputs.length}, unbackedB1Imports=${e.unbackedB1Imports.length}`
+      );
+      if (e.missingWingInputs.length > 0) console.log('     MISSING INPUTS:', e.missingWingInputs.join(', '));
+      if (e.unbackedB1Imports.length > 0) console.log('     UNBACKED B1:', e.unbackedB1Imports.join(', '));
+    }
+
     // Optional report artifact generation (triggered via npm run sim:report or SIM_WRITE_REPORT=1)
     if (process.env.SIM_WRITE_REPORT === '1') {
       fs.mkdirSync(REPORT_DIR, { recursive: true });
@@ -75,7 +86,7 @@ describe('Offline Full-Station Simulation Sub-App (station-blueprint-designer/of
       console.log(`\nOffline HTML dashboard written to: ${htmlPath}`);
     }
 
-    // Strict assertions across all 5 passes
+    // Strict assertions across all 6 passes
     expect(report.productionRooms.length).toBe(50);
     for (const r of report.productionRooms) {
       expect(r.errors, `Production room ${r.label} errors`).toEqual([]);
@@ -86,7 +97,7 @@ describe('Offline Full-Station Simulation Sub-App (station-blueprint-designer/of
       expect(h.errors, `Hub ${h.label} errors`).toEqual([]);
       expect(h.anomalyWarns, `Hub ${h.label} anomaly warnings`).toEqual([]);
     }
-    expect(report.seams.length).toBe(6);
+    expect(report.seams.length).toBe(9);
     for (const s of report.seams) {
       expect(s.seamFaults, `Cross-room seam "${s.name}" faults`).toEqual([]);
     }
@@ -102,6 +113,9 @@ describe('Offline Full-Station Simulation Sub-App (station-blueprint-designer/of
     expect(report.integrity.outOfFloor).toBe(0);
     expect(report.integrity.invalidRecipes).toBe(0);
     expect(report.integrity.turretsValid).toBe(true);
+    expect(report.closedLoop.biomassLoop.zeroSurplusProven).toBe(true);
+    expect(report.closedLoop.reachableBoutiqueCount).toBe(39);
+    expect(report.closedLoop.allClosedLoopChecksPassed).toBe(true);
     expect(report.passed).toBe(true);
   });
 });
