@@ -16,6 +16,134 @@ export const STATION_UNIT_M = 16; // 1 station grid unit = 16 meters (= 16 build
 export const FLOOR_HEIGHT_M = 8; // 1 station floor = 8 meters (real game step)
 export const FLOOR_VISUAL_SPACING = 10; // Clean visual spacing in 3D CAD view
 
+export function packCellKey(x: number, y: number): number {
+  return (x + 32768) * 65536 + (y + 32768);
+}
+
+export interface ModuleSpatialIndex {
+  modulesByFloor: Map<number, PlacedModule[]>;
+  moduleGridByFloor: Map<number, Map<number, PlacedModule[]>>;
+}
+
+export interface BuildingSpatialIndex {
+  buildingsByFloor: Map<number, PlacedBuilding[]>;
+  buildingCellByFloor: Map<number, Map<number, PlacedBuilding | PlacedBuilding[]>>;
+  undergrounds: PlacedBuilding[];
+}
+
+export interface DocSpatialIndex extends ModuleSpatialIndex, BuildingSpatialIndex {}
+
+const moduleIndexCache = new WeakMap<PlacedModule[], ModuleSpatialIndex>();
+const buildingIndexCache = new WeakMap<PlacedBuilding[], BuildingSpatialIndex>();
+
+/**
+ * Lazily-built O(1) module spatial index keyed on `doc.modules` array identity.
+ * Editing buildings NEVER invalidates module spatial indexing!
+ */
+export function getModuleSpatialIndex(modules: PlacedModule[]): ModuleSpatialIndex {
+  const cached = moduleIndexCache.get(modules);
+  if (cached) return cached;
+
+  const modulesByFloor = new Map<number, PlacedModule[]>();
+  const moduleGridByFloor = new Map<number, Map<number, PlacedModule[]>>();
+  for (let i = 0; i < modules.length; i++) {
+    const mod = modules[i];
+    const def = getModuleDef(mod.type);
+    const [wu, du, hu] = def ? getModuleSizeUnits(def, mod.rotation) : [1, 1, 1];
+    for (let df = 0; df < hu; df++) {
+      const f = mod.floor + df;
+      let mList = modulesByFloor.get(f);
+      if (!mList) {
+        mList = [];
+        modulesByFloor.set(f, mList);
+      }
+      mList.push(mod);
+
+      let grid = moduleGridByFloor.get(f);
+      if (!grid) {
+        grid = new Map();
+        moduleGridByFloor.set(f, grid);
+      }
+      for (let dx = 0; dx < wu; dx++) {
+        for (let dy = 0; dy < du; dy++) {
+          const k = packCellKey(mod.gx + dx, mod.gy + dy);
+          const cellList = grid.get(k);
+          if (cellList) cellList.push(mod);
+          else grid.set(k, [mod]);
+        }
+      }
+    }
+  }
+
+  const index: ModuleSpatialIndex = { modulesByFloor, moduleGridByFloor };
+  moduleIndexCache.set(modules, index);
+  return index;
+}
+
+/**
+ * Lazily-built O(1) building spatial index keyed on `doc.buildings` array identity.
+ * Editing station modules NEVER invalidates building spatial indexing!
+ */
+export function getBuildingSpatialIndex(buildings: PlacedBuilding[]): BuildingSpatialIndex {
+  const cached = buildingIndexCache.get(buildings);
+  if (cached) return cached;
+
+  const buildingsByFloor = new Map<number, PlacedBuilding[]>();
+  const buildingCellByFloor = new Map<number, Map<number, PlacedBuilding | PlacedBuilding[]>>();
+  const undergrounds: PlacedBuilding[] = [];
+
+  for (let i = 0; i < buildings.length; i++) {
+    const b = buildings[i];
+    const def = getBuildableDef(b.type);
+    if (!def) continue;
+    if (def.kind === 'underground') undergrounds.push(b);
+
+    let bList = buildingsByFloor.get(b.floor);
+    if (!bList) {
+      bList = [];
+      buildingsByFloor.set(b.floor, bList);
+    }
+    bList.push(b);
+
+    let cellMap = buildingCellByFloor.get(b.floor);
+    if (!cellMap) {
+      cellMap = new Map();
+      buildingCellByFloor.set(b.floor, cellMap);
+    }
+    const [w, d] = getBuildingSizeCells(def, b.rotation);
+    for (let dx = 0; dx < w; dx++) {
+      for (let dy = 0; dy < d; dy++) {
+        const k = packCellKey(b.x + dx, b.y + dy);
+        const cur = cellMap.get(k);
+        if (!cur) {
+          cellMap.set(k, b);
+        } else if (Array.isArray(cur)) {
+          cur.push(b);
+        } else {
+          cellMap.set(k, [cur, b]);
+        }
+      }
+    }
+  }
+
+  const index: BuildingSpatialIndex = { buildingsByFloor, buildingCellByFloor, undergrounds };
+  buildingIndexCache.set(buildings, index);
+  return index;
+}
+
+/** Combined spatial index accessor (both halves independently cached by array identity) */
+export function getDocSpatialIndex(doc: BlueprintDocument): DocSpatialIndex {
+  const m = getModuleSpatialIndex(doc.modules);
+  const b = getBuildingSpatialIndex(doc.buildings);
+  return {
+    modulesByFloor: m.modulesByFloor,
+    moduleGridByFloor: m.moduleGridByFloor,
+    buildingsByFloor: b.buildingsByFloor,
+    buildingCellByFloor: b.buildingCellByFloor,
+    undergrounds: b.undergrounds,
+  };
+}
+
 export function normalizeRotation(r: number): Rotation {
   return (((r % 4) + 4) % 4) as Rotation;
 }
@@ -178,25 +306,37 @@ function isLocalCellOnSurface(lx: number, ly: number, surf: StationFloorSurfaceD
   return true;
 }
 
-/** Check whether a 1m world cell (cx, cy) on `floor` lies on ANY buildable station surface */
+/** Check whether a 1m world cell (cx, cy) on `floor` lies on ANY buildable station surface — O(1) via module spatial index */
 export function isCellBuildable(
   doc: BlueprintDocument,
   cellX: number,
   cellY: number,
   floor: number
 ): PlacedModule | null {
+  const idx = getModuleSpatialIndex(doc.modules);
+  const grid = idx.moduleGridByFloor.get(floor);
+  if (!grid) return null;
+  const ugx = Math.floor(cellX / STATION_UNIT_M);
+  const ugy = Math.floor(cellY / STATION_UNIT_M);
+  const mods = grid.get(packCellKey(ugx, ugy));
+  if (!mods) return null;
+
   const wx = cellX + 0.5;
   const wy = cellY + 0.5;
-  for (const mod of doc.modules) {
+  for (let i = 0; i < mods.length; i++) {
+    const mod = mods[i];
     const def = getModuleDef(mod.type);
     if (!def || !def.hasFactoryFloor) continue;
     const floorOffset = floor - mod.floor;
     if (floorOffset < 0 || floorOffset >= def.sizeUnits[2]) continue;
-    const surf = def.floors.find((f) => f.floorOffset === floorOffset);
+    let surf: StationFloorSurfaceDef | undefined;
+    for (let s = 0; s < def.floors.length; s++) {
+      if (def.floors[s].floorOffset === floorOffset) {
+        surf = def.floors[s];
+        break;
+      }
+    }
     if (!surf) continue;
-
-    const [minX, minY, maxX, maxY] = getModuleBoundsM(mod, def);
-    if (wx < minX || wx > maxX || wy < minY || wy > maxY) continue;
 
     const [mcx, mcy] = getModuleCenterM(mod, def);
     const invRot = normalizeRotation(4 - mod.rotation);
@@ -210,62 +350,85 @@ export function isCellBuildable(
   return null;
 }
 
-/** Find station module covering world point (wx, wy) on `floor` (or nearest spanning floor) */
+/** Find station module covering world point (wx, wy) on `floor` — O(1) via module spatial index */
 export function findModuleAtWorldPoint(
   doc: BlueprintDocument,
   wx: number,
   wy: number,
   floor: number
 ): PlacedModule | null {
-  for (const mod of doc.modules) {
-    const def = getModuleDef(mod.type);
-    if (!def) continue;
-    if (floor < mod.floor || floor >= mod.floor + def.sizeUnits[2]) continue;
-    const [minX, minY, maxX, maxY] = getModuleBoundsM(mod, def);
-    if (wx >= minX && wx <= maxX && wy >= minY && wy <= maxY) {
-      return mod;
+  const idx = getModuleSpatialIndex(doc.modules);
+  const grid = idx.moduleGridByFloor.get(floor);
+  if (!grid) return null;
+  const ugx = Math.floor(wx / STATION_UNIT_M);
+  const ugy = Math.floor(wy / STATION_UNIT_M);
+  const candidates = grid.get(packCellKey(ugx, ugy));
+  if (candidates) {
+    for (let i = 0; i < candidates.length; i++) {
+      const mod = candidates[i];
+      const def = getModuleDef(mod.type);
+      if (!def) continue;
+      const [minX, minY, maxX, maxY] = getModuleBoundsM(mod, def);
+      if (wx >= minX && wx <= maxX && wy >= minY && wy <= maxY) {
+        return mod;
+      }
+    }
+  }
+  // Handle exact maxX / maxY edge clicks
+  const onXEdge = wx === ugx * STATION_UNIT_M;
+  const onYEdge = wy === ugy * STATION_UNIT_M;
+  if (onXEdge || onYEdge) {
+    const floorMods = idx.modulesByFloor.get(floor);
+    if (floorMods) {
+      for (const mod of floorMods) {
+        const def = getModuleDef(mod.type);
+        if (!def) continue;
+        const [minX, minY, maxX, maxY] = getModuleBoundsM(mod, def);
+        if (wx >= minX && wx <= maxX && wy >= minY && wy <= maxY) {
+          return mod;
+        }
+      }
     }
   }
   return null;
 }
 
-/** Check if placing a station module collides in 3D station grid with existing modules */
+/** Check if placing a station module collides in 3D station grid with existing modules — O(wu*du*hu) */
 export function validateModulePlacement(
   doc: BlueprintDocument,
   candidate: { type: string; gx: number; gy: number; floor: number; rotation: Rotation },
-  ignoreModuleIds: Set<string> = new Set()
+  ignoreModuleIds?: Set<string>
 ): PlacementIssue | null {
   const def = getModuleDef(candidate.type);
   if (!def) {
     return { kind: 'unknown-type', message: `未知空间站模块类型：${candidate.type}` };
   }
   const [wu, du, hu] = getModuleSizeUnits(def, candidate.rotation);
-  const cMinX = candidate.gx;
-  const cMaxX = candidate.gx + wu;
-  const cMinY = candidate.gy;
-  const cMaxY = candidate.gy + du;
-  const cMinZ = candidate.floor;
-  const cMaxZ = candidate.floor + hu;
+  const idx = getModuleSpatialIndex(doc.modules);
 
-  for (const mod of doc.modules) {
-    if (ignoreModuleIds.has(mod.id)) continue;
-    const mDef = getModuleDef(mod.type);
-    if (!mDef) continue;
-    const [mw, md, mh] = getModuleSizeUnits(mDef, mod.rotation);
-    const overlapX = cMinX < mod.gx + mw && cMaxX > mod.gx;
-    const overlapY = cMinY < mod.gy + md && cMaxY > mod.gy;
-    const overlapZ = cMinZ < mod.floor + mh && cMaxZ > mod.floor;
-    if (overlapX && overlapY && overlapZ) {
-      return {
-        kind: 'module-overlap',
-        message: `与已有模块「${mDef.nameZh}」空间重叠`,
-      };
+  for (let df = 0; df < hu; df++) {
+    const grid = idx.moduleGridByFloor.get(candidate.floor + df);
+    if (!grid) continue;
+    for (let dx = 0; dx < wu; dx++) {
+      for (let dy = 0; dy < du; dy++) {
+        const hits = grid.get(packCellKey(candidate.gx + dx, candidate.gy + dy));
+        if (!hits) continue;
+        for (let i = 0; i < hits.length; i++) {
+          const mod = hits[i];
+          if (ignoreModuleIds && ignoreModuleIds.has(mod.id)) continue;
+          const mDef = getModuleDef(mod.type);
+          return {
+            kind: 'module-overlap',
+            message: `与已有模块「${mDef?.nameZh ?? mod.type}」空间重叠`,
+          };
+        }
+      }
     }
   }
   return null;
 }
 
-/** Check if placing a building is valid (on buildable floor & non-overlapping) */
+/** Check if placing a building is valid (on buildable floor & non-overlapping) — O(w*d) via spatial index */
 export function validateBuildingPlacement(
   doc: BlueprintDocument,
   candidate: { type: string; x: number; y: number; floor: number; rotation: Rotation },
@@ -300,32 +463,45 @@ export function validateBuildingPlacement(
     return null;
   }
 
-  const ignore = options.ignoreBuildingIds ?? new Set<string>();
-  for (const existing of doc.buildings) {
-    if (existing.floor !== candidate.floor) continue;
-    if (ignore.has(existing.id)) continue;
-    const eDef = getBuildableDef(existing.type);
-    if (!eDef) continue;
-    const [ew, ed] = getBuildingSizeCells(eDef, existing.rotation);
-    const overlap =
-      candidate.x < existing.x + ew &&
-      candidate.x + w > existing.x &&
-      candidate.y < existing.y + ed &&
-      candidate.y + d > existing.y;
-    if (overlap) {
-      if (options.allowBeltReplace && def.kind === 'belt' && eDef.kind === 'belt') {
-        continue;
+  const idx = getBuildingSpatialIndex(doc.buildings);
+  const cellMap = idx.buildingCellByFloor.get(candidate.floor);
+  if (!cellMap) return null;
+
+  const ignore = options.ignoreBuildingIds;
+  const allowBeltSwap = Boolean(options.allowBeltReplace && def.kind === 'belt');
+
+  for (let dx = 0; dx < w; dx++) {
+    for (let dy = 0; dy < d; dy++) {
+      const entry = cellMap.get(packCellKey(candidate.x + dx, candidate.y + dy));
+      if (!entry) continue;
+      if (Array.isArray(entry)) {
+        for (let i = 0; i < entry.length; i++) {
+          const existing = entry[i];
+          if (ignore && ignore.has(existing.id)) continue;
+          const eDef = getBuildableDef(existing.type);
+          if (!eDef) continue;
+          if (allowBeltSwap && eDef.kind === 'belt') continue;
+          return {
+            kind: 'building-overlap',
+            message: `与已有「${eDef.nameZh}」占地冲突`,
+          };
+        }
+      } else {
+        if (ignore && ignore.has(entry.id)) continue;
+        const eDef = getBuildableDef(entry.type);
+        if (!eDef) continue;
+        if (allowBeltSwap && eDef.kind === 'belt') continue;
+        return {
+          kind: 'building-overlap',
+          message: `与已有「${eDef.nameZh}」占地冲突`,
+        };
       }
-      return {
-        kind: 'building-overlap',
-        message: `与已有「${eDef.nameZh}」占地冲突`,
-      };
     }
   }
   return null;
 }
 
-/** Find all buildings that overlap a given footprint on a floor */
+/** Find all buildings that overlap a given footprint on a floor — O(w*d) via spatial index */
 export function findOverlappingBuildings(
   doc: BlueprintDocument,
   x: number,
@@ -333,35 +509,56 @@ export function findOverlappingBuildings(
   w: number,
   d: number,
   floor: number,
-  ignoreIds: Set<string> = new Set()
+  ignoreIds?: Set<string>
 ): PlacedBuilding[] {
+  const idx = getBuildingSpatialIndex(doc.buildings);
+  const cellMap = idx.buildingCellByFloor.get(floor);
+  if (!cellMap) return [];
+
   const hits: PlacedBuilding[] = [];
-  for (const b of doc.buildings) {
-    if (b.floor !== floor || ignoreIds.has(b.id)) continue;
-    const def = getBuildableDef(b.type);
-    if (!def) continue;
-    const [bw, bd] = getBuildingSizeCells(def, b.rotation);
-    if (x < b.x + bw && x + w > b.x && y < b.y + bd && y + d > b.y) {
-      hits.push(b);
+  const seen = new Set<string>();
+  for (let dx = 0; dx < w; dx++) {
+    for (let dy = 0; dy < d; dy++) {
+      const entry = cellMap.get(packCellKey(x + dx, y + dy));
+      if (!entry) continue;
+      if (Array.isArray(entry)) {
+        for (let i = 0; i < entry.length; i++) {
+          const b = entry[i];
+          if ((ignoreIds && ignoreIds.has(b.id)) || seen.has(b.id)) continue;
+          seen.add(b.id);
+          hits.push(b);
+        }
+      } else {
+        if ((ignoreIds && ignoreIds.has(entry.id)) || seen.has(entry.id)) continue;
+        seen.add(entry.id);
+        hits.push(entry);
+      }
     }
   }
   return hits;
 }
 
-/** Find all buildings resting inside a station module's bounds (across its floors) */
+/** Find all buildings resting inside a station module's bounds (across its floors) — floor-indexed */
 export function findBuildingsInsideModule(doc: BlueprintDocument, mod: PlacedModule): PlacedBuilding[] {
   const def = getModuleDef(mod.type);
   if (!def) return [];
   const [minX, minY, maxX, maxY] = getModuleBoundsM(mod, def);
-  const minFloor = mod.floor;
-  const maxFloor = mod.floor + def.sizeUnits[2] - 1;
-  return doc.buildings.filter((b) => {
-    if (b.floor < minFloor || b.floor > maxFloor) return false;
-    const bDef = getBuildableDef(b.type);
-    if (!bDef) return false;
-    const [cx, cy] = getBuildingCenterM(b, bDef);
-    return cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
-  });
+  const idx = getBuildingSpatialIndex(doc.buildings);
+  const out: PlacedBuilding[] = [];
+  for (let df = 0; df < def.sizeUnits[2]; df++) {
+    const floorBlds = idx.buildingsByFloor.get(mod.floor + df);
+    if (!floorBlds) continue;
+    for (let i = 0; i < floorBlds.length; i++) {
+      const b = floorBlds[i];
+      const bDef = getBuildableDef(b.type);
+      if (!bDef) continue;
+      const [cx, cy] = getBuildingCenterM(b, bDef);
+      if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) {
+        out.push(b);
+      }
+    }
+  }
+  return out;
 }
 
 export interface WorldMachinePort {
@@ -432,7 +629,8 @@ export interface UndergroundLink {
  *    inline matching 'out' within `maxLength` (default 8 cells).
  */
 export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink[] {
-  const undergrounds = doc.buildings.filter((b) => getBuildableDef(b.type)?.kind === 'underground');
+  const undergrounds = getBuildingSpatialIndex(doc.buildings).undergrounds;
+  if (undergrounds.length === 0) return [];
   const byId = new Map(undergrounds.map((u) => [u.id, u]));
   const links: UndergroundLink[] = [];
   const used = new Set<string>();
@@ -516,23 +714,18 @@ export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink
   return links;
 }
 
-/** Find building covering a 1m world cell (x, y) on `floor` */
+/** Find building covering a 1m world cell (x, y) on `floor` — O(1) via spatial index */
 export function findBuildingAtCell(
   doc: BlueprintDocument,
   cellX: number,
   cellY: number,
   floor: number
 ): PlacedBuilding | null {
-  for (const b of doc.buildings) {
-    if (b.floor !== floor) continue;
-    const def = getBuildableDef(b.type);
-    if (!def) continue;
-    const [w, d] = getBuildingSizeCells(def, b.rotation);
-    if (cellX >= b.x && cellX < b.x + w && cellY >= b.y && cellY < b.y + d) {
-      return b;
-    }
-  }
-  return null;
+  const cellMap = getBuildingSpatialIndex(doc.buildings).buildingCellByFloor.get(floor);
+  if (!cellMap) return null;
+  const entry = cellMap.get(packCellKey(cellX, cellY));
+  if (!entry) return null;
+  return Array.isArray(entry) ? entry[0] ?? null : entry;
 }
 
 /** Compute connected floors present in the document */

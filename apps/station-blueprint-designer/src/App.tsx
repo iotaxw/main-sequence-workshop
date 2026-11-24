@@ -158,12 +158,34 @@ export const App: React.FC = () => {
     [simReport, activeSimIssueId]
   );
 
-  const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
+  const cursorWorldRef = useRef<{ x: number; y: number } | null>(null);
+  const hudCoordRef = useRef<HTMLSpanElement | null>(null);
+  const hudGridRef = useRef<HTMLSpanElement | null>(null);
+  const hudCamRef = useRef<HTMLSpanElement | null>(null);
+  const lastHudCellRef = useRef<string>('');
   const [beltPreview, setBeltPreview] = useState<Array<{ x: number; y: number; rotation: Rotation }>>([]);
   const [boxSelectRect, setBoxSelectRect] = useState<{ minX: number; minY: number; maxX: number; maxY: number } | null>(null);
   const [forceReplaceHeld, setForceReplaceHeld] = useState(false);
-  const [telemetry, setTelemetry] = useState({ yawDeg: 0, pitchDeg: 64, distance: 76 });
   const [toast, setToast] = useState<{ text: string; kind: 'info' | 'warn' | 'error' } | null>(null);
+
+  const updateLiveCursor = useCallback((world: { x: number; y: number } | null) => {
+    cursorWorldRef.current = world;
+    sceneRef.current?.setCursorWorld(world);
+    const cellKey = world ? `${Math.floor(world.x)},${Math.floor(world.y)}` : 'null';
+    if (cellKey !== lastHudCellRef.current) {
+      lastHudCellRef.current = cellKey;
+      if (hudCoordRef.current) {
+        hudCoordRef.current.textContent = world
+          ? `X ${Math.floor(world.x)}  Y ${Math.floor(world.y)}`
+          : 'X --  Y --';
+      }
+      if (hudGridRef.current) {
+        hudGridRef.current.textContent = world
+          ? `G(${Math.floor(world.x / STATION_UNIT_M)},${Math.floor(world.y / STATION_UNIT_M)})`
+          : 'G(-,-)';
+      }
+    }
+  }, []);
 
   const [saveDialog, setSaveDialog] = useState<{
     mode: 'workspace' | 'selection';
@@ -248,11 +270,12 @@ export const App: React.FC = () => {
   }, []);
 
   const refreshLibrary = useCallback(
-    async (targetDriver?: BlueprintLibraryDriver) => {
+    async (targetDriver?: BlueprintLibraryDriver, notify = false) => {
       const drv = targetDriver ?? driver;
       try {
         const nodes = await drv.listTree();
         setLibraryTree(nodes);
+        if (notify) showToast('已刷新蓝图库');
       } catch (err) {
         showToast(`读取目录失败：${err instanceof Error ? err.message : String(err)}`, 'error');
       }
@@ -265,15 +288,31 @@ export const App: React.FC = () => {
   }, [driver, refreshLibrary]);
 
   useEffect(() => {
+    let idleId: number | null = null;
     const timer = window.setTimeout(() => {
-      try {
-        const ts = saveWorkspaceAutosave(doc, activeSourcePath, dirty);
-        setLastAutosaveAt(ts);
-      } catch {
-        // Ignore storage quota errors without claiming file saved
+      const runSave = () => {
+        try {
+          const ts = saveWorkspaceAutosave(doc, activeSourcePath, dirty);
+          setLastAutosaveAt(ts);
+        } catch {
+          // Ignore storage quota errors without claiming file saved
+        }
+      };
+      const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number })
+        .requestIdleCallback;
+      if (typeof ric === 'function') {
+        idleId = ric(runSave, { timeout: 1500 });
+      } else {
+        runSave();
       }
-    }, 450);
-    return () => window.clearTimeout(timer);
+    }, 1800);
+    return () => {
+      window.clearTimeout(timer);
+      if (idleId !== null) {
+        const cic = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+        if (typeof cic === 'function') cic(idleId);
+      }
+    };
   }, [doc, activeSourcePath, dirty]);
 
   useEffect(() => {
@@ -288,7 +327,11 @@ export const App: React.FC = () => {
           return prev;
         });
       },
-      onTelemetryChange: (info) => setTelemetry(info),
+      onTelemetryChange: (info) => {
+        if (hudCamRef.current) {
+          hudCamRef.current.textContent = `${info.yawDeg}°/${info.pitchDeg}° · ${info.distance}m`;
+        }
+      },
     });
     sceneRef.current = ctrl;
 
@@ -316,7 +359,7 @@ export const App: React.FC = () => {
       selection,
       selectionLayerMode,
       activeTool,
-      cursorWorld,
+      cursorWorld: cursorWorldRef.current,
       beltPreview,
       boxSelectRect,
       forceReplaceHeld,
@@ -331,7 +374,6 @@ export const App: React.FC = () => {
     selection,
     selectionLayerMode,
     activeTool,
-    cursorWorld,
     beltPreview,
     boxSelectRect,
     forceReplaceHeld,
@@ -835,13 +877,14 @@ export const App: React.FC = () => {
         e.preventDefault();
         if (dragRef.current.kind === 'belt-plan') {
           dragRef.current.beltFlipCorner = !dragRef.current.beltFlipCorner;
-          if (dragRef.current.startWorld && cursorWorld) {
+          const cw = cursorWorldRef.current;
+          if (dragRef.current.startWorld && cw) {
             const tool = stateRef.current.activeTool;
             const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
             setBeltPreview(
               buildPlannedBeltPath(
                 [Math.floor(dragRef.current.startWorld.x), Math.floor(dragRef.current.startWorld.y)],
-                [Math.floor(cursorWorld.x), Math.floor(cursorWorld.y)],
+                [Math.floor(cw.x), Math.floor(cw.y)],
                 {
                   flipCorner: dragRef.current.beltFlipCorner,
                   reverse: dragRef.current.beltReverse,
@@ -903,7 +946,7 @@ export const App: React.FC = () => {
       }
       if (lower === 'c') {
         e.preventDefault();
-        if (cursorWorld) pipetteAtWorld(cursorWorld);
+        if (cursorWorldRef.current) pipetteAtWorld(cursorWorldRef.current);
         return;
       }
 
@@ -951,7 +994,6 @@ export const App: React.FC = () => {
   }, [
     commitDoc,
     copySelectionToGhost,
-    cursorWorld,
     deleteConfirm,
     fitAllStation,
     focusSelection,
@@ -984,7 +1026,7 @@ export const App: React.FC = () => {
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const world = clientToWorld(e.clientX, e.clientY);
-    if (world) setCursorWorld(world);
+    if (world) updateLiveCursor(world);
 
     if (e.button === 2) {
       dragRef.current = {
@@ -1157,7 +1199,7 @@ export const App: React.FC = () => {
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const world = clientToWorld(e.clientX, e.clientY);
-    if (world) setCursorWorld(world);
+    if (world) updateLiveCursor(world);
 
     const d = dragRef.current;
     if (d.kind === 'none') return;
@@ -1924,7 +1966,7 @@ export const App: React.FC = () => {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onPointerLeave={() => setCursorWorld(null)}
+          onPointerLeave={() => updateLiveCursor(null)}
           onWheel={handleWheel}
           onDoubleClick={handleDoubleClick}
         />
@@ -1933,24 +1975,14 @@ export const App: React.FC = () => {
 
         <div className={`cad-hud-topright ${hasRightPanel ? 'shifted' : ''}`} aria-live="off">
           <div className="hud-row primary">
-            <span className="hud-coord">
-              {cursorWorld
-                ? `X ${Math.floor(cursorWorld.x)}  Y ${Math.floor(cursorWorld.y)}`
-                : 'X --  Y --'}
-            </span>
+            <span className="hud-coord" ref={hudCoordRef}>X --  Y --</span>
             <span className="hud-sep">·</span>
-            <span className="hud-grid">
-              {cursorWorld
-                ? `G(${Math.floor(cursorWorld.x / STATION_UNIT_M)},${Math.floor(cursorWorld.y / STATION_UNIT_M)})`
-                : 'G(-,-)'}
-            </span>
+            <span className="hud-grid" ref={hudGridRef}>G(-,-)</span>
             <span className="hud-floor">L{focusFloor}</span>
           </div>
           <div className="hud-row secondary">
             <span>{viewMode === 'station' ? '空间站' : '建筑'}</span>
-            <span>
-              {telemetry.yawDeg}°/{telemetry.pitchDeg}° · {telemetry.distance}m
-            </span>
+            <span ref={hudCamRef}>0°/64° · 76m</span>
             <span>{snapEnabled ? '吸附' : '自由'}</span>
             <span>
               {doc.modules.length}模 · {doc.buildings.length}建
@@ -2052,7 +2084,7 @@ export const App: React.FC = () => {
         stampingPath={stampingLibPath}
         onMountLocalFolder={handleMountLocalFolder}
         onOpenGitHubConnect={openGitHubConnectModal}
-        onRefresh={() => void refreshLibrary()}
+        onRefresh={() => void refreshLibrary(undefined, true)}
         onNewBlueprint={handleNewBlueprint}
         onCreateFolder={handleCreateFolder}
         onImportJsonFile={handleImportJsonFile}

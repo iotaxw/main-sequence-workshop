@@ -123,7 +123,8 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    const queue = visibleFiles.filter((f) => !docCache[`${f.path}@${f.updatedAt}`]);
+    const keyOf = (f: LibraryFileEntry) => `${f.path}@${f.contentHash ?? f.updatedAt}`;
+    const queue = visibleFiles.filter((f) => !docCache[keyOf(f)]);
     if (queue.length === 0) return;
 
     let cursor = 0;
@@ -134,7 +135,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
         const idx = cursor++;
         if (idx >= queue.length) break;
         const entry = queue[idx];
-        const key = `${entry.path}@${entry.updatedAt}`;
+        const key = keyOf(entry);
         setLoadingPaths((prev) => ({ ...prev, [key]: true }));
         try {
           const { doc } = await driver.readBlueprint(entry.path);
@@ -340,7 +341,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                 <div className="bpm-empty">暂无蓝图</div>
               ) : (
                 visibleFiles.map((file) => {
-                  const cacheKey = `${file.path}@${file.updatedAt}`;
+                  const cacheKey = `${file.path}@${file.contentHash ?? file.updatedAt}`;
                   const loadedDoc = docCache[cacheKey] ?? null;
                   const isEditing = activeSourcePath === file.path;
                   const isStamping = stampingPath === file.path;

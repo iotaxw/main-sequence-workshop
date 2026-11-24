@@ -3,10 +3,13 @@ import {
   findBuildingsInsideModule,
   findOverlappingBuildings,
   getBuildingSizeCells,
+  getDocSpatialIndex,
   getModuleBoundsM,
   getModuleSizeUnits,
+  isCellBuildable,
   isPortToggleable,
   normalizeRotation,
+  packCellKey,
   rotateVec2,
   rotationToDelta,
   STATION_UNIT_M,
@@ -249,7 +252,7 @@ export function placeBuildingCmd(
   };
 }
 
-/** Place an entire belt stroke / planned belt path as a single atomic transaction (shapez 2 instant replace) */
+/** Place an entire belt stroke / planned belt path as a single O(K) atomic transaction (zero repeated array copies!) */
 export function placeBeltRunCmd(
   doc: BlueprintDocument,
   beltType: string,
@@ -257,23 +260,76 @@ export function placeBeltRunCmd(
   segments: Array<{ x: number; y: number; rotation: Rotation }>
 ): CommandResult {
   if (segments.length === 0) return { doc, changed: false };
-  let cur = doc;
-  const addedIds: string[] = [];
-  for (const seg of segments) {
-    const res = placeBuildingCmd(
-      cur,
-      { type: beltType, x: seg.x, y: seg.y, floor, rotation: seg.rotation },
-      { allowBeltReplace: true }
-    );
-    if (res.changed) {
-      cur = res.doc;
-      if (res.addedBuildingIds) addedIds.push(...res.addedBuildingIds);
+  const def = getBuildableDef(beltType);
+  if (!def || def.kind !== 'belt') return { doc, changed: false };
+
+  const idx = getDocSpatialIndex(doc);
+  const existingFloorMap = idx.buildingCellByFloor.get(floor);
+  // Local mutable overlay for cells modified within this stroke
+  const addedByKey = new Map<number, PlacedBuilding>();
+  const removeIds = new Set<string>();
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (!isCellBuildable(doc, seg.x, seg.y, floor)) continue;
+    const key = packCellKey(seg.x, seg.y);
+
+    // Check existing buildings at this cell
+    const curEntry = existingFloorMap?.get(key);
+    let blocked = false;
+    if (curEntry) {
+      if (Array.isArray(curEntry)) {
+        for (let j = 0; j < curEntry.length; j++) {
+          const eb = curEntry[j];
+          if (removeIds.has(eb.id)) continue;
+          if (getBuildableDef(eb.type)?.kind !== 'belt') {
+            blocked = true;
+            break;
+          }
+        }
+        if (!blocked) {
+          for (let j = 0; j < curEntry.length; j++) {
+            removeIds.add(curEntry[j].id);
+          }
+        }
+      } else if (!removeIds.has(curEntry.id)) {
+        if (getBuildableDef(curEntry.type)?.kind !== 'belt') {
+          blocked = true;
+        } else {
+          removeIds.add(curEntry.id);
+        }
+      }
     }
+    if (blocked) continue;
+
+    const belt: PlacedBuilding = {
+      id: createEntityId('bld'),
+      type: beltType,
+      x: seg.x,
+      y: seg.y,
+      floor,
+      rotation: normalizeRotation(seg.rotation),
+    };
+    addedByKey.set(key, belt);
   }
+
+  if (addedByKey.size === 0) return { doc, changed: false };
+
+  const addedBuildings = Array.from(addedByKey.values());
+  const nextBuildings: PlacedBuilding[] = [];
+  for (let i = 0; i < doc.buildings.length; i++) {
+    const b = doc.buildings[i];
+    if (removeIds.has(b.id)) continue;
+    nextBuildings.push(b);
+  }
+  for (let i = 0; i < addedBuildings.length; i++) {
+    nextBuildings.push(addedBuildings[i]);
+  }
+
   return {
-    doc: cur,
-    changed: addedIds.length > 0,
-    addedBuildingIds: addedIds,
+    doc: { ...doc, buildings: nextBuildings },
+    changed: true,
+    addedBuildingIds: addedBuildings.map((b) => b.id),
   };
 }
 
@@ -744,62 +800,214 @@ export function stampBlueprintCmd(
   options: { forceReplace?: boolean } = {}
 ): CommandResult {
   const { modules: candMods, buildings: candBlds } = computeStampCandidates(bp, anchor);
-  let cur = doc;
-  const addedModIds: string[] = [];
-  const addedBldIds: string[] = [];
+  const forceReplace = Boolean(options.forceReplace);
 
-  // Place modules first so buildings inside newly stamped modules have valid floors!
-  for (const m of candMods) {
-    const res = placeModuleCmd(cur, m);
-    if (res.changed) {
-      cur = res.doc;
-      if (res.addedModuleIds) addedModIds.push(...res.addedModuleIds);
-    } else if (!options.forceReplace) {
-      return { doc, changed: false, message: res.message || '蓝图模块位置冲突' };
+  // 1. Validate & accumulate station modules in one pass using spatial grid
+  const baseIdx = getDocSpatialIndex(doc);
+  const addedMods: PlacedModule[] = [];
+  const addedModGridByFloor = new Map<number, Set<number>>();
+
+  for (let i = 0; i < candMods.length; i++) {
+    const m = candMods[i];
+    const def = getModuleDef(m.type);
+    if (!def) {
+      if (!forceReplace) return { doc, changed: false, message: `未知空间站模块类型：${m.type}` };
+      continue;
     }
-  }
-
-  const candToPlacedId = new Map<string, string>();
-  for (const b of candBlds) {
-    const res = placeBuildingCmd(cur, b, {
-      allowBeltReplace: true,
-      allowForceReplace: options.forceReplace,
-      preserveEncodedPartner: Boolean(b.undergroundPartnerId),
-    });
-    if (res.changed) {
-      cur = res.doc;
-      if (res.addedBuildingIds && res.addedBuildingIds.length > 0) {
-        addedBldIds.push(...res.addedBuildingIds);
-        candToPlacedId.set(b.id, res.addedBuildingIds[0]);
-      }
-    } else if (!options.forceReplace) {
-      return { doc, changed: false, message: res.message || '蓝图建筑位置冲突或超出地板' };
-    }
-  }
-
-  // Remap preserved undergroundPartnerId from candidate IDs to final placed building IDs
-  if (candToPlacedId.size > 0) {
-    const placedSet = new Set(addedBldIds);
-    cur = {
-      ...cur,
-      buildings: cur.buildings.map((b) => {
-        if (!placedSet.has(b.id) || !b.undergroundPartnerId) return b;
-        const mapped = candToPlacedId.get(b.undergroundPartnerId);
-        if (mapped && mapped !== b.id) {
-          return { ...b, undergroundPartnerId: mapped };
+    const [wu, du, hu] = getModuleSizeUnits(def, m.rotation);
+    let conflictMsg: string | null = null;
+    for (let df = 0; df < hu && !conflictMsg; df++) {
+      const f = m.floor + df;
+      const baseGrid = baseIdx.moduleGridByFloor.get(f);
+      const localGrid = addedModGridByFloor.get(f);
+      for (let dx = 0; dx < wu && !conflictMsg; dx++) {
+        for (let dy = 0; dy < du; dy++) {
+          const k = packCellKey(m.gx + dx, m.gy + dy);
+          if (localGrid?.has(k)) {
+            conflictMsg = '蓝图内部模块位置重叠';
+            break;
+          }
+          const hits = baseGrid?.get(k);
+          if (hits && hits.length > 0) {
+            const mDef = getModuleDef(hits[0].type);
+            conflictMsg = `与已有模块「${mDef?.nameZh ?? hits[0].type}」空间重叠`;
+            break;
+          }
         }
-        const copy = { ...b };
-        delete copy.undergroundPartnerId;
-        return copy;
-      }),
+      }
+    }
+    if (conflictMsg) {
+      if (!forceReplace) return { doc, changed: false, message: conflictMsg };
+      continue;
+    }
+    addedMods.push(m);
+    for (let df = 0; df < hu; df++) {
+      const f = m.floor + df;
+      let localGrid = addedModGridByFloor.get(f);
+      if (!localGrid) {
+        localGrid = new Set();
+        addedModGridByFloor.set(f, localGrid);
+      }
+      for (let dx = 0; dx < wu; dx++) {
+        for (let dy = 0; dy < du; dy++) {
+          localGrid.add(packCellKey(m.gx + dx, m.gy + dy));
+        }
+      }
+    }
+  }
+
+  // Document containing existing + newly placed modules so floor checks for buildings inside stamped modules succeed
+  const docWithMods: BlueprintDocument =
+    addedMods.length > 0 ? { ...doc, modules: [...doc.modules, ...addedMods] } : doc;
+  const modIdx = addedMods.length > 0 ? getDocSpatialIndex(docWithMods) : baseIdx;
+
+  // 2. Validate & batch all buildings in O(K) using per-floor mutable occupancy map (ZERO repeated array copies!)
+  const removeIds = new Set<string>();
+  const addedBlds: PlacedBuilding[] = [];
+  const addedBldByCell = new Map<number, Map<number, PlacedBuilding>>();
+
+  for (let i = 0; i < candBlds.length; i++) {
+    const b = candBlds[i];
+    const def = getBuildableDef(b.type);
+    if (!def) {
+      if (!forceReplace) return { doc, changed: false, message: `未知建筑类型：${b.type}` };
+      continue;
+    }
+    const [w, d] = getBuildingSizeCells(def, b.rotation);
+
+    // Check floor buildability
+    let floorOk = true;
+    for (let dx = 0; dx < w && floorOk; dx++) {
+      for (let dy = 0; dy < d; dy++) {
+        if (!isCellBuildable(docWithMods, b.x + dx, b.y + dy, b.floor)) {
+          floorOk = false;
+          break;
+        }
+      }
+    }
+    if (!floorOk) {
+      if (!forceReplace) {
+        return { doc, changed: false, message: '超出可建造工厂地板范围（墙体、镂空或无地板）' };
+      }
+      continue;
+    }
+
+    const baseFloorMap = modIdx.buildingCellByFloor.get(b.floor);
+    let localFloorMap = addedBldByCell.get(b.floor);
+    const isBelt = def.kind === 'belt';
+    let conflictMsg: string | null = null;
+    const toRemoveHere: string[] = [];
+
+    for (let dx = 0; dx < w && !conflictMsg; dx++) {
+      for (let dy = 0; dy < d; dy++) {
+        const k = packCellKey(b.x + dx, b.y + dy);
+        // Check against already-added buildings in this stamp
+        const localHit = localFloorMap?.get(k);
+        if (localHit && !removeIds.has(localHit.id)) {
+          const lDef = getBuildableDef(localHit.type);
+          if (forceReplace || (isBelt && lDef?.kind === 'belt')) {
+            toRemoveHere.push(localHit.id);
+          } else {
+            conflictMsg = `与已有「${lDef?.nameZh ?? localHit.type}」占地冲突`;
+            break;
+          }
+        }
+        // Check against existing buildings in doc
+        const baseHit = baseFloorMap?.get(k);
+        if (baseHit) {
+          if (Array.isArray(baseHit)) {
+            for (let j = 0; j < baseHit.length; j++) {
+              const eb = baseHit[j];
+              if (removeIds.has(eb.id)) continue;
+              const eDef = getBuildableDef(eb.type);
+              if (forceReplace || (isBelt && eDef?.kind === 'belt')) {
+                toRemoveHere.push(eb.id);
+              } else {
+                conflictMsg = `与已有「${eDef?.nameZh ?? eb.type}」占地冲突`;
+                break;
+              }
+            }
+          } else if (!removeIds.has(baseHit.id)) {
+            const eDef = getBuildableDef(baseHit.type);
+            if (forceReplace || (isBelt && eDef?.kind === 'belt')) {
+              toRemoveHere.push(baseHit.id);
+            } else {
+              conflictMsg = `与已有「${eDef?.nameZh ?? baseHit.type}」占地冲突`;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (conflictMsg) {
+      if (!forceReplace) return { doc, changed: false, message: conflictMsg };
+      continue;
+    }
+
+    for (let r = 0; r < toRemoveHere.length; r++) {
+      removeIds.add(toRemoveHere[r]);
+    }
+
+    const cleanDisabled = sanitizeDisabledPorts(def, b.disabledPorts);
+    const placed: PlacedBuilding = {
+      ...b,
+      rotation: normalizeRotation(b.rotation),
+      ...cloneBuildingExtras({ ...b, disabledPorts: cleanDisabled }),
     };
+    if (!cleanDisabled) delete placed.disabledPorts;
+
+    addedBlds.push(placed);
+    if (!localFloorMap) {
+      localFloorMap = new Map();
+      addedBldByCell.set(b.floor, localFloorMap);
+    }
+    for (let dx = 0; dx < w; dx++) {
+      for (let dy = 0; dy < d; dy++) {
+        localFloorMap.set(packCellKey(b.x + dx, b.y + dy), placed);
+      }
+    }
+  }
+
+  const finalAddedBlds = removeIds.size > 0 ? addedBlds.filter((b) => !removeIds.has(b.id)) : addedBlds;
+  if (addedMods.length === 0 && finalAddedBlds.length === 0) {
+    return { doc, changed: false };
+  }
+
+  // Filter out removed buildings & clear dangling undergroundPartnerId references in one pass
+  const placedIdSet = new Set(finalAddedBlds.map((b) => b.id));
+  const nextBuildings: PlacedBuilding[] = [];
+  for (let i = 0; i < doc.buildings.length; i++) {
+    const b = doc.buildings[i];
+    if (removeIds.has(b.id)) continue;
+    if (b.undergroundPartnerId && removeIds.has(b.undergroundPartnerId)) {
+      const copy = { ...b };
+      delete copy.undergroundPartnerId;
+      nextBuildings.push(copy);
+    } else {
+      nextBuildings.push(b);
+    }
+  }
+  for (let i = 0; i < finalAddedBlds.length; i++) {
+    const b = finalAddedBlds[i];
+    if (b.undergroundPartnerId && !placedIdSet.has(b.undergroundPartnerId)) {
+      const copy = { ...b };
+      delete copy.undergroundPartnerId;
+      nextBuildings.push(copy);
+    } else {
+      nextBuildings.push(b);
+    }
   }
 
   return {
-    doc: cur,
-    changed: addedModIds.length > 0 || addedBldIds.length > 0,
-    addedModuleIds: addedModIds,
-    addedBuildingIds: addedBldIds,
+    doc: {
+      ...doc,
+      modules: addedMods.length > 0 ? [...doc.modules, ...addedMods] : doc.modules,
+      buildings: nextBuildings,
+    },
+    changed: true,
+    addedModuleIds: addedMods.map((m) => m.id),
+    addedBuildingIds: finalAddedBlds.map((b) => b.id),
   };
 }
 

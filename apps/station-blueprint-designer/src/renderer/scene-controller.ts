@@ -8,10 +8,13 @@ import {
   FLOOR_VISUAL_SPACING,
   getBuildingCenterM,
   getBuildingSizeCells,
+  getDocSpatialIndex,
   getModuleBoundsM,
   getModuleCenterM,
   getModuleSizeUnits,
   getModuleWorldConnectors,
+  isCellBuildable,
+  packCellKey,
   rotateVec2,
   STATION_UNIT_M,
   validateBuildingPlacement,
@@ -22,6 +25,7 @@ import { getShortLabel } from '../core/groups';
 import type {
   ActiveTool,
   BlueprintDocument,
+  PlacedBuilding,
   PlacedModule,
   Rotation,
   SelectionLayerMode,
@@ -33,10 +37,10 @@ import type {
 import { CadCameraRig } from './camera-rig';
 import { createCrispLineSegments, setLineViewportResolution, type CrispLineOptions } from './crisp-lines';
 import {
-  buildBeltLineArt,
   buildIndustrialDockGantryArt,
   buildMachineLineArt,
   buildStationModuleArt,
+  emitBeltDirectToBuffers,
 } from './line-art';
 import { createRoundedGridOverlay } from './rounded-grid-shader';
 import { CAD_THEMES, type CadThemeId, type CadThemePalette } from './theme';
@@ -223,7 +227,7 @@ interface LineBucketAccum {
   subMode: BatchSubMode;
   color: number;
   widthPx: number;
-  lodTier: 'primary' | 'detail';
+  lodTier: 'primary' | 'detail' | 'micro';
   dashed: boolean;
   dashSize: number;
   gapSize: number;
@@ -246,7 +250,8 @@ interface ManagedMaterialEntry {
   alphaScale: number;
   alwaysTransparent: boolean;
   isLine: boolean;
-  lodTier?: 'primary' | 'detail';
+  lodTier?: 'primary' | 'detail' | 'micro';
+  obj?: THREE.Object3D;
 }
 
 interface LabelEntry {
@@ -302,7 +307,7 @@ class FloorRenderBucket {
     opts: {
       color: number;
       widthPx?: number;
-      lodTier?: 'primary' | 'detail';
+      lodTier?: 'primary' | 'detail' | 'micro';
       dashed?: boolean;
       dashSize?: number;
       gapSize?: number;
@@ -332,6 +337,37 @@ class FloorRenderBucket {
         positions: [],
       };
       this.lineAccums.set(key, acc);
+    }
+    const out = acc.positions;
+    for (let i = 0; i < pts.length; i++) {
+      out.push(pts[i]);
+    }
+  }
+
+  addRawTriangles(
+    pts: number[],
+    layer: BatchLayer,
+    subMode: BatchSubMode,
+    color: number,
+    alphaScale = 0.92,
+    alwaysTransparent = false,
+    doubleSide = false
+  ): void {
+    if (pts.length < 9) return;
+    const aScale = Math.round(alphaScale * 100) / 100;
+    const key = `${layer}|${subMode}|${color}|${aScale}|${alwaysTransparent ? 1 : 0}|${doubleSide ? 1 : 0}`;
+    let acc = this.meshAccums.get(key);
+    if (!acc) {
+      acc = {
+        layer,
+        subMode,
+        color,
+        alphaScale: aScale,
+        alwaysTransparent,
+        doubleSide,
+        positions: [],
+      };
+      this.meshAccums.set(key, acc);
     }
     const out = acc.positions;
     for (let i = 0; i < pts.length; i++) {
@@ -541,12 +577,13 @@ class FloorRenderBucket {
         alwaysTransparent: true,
         isLine: true,
         lodTier: acc.lodTier,
+        obj: segs,
       });
     }
     this.lineAccums.clear();
   }
 
-  applyVisibility(opacity: number, viewMode: ViewMode, detailLod: number): void {
+  applyVisibility(opacity: number, viewMode: ViewMode, detailLod: number, microLod = detailLod): void {
     this.curFloorOpacity = opacity;
     if (opacity <= 0.01) {
       this.root.visible = false;
@@ -561,8 +598,10 @@ class FloorRenderBucket {
     for (const entry of this.materials) {
       if (entry.isLine) {
         const lineMat = entry.mat as LineMaterial;
-        const lodMult = entry.lodTier === 'detail' ? detailLod : 1.0;
-        lineMat.opacity = opacity * entry.alphaScale * lodMult;
+        const lodMult = entry.lodTier === 'micro' ? microLod : entry.lodTier === 'detail' ? detailLod : 1.0;
+        const nextOp = opacity * entry.alphaScale * lodMult;
+        lineMat.opacity = nextOp;
+        if (entry.obj) entry.obj.visible = nextOp > 0.008;
       } else {
         const meshMat = entry.mat as THREE.MeshBasicMaterial;
         const shouldBeTrans = entry.alwaysTransparent || opacity < 0.99;
@@ -580,11 +619,14 @@ class FloorRenderBucket {
     }
   }
 
-  applyDetailLodOnly(detailLod: number): void {
+  applyDetailLodOnly(detailLod: number, microLod = detailLod): void {
     if (!this.root.visible) return;
     for (const entry of this.materials) {
-      if (entry.isLine && entry.lodTier === 'detail') {
-        (entry.mat as LineMaterial).opacity = this.curFloorOpacity * entry.alphaScale * detailLod;
+      if (entry.isLine && (entry.lodTier === 'detail' || entry.lodTier === 'micro')) {
+        const lodMult = entry.lodTier === 'micro' ? microLod : detailLod;
+        const nextOp = this.curFloorOpacity * entry.alphaScale * lodMult;
+        (entry.mat as LineMaterial).opacity = nextOp;
+        if (entry.obj) entry.obj.visible = nextOp > 0.008;
       }
     }
   }
@@ -638,11 +680,16 @@ export class CadSceneController {
 
   private keysDown = new Set<string>();
   private lastState: SceneRenderState | null = null;
+  private liveCursorWorld: { x: number; y: number } | null = null;
+  private lastPreviewKey = '';
+  private lastDockHintKey = '';
   private activePalette: CadThemePalette = CAD_THEMES['platinum-gold'];
   private maxAniso = 16;
 
   private ghostExtrudeTargets: THREE.Group[] = [];
   private lastDetailLod = 1.0;
+  private lastExtrusionScale = -1;
+  private lastMicroLod = 1.0;
 
   constructor(
     container: HTMLElement,
@@ -756,58 +803,128 @@ export class CadSceneController {
     this.floorBuckets.clear();
   }
 
-  syncState(state: SceneRenderState): void {
-    const prev = this.lastState;
-    this.lastState = state;
+  private computePreviewKey(state: SceneRenderState, cursor: { x: number; y: number } | null): string {
+    if (state.beltPreview.length > 0 && state.activeTool.kind === 'place-building') {
+      const first = state.beltPreview[0];
+      const last = state.beltPreview[state.beltPreview.length - 1];
+      return `belt:${state.activeTool.buildingType}:${state.focusFloor}:${state.beltPreview.length}:${first.x},${first.y},${first.rotation}:${last.x},${last.y},${last.rotation}`;
+    }
+    const tool = state.activeTool;
+    if (!cursor || tool.kind === 'select' || tool.kind === 'demolish') return 'none';
+    if (tool.kind === 'place-module') {
+      const gx = Math.floor(cursor.x / STATION_UNIT_M);
+      const gy = Math.floor(cursor.y / STATION_UNIT_M);
+      return `mod:${tool.moduleType}:${tool.rotation}:${state.focusFloor}:${gx},${gy}`;
+    }
+    if (tool.kind === 'place-building') {
+      const def = getBuildableDef(tool.buildingType);
+      if (!def) return 'none';
+      const [w, d] = getBuildingSizeCells(def, tool.rotation);
+      const bx = Math.floor(cursor.x - w / 2 + 0.5);
+      const by = Math.floor(cursor.y - d / 2 + 0.5);
+      return `bld:${tool.buildingType}:${tool.rotation}:${tool.undergroundMode ?? ''}:${state.focusFloor}:${state.forceReplaceHeld ? 1 : 0}:${bx},${by}`;
+    }
+    // stamp-blueprint
+    const hasMods = tool.blueprint.modules.length > 0;
+    const ax = hasMods ? Math.floor(cursor.x / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.x);
+    const ay = hasMods ? Math.floor(cursor.y / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.y);
+    return `stamp:${tool.blueprint.id}:${tool.rotation}:${tool.floorOffset}:${state.focusFloor}:${state.forceReplaceHeld ? 1 : 0}:${ax},${ay}`;
+  }
+
+  private computeDockHintKey(state: SceneRenderState, cursor: { x: number; y: number } | null): string {
+    const tool = state.activeTool;
+    const isPlacingMod = tool.kind === 'place-module';
+    const isStampingMods = tool.kind === 'stamp-blueprint' && tool.blueprint.modules.length > 0;
+    if (!isPlacingMod && !isStampingMods) return 'none';
+    const gx = cursor ? Math.floor(cursor.x / STATION_UNIT_M) : -99999;
+    const gy = cursor ? Math.floor(cursor.y / STATION_UNIT_M) : -99999;
+    if (tool.kind === 'place-module') {
+      return `mod:${tool.moduleType}:${tool.rotation}:${state.focusFloor}:${gx},${gy}`;
+    }
+    return `stamp:${tool.blueprint.id}:${tool.rotation}:${state.focusFloor}:${gx},${gy}`;
+  }
+
+  /**
+   * Direct high-frequency cursor update called from pointermove WITHOUT triggering React re-renders!
+   * Updates GPU rounded-grid uniform continuously and only rebuilds ghost/dock hints when snapped grid cell changes.
+   */
+  setCursorWorld(world: { x: number; y: number } | null): void {
+    this.liveCursorWorld = world;
+    const state = this.lastState;
+    if (!state) return;
+    const effState: SceneRenderState = { ...state, cursorWorld: world };
+    this.updateRoundedGrid(effState);
 
     const palette = CAD_THEMES[state.theme];
-    const themeChanged = !prev || prev.theme !== state.theme;
+    const nextDockKey = this.computeDockHintKey(effState, world);
+    if (nextDockKey !== this.lastDockHintKey) {
+      this.lastDockHintKey = nextDockKey;
+      this.rebuildDockHints(effState, palette);
+    }
+
+    const nextPrevKey = this.computePreviewKey(effState, world);
+    if (nextPrevKey !== this.lastPreviewKey) {
+      this.lastPreviewKey = nextPrevKey;
+      this.rebuildPreview(effState, palette);
+    }
+  }
+
+  syncState(state: SceneRenderState): void {
+    const prev = this.lastState;
+    const effCursor = state.cursorWorld ?? this.liveCursorWorld;
+    const effState: SceneRenderState = effCursor !== state.cursorWorld ? { ...state, cursorWorld: effCursor } : state;
+    this.lastState = effState;
+
+    const palette = CAD_THEMES[effState.theme];
+    const themeChanged = !prev || prev.theme !== effState.theme;
     if (themeChanged) {
       this.applyThemeToScene(palette);
     }
 
-    this.rig.setFocusFloor(state.focusFloor);
-    this.referenceGroup.position.y = state.focusFloor * FLOOR_VISUAL_SPACING - 0.06;
+    this.rig.setFocusFloor(effState.focusFloor);
+    this.referenceGroup.position.y = effState.focusFloor * FLOOR_VISUAL_SPACING - 0.06;
 
-    // ONLY rebuild heavy world geometry when document or theme changes!
-    // Q/E (focusFloor), V (hideAbove), viewMode, selection NEVER rebuild world geometry!
-    const docOrThemeChanged = themeChanged || !prev || prev.doc !== state.doc;
+    // Incremental per-floor world batch rebuild: ONLY dirty floors rebuild when doc edits occur!
+    const docOrThemeChanged = themeChanged || !prev || prev.doc !== effState.doc;
     if (docOrThemeChanged) {
-      this.rebuildWorldBatches(state.doc, palette);
+      this.rebuildWorldBatches(effState.doc, palette, themeChanged ? null : prev?.doc ?? null);
     }
 
     const visibilityChanged =
       docOrThemeChanged ||
-      prev.focusFloor !== state.focusFloor ||
-      prev.hideAbove !== state.hideAbove ||
-      prev.viewMode !== state.viewMode;
+      prev.focusFloor !== effState.focusFloor ||
+      prev.hideAbove !== effState.hideAbove ||
+      prev.viewMode !== effState.viewMode;
 
     if (visibilityChanged) {
-      this.applyFloorVisibilities(state);
+      this.applyFloorVisibilities(effState);
     }
 
     const selectionChanged =
       visibilityChanged ||
-      prev.selection !== state.selection ||
-      prev.simulationIssues !== state.simulationIssues;
+      prev.selection !== effState.selection ||
+      prev.simulationIssues !== effState.simulationIssues;
     if (selectionChanged) {
-      this.rebuildSelectionOverlay(state, palette);
+      this.rebuildSelectionOverlay(effState, palette);
     }
 
-    const dockHintsChanged =
-      docOrThemeChanged ||
-      prev.focusFloor !== state.focusFloor ||
-      prev.hideAbove !== state.hideAbove ||
-      prev.viewMode !== state.viewMode ||
-      prev.activeTool !== state.activeTool ||
-      prev.cursorWorld !== state.cursorWorld;
-    if (dockHintsChanged) {
-      this.rebuildDockHints(state, palette);
+    const nextDockKey = this.computeDockHintKey(effState, effCursor);
+    if (docOrThemeChanged || nextDockKey !== this.lastDockHintKey) {
+      this.lastDockHintKey = nextDockKey;
+      this.rebuildDockHints(effState, palette);
     }
 
-    this.updateRoundedGrid(state);
-    this.rebuildPreview(state, palette);
-    this.rebuildBoxSelect(state, palette);
+    this.updateRoundedGrid(effState);
+
+    const nextPrevKey = this.computePreviewKey(effState, effCursor);
+    if (docOrThemeChanged || prev?.beltPreview !== effState.beltPreview || nextPrevKey !== this.lastPreviewKey) {
+      this.lastPreviewKey = nextPrevKey;
+      this.rebuildPreview(effState, palette);
+    }
+
+    if (!prev || prev.boxSelectRect !== effState.boxSelectRect || prev.selectionLayerMode !== effState.selectionLayerMode || prev.focusFloor !== effState.focusFloor) {
+      this.rebuildBoxSelect(effState, palette);
+    }
   }
 
   private clearGroup(group: THREE.Group): void {
@@ -836,77 +953,209 @@ export class CadSceneController {
 
   private applyFloorVisibilities(state: SceneRenderState): void {
     const lod = this.computeDistanceLod();
+    const microLod = this.computeMicroLod();
     this.lastDetailLod = lod;
+    this.lastMicroLod = microLod;
     const yScale = this.getCurrentExtrusionScale();
     for (const bucket of this.floorBuckets.values()) {
       const op = this.layerOpacityFor(bucket.floor, state.focusFloor, state.hideAbove);
-      bucket.applyVisibility(op, state.viewMode, lod);
+      bucket.applyVisibility(op, state.viewMode, lod, microLod);
       bucket.applyExtrusion(yScale);
     }
   }
 
-  /**
-   * Builds ALL station modules, interior buildings, underground links, and connectors into
-   * compact per-floor batched GPU buffers (called ONLY when `doc` or `theme` changes!).
-   */
-  private rebuildWorldBatches(doc: BlueprintDocument, palette: CadThemePalette): void {
-    this.clearFloorBuckets();
+  private computeDirtyFloors(prevDoc: BlueprintDocument, nextDoc: BlueprintDocument): Set<number> {
+    const dirty = new Set<number>();
 
-    // 1. Pre-compute all connectors & mate counts across the station
+    // Compare modules by reference/id
+    const prevModMap = new Map<string, PlacedModule>();
+    for (let i = 0; i < prevDoc.modules.length; i++) {
+      prevModMap.set(prevDoc.modules[i].id, prevDoc.modules[i]);
+    }
+    const markModFloors = (m: PlacedModule) => {
+      const def = getModuleDef(m.type);
+      const span = def?.sizeUnits[2] ?? 1;
+      for (let df = 0; df < span; df++) dirty.add(m.floor + df);
+      if (def) {
+        for (const c of def.connectors) dirty.add(m.floor + c.floorOffset);
+      }
+    };
+    const seenMods = new Set<string>();
+    for (let i = 0; i < nextDoc.modules.length; i++) {
+      const m = nextDoc.modules[i];
+      seenMods.add(m.id);
+      const pm = prevModMap.get(m.id);
+      if (pm !== m) {
+        markModFloors(m);
+        if (pm) markModFloors(pm);
+      }
+    }
+    for (let i = 0; i < prevDoc.modules.length; i++) {
+      const pm = prevDoc.modules[i];
+      if (!seenMods.has(pm.id)) markModFloors(pm);
+    }
+
+    // Compare buildings by reference/id
+    const prevBldMap = new Map<string, PlacedBuilding>();
+    for (let i = 0; i < prevDoc.buildings.length; i++) {
+      prevBldMap.set(prevDoc.buildings[i].id, prevDoc.buildings[i]);
+    }
+    const seenBlds = new Set<string>();
+    for (let i = 0; i < nextDoc.buildings.length; i++) {
+      const b = nextDoc.buildings[i];
+      seenBlds.add(b.id);
+      const pb = prevBldMap.get(b.id);
+      if (pb !== b) {
+        dirty.add(b.floor);
+        if (pb) dirty.add(pb.floor);
+      }
+    }
+    for (let i = 0; i < prevDoc.buildings.length; i++) {
+      const pb = prevDoc.buildings[i];
+      if (!seenBlds.has(pb.id)) dirty.add(pb.floor);
+    }
+
+    return dirty;
+  }
+
+  /**
+   * Builds station modules, interior buildings, underground links, and connectors into
+   * compact per-floor batched GPU buffers.
+   * Incremental: when `prevDoc` is provided, ONLY floors with actual edits are rebuilt;
+   * untouched floors keep their GPU buffers at 0 ms!
+   */
+  private rebuildWorldBatches(
+    doc: BlueprintDocument,
+    palette: CadThemePalette,
+    prevDoc: BlueprintDocument | null = null
+  ): void {
+    const fullRebuild = !prevDoc || this.floorBuckets.size === 0;
+    const dirtyFloors = fullRebuild ? null : this.computeDirtyFloors(prevDoc, doc);
+
+    // 1. Pre-compute all connectors & mate counts across the station (fast: typically <100 modules)
     const allConns: WorldConnector[] = [];
     const connCounts = new Map<string, number>();
+    const activeFloors = new Set<number>();
     for (const mod of doc.modules) {
       const def = getModuleDef(mod.type);
       if (!def) continue;
+      for (let df = 0; df < def.sizeUnits[2]; df++) activeFloors.add(mod.floor + df);
       for (const c of getModuleWorldConnectors(mod, def)) {
         allConns.push(c);
+        activeFloors.add(c.floor);
         if (!c.type.startsWith('Vertical')) {
           const key = connectorKey(c.x, c.y, c.floor);
           connCounts.set(key, (connCounts.get(key) ?? 0) + 1);
         }
       }
     }
+    const idx = getDocSpatialIndex(doc);
+    for (const f of idx.buildingsByFloor.keys()) activeFloors.add(f);
+
     this.cachedAllConnectors = allConns;
     this.cachedConnCounts = connCounts;
+
+    if (fullRebuild) {
+      this.clearFloorBuckets();
+    } else if (dirtyFloors) {
+      // Remove buckets for floors that no longer have any entities OR are dirty and need rebuild
+      for (const f of Array.from(this.floorBuckets.keys())) {
+        if (!activeFloors.has(f) || dirtyFloors.has(f)) {
+          const b = this.floorBuckets.get(f)!;
+          this.worldGroup.remove(b.root);
+          b.dispose();
+          this.floorBuckets.delete(f);
+        }
+      }
+    }
+
+    const floorsToBuild = fullRebuild ? activeFloors : dirtyFloors!;
+    if (floorsToBuild.size === 0) return;
+
     const drawnMated = new Set<string>();
 
-    // 2. Batch all station modules
+    // 2. Batch station modules intersecting dirty floors
     for (const mod of doc.modules) {
       const def = getModuleDef(mod.type);
       if (!def) continue;
-      this.ingestStationModule(mod, def, palette, connCounts, drawnMated);
+      let touchesDirty = false;
+      for (let df = 0; df < def.sizeUnits[2]; df++) {
+        if (floorsToBuild.has(mod.floor + df)) {
+          touchesDirty = true;
+          break;
+        }
+      }
+      if (!touchesDirty) {
+        for (const c of def.connectors) {
+          if (floorsToBuild.has(mod.floor + c.floorOffset)) {
+            touchesDirty = true;
+            break;
+          }
+        }
+      }
+      if (!touchesDirty) continue;
+      this.ingestStationModule(mod, def, palette, connCounts, drawnMated, floorsToBuild);
     }
 
-    // 3. Batch all interior buildings & belts
-    for (const b of doc.buildings) {
-      const def = getBuildableDef(b.type);
-      if (!def) continue;
-      const bucket = this.getOrCreateFloorBucket(b.floor);
-      const baseY = b.floor * FLOOR_VISUAL_SPACING;
+    // 3. Batch interior buildings & belts per dirty floor (zero-allocation direct belt emitter!)
+    for (const floor of floorsToBuild) {
+      const floorBlds = idx.buildingsByFloor.get(floor);
+      if (!floorBlds || floorBlds.length === 0) continue;
+      const bucket = this.getOrCreateFloorBucket(floor);
+      const baseY = floor * FLOOR_VISUAL_SPACING;
 
-      if (def.kind === 'belt') {
-        const beltGroup = buildBeltLineArt(doc, b, def, baseY, 1.0, false, palette);
-        bucket.ingestObject(beltGroup, null, 'always');
-        continue;
+      const beltBedTris: number[] = [];
+      const beltRailsMk1: number[] = [];
+      const beltRailsMk2: number[] = [];
+      const beltRailsMk3: number[] = [];
+      const beltChevs: number[] = [];
+
+      for (let i = 0; i < floorBlds.length; i++) {
+        const b = floorBlds[i];
+        const def = getBuildableDef(b.type);
+        if (!def) continue;
+
+        if (def.kind === 'belt') {
+          const railTarget = def.tier === 3 ? beltRailsMk3 : def.tier === 2 ? beltRailsMk2 : beltRailsMk1;
+          emitBeltDirectToBuffers(doc, b, def, beltBedTris, railTarget, beltChevs);
+          continue;
+        }
+
+        const { root, extrudeGroup, roofHeight } = buildMachineLineArt(b, def, baseY, 1.0, false, palette);
+        bucket.ingestObject(root, extrudeGroup, 'always');
+
+        const recipe = b.recipeId ? getRecipeDef(b.recipeId) : null;
+        const firstFilter = b.filterItems && b.filterItems.length > 0 ? getItemNameZh(b.filterItems[0]) : null;
+        const caption = b.label || recipe?.nameZh || firstFilter || null;
+        const [w, d] = getBuildingSizeCells(def, b.rotation);
+        if (caption && (Math.min(w, d) >= 2 || def.kind === 'sign')) {
+          const [cx, cz] = getBuildingCenterM(b, def);
+          const tex = getLabelTexture(caption, null, palette, this.maxAniso);
+          const labelW = def.kind === 'sign' ? 1.4 : Math.min(w - 0.35, 3.8);
+          bucket.addLabel('building', tex, labelW, cx, cz, 0.09, roofHeight, 0.94);
+        }
       }
 
-      const { root, extrudeGroup, roofHeight } = buildMachineLineArt(b, def, baseY, 1.0, false, palette);
-      bucket.ingestObject(root, extrudeGroup, 'always');
-
-      const recipe = b.recipeId ? getRecipeDef(b.recipeId) : null;
-      const firstFilter = b.filterItems && b.filterItems.length > 0 ? getItemNameZh(b.filterItems[0]) : null;
-      const caption = b.label || recipe?.nameZh || firstFilter || null;
-      const [w, d] = getBuildingSizeCells(def, b.rotation);
-      if (caption && (Math.min(w, d) >= 2 || def.kind === 'sign')) {
-        const [cx, cz] = getBuildingCenterM(b, def);
-        const tex = getLabelTexture(caption, null, palette, this.maxAniso);
-        const labelW = def.kind === 'sign' ? 1.4 : Math.min(w - 0.35, 3.8);
-        bucket.addLabel('building', tex, labelW, cx, cz, 0.09, roofHeight, 0.94);
+      if (beltBedTris.length >= 9) {
+        bucket.addRawTriangles(beltBedTris, 'flat', 'always', palette.beltTrackFill, 0.92, true, false);
+      }
+      if (beltRailsMk1.length >= 6) {
+        bucket.addLineSegments(beltRailsMk1, 'flat', 'always', { color: palette.beltRailMk1, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
+      }
+      if (beltRailsMk2.length >= 6) {
+        bucket.addLineSegments(beltRailsMk2, 'flat', 'always', { color: palette.beltRailMk2, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
+      }
+      if (beltRailsMk3.length >= 6) {
+        bucket.addLineSegments(beltRailsMk3, 'flat', 'always', { color: palette.beltRailMk3, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
+      }
+      if (beltChevs.length >= 6) {
+        bucket.addLineSegments(beltChevs, 'flat', 'always', { color: palette.beltArrow, alphaScale: 1.0, widthPx: 0.9, lodTier: 'micro' });
       }
     }
 
-    // 4. Batch underground belt dashed links
+    // 4. Batch underground belt dashed links on dirty floors
     for (const link of computeUndergroundLinks(doc)) {
+      if (!floorsToBuild.has(link.floor)) continue;
       const bucket = this.getOrCreateFloorBucket(link.floor);
       bucket.addLineSegments([link.x1, 0.05, link.y1, link.x2, 0.05, link.y2], 'flat', 'always', {
         color: palette.undergroundLink,
@@ -918,9 +1167,10 @@ export class CadSceneController {
       });
     }
 
-    // 5. Finalize merged GPU buffers per floor
-    for (const bucket of this.floorBuckets.values()) {
-      bucket.finalize();
+    // 5. Finalize ONLY newly built dirty floor buckets
+    for (const floor of floorsToBuild) {
+      const bucket = this.floorBuckets.get(floor);
+      if (bucket) bucket.finalize();
     }
   }
 
@@ -929,9 +1179,11 @@ export class CadSceneController {
     def: StationModuleDef,
     palette: CadThemePalette,
     connCounts: Map<string, number>,
-    drawnMated: Set<string>
+    drawnMated: Set<string>,
+    allowedFloors?: Set<number>
   ): void {
-    const bucket = this.getOrCreateFloorBucket(mod.floor);
+    const baseAllowed = !allowedFloors || allowedFloors.has(mod.floor);
+    const bucket = baseAllowed ? this.getOrCreateFloorBucket(mod.floor) : null;
     const [cx, cy] = getModuleCenterM(mod, def);
     const [wu, du, hu] = getModuleSizeUnits(def, mod.rotation);
     const wM = wu * STATION_UNIT_M;
@@ -942,103 +1194,106 @@ export class CadSceneController {
     let labelRoofHeight = 0.02;
 
     if (!def.hasFactoryFloor) {
-      const art = buildStationModuleArt(mod, def, baseY, 1.0, false, palette);
-      labelRoofHeight = art.roofHeight;
-      bucket.ingestObject(art.root, art.extrudeGroup, 'always');
-    } else {
-      const tempGroup = new THREE.Group();
-      const slabMat = new THREE.MeshBasicMaterial({
-        color: palette.slabFill,
-        opacity: 0.98,
-        side: THREE.DoubleSide,
-      });
-
-      if (def.id === 'BPO_StationCorridor_01' || def.id === 'BPO_StationCorner_01') {
-        const f0 = def.floors[0];
-        const padSurf: StationFloorSurfaceDef =
-          def.id === 'BPO_StationCorridor_01'
-            ? { ...f0, minX: -8, maxX: 8, minY: -3.7, maxY: 3.7 }
-            : { ...f0, minX: -7.9, maxX: 7.9, minY: -7.9, maxY: 7.9 };
-        const slabShapeGeo = createFloorShapeGeometry(padSurf, 3.2);
-        const slabMesh = new THREE.Mesh(slabShapeGeo, slabMat);
-        slabMesh.position.set(cx, baseY - 0.02, cy);
-        slabMesh.rotation.y = rotY;
-        tempGroup.add(slabMesh);
-
-        const rimPts = edgesToPositions(new THREE.EdgesGeometry(slabShapeGeo));
-        const rimLine = createCrispLineSegments(rimPts, {
-          color: palette.slabEdge,
-          opacity: 1.0,
-          widthPx: 1.12,
-        });
-        rimLine.position.set(cx, baseY - 0.012, cy);
-        rimLine.rotation.y = rotY;
-        tempGroup.add(rimLine);
-
-        // Panoramic corner glass window double-mullion accent along the 45° NE bevel
-        if (def.id === 'BPO_StationCorner_01') {
-          const glassPts = [
-            -4.7, 0, -7.9, 7.9, 0, 4.7,
-            -4.2, 0, -7.4, 7.4, 0, 4.2,
-          ];
-          const glassLine = createCrispLineSegments(glassPts, {
-            color: palette.researchTint,
-            opacity: 0.85,
-            widthPx: 1.2,
-            lodTier: 'primary',
-          });
-          glassLine.position.set(cx, baseY + 0.03, cy);
-          glassLine.rotation.y = rotY;
-          tempGroup.add(glassLine);
-        }
-      } else if (def.id === 'BPO_Dock_2') {
-        // Industrial Dock 3x2: west 1x2 indoor factory bay slab (X in [-23.9, -8.0]) + east 2x2 sculpted gantry berth!
-        const bayHolder = new THREE.Group();
-        bayHolder.position.set(cx, baseY, cy);
-        bayHolder.rotation.y = rotY;
-
-        const bayGeo = new THREE.BoxGeometry(15.9, 0.28, 31.8);
-        const bayMesh = new THREE.Mesh(bayGeo, slabMat);
-        bayMesh.position.set(-15.95, -0.16, 0);
-        bayHolder.add(bayMesh);
-
-        const bayRimPts = [
-          -23.9, -0.015, -15.9, -8.0, -0.015, -15.9,
-          -8.0, -0.015, -15.9, -8.0, -0.015, 15.9,
-          -8.0, -0.015, 15.9, -23.9, -0.015, 15.9,
-          -23.9, -0.015, 15.9, -23.9, -0.015, -15.9,
-        ];
-        bayHolder.add(createCrispLineSegments(bayRimPts, { color: palette.slabEdge, opacity: 1.0, widthPx: 1.15 }));
-        tempGroup.add(bayHolder);
-
-        // Sculpted 3D/2D east open freighter gantry arms & berth guide
-        const gantryArt = buildIndustrialDockGantryArt(mod, def, baseY, 1.0, false, palette);
-        bucket.ingestObject(gantryArt.root, gantryArt.extrudeGroup, 'always');
-      } else {
-        const slabThickness = 0.28;
-        const slabW = wM - 0.1;
-        const slabD = dM - 0.1;
-        const slabGeo = new THREE.BoxGeometry(slabW, slabThickness, slabD);
-        const slab = new THREE.Mesh(slabGeo, slabMat);
-        slab.position.set(cx, baseY - slabThickness / 2 - 0.02, cy);
-        tempGroup.add(slab);
-
-        const shw = slabW / 2;
-        const shd = slabD / 2;
-        const topRimY = baseY - 0.015;
-        const slabTopPts = [
-          cx - shw, topRimY, cy - shd, cx + shw, topRimY, cy - shd,
-          cx + shw, topRimY, cy - shd, cx + shw, topRimY, cy + shd,
-          cx + shw, topRimY, cy + shd, cx - shw, topRimY, cy + shd,
-          cx - shw, topRimY, cy + shd, cx - shw, topRimY, cy - shd,
-        ];
-        tempGroup.add(createCrispLineSegments(slabTopPts, { color: palette.slabEdge, opacity: 1.0, widthPx: 1.12 }));
+      if (bucket) {
+        const art = buildStationModuleArt(mod, def, baseY, 1.0, false, palette);
+        labelRoofHeight = art.roofHeight;
+        bucket.ingestObject(art.root, art.extrudeGroup, 'always');
       }
-      bucket.ingestObject(tempGroup, null, 'always');
+    } else {
+      if (bucket) {
+        const tempGroup = new THREE.Group();
+        const slabMat = new THREE.MeshBasicMaterial({
+          color: palette.slabFill,
+          opacity: 0.98,
+          side: THREE.DoubleSide,
+        });
 
-      // Floor surface(s) placed into their respective floor bucket!
+        if (def.id === 'BPO_StationCorridor_01' || def.id === 'BPO_StationCorner_01') {
+          const f0 = def.floors[0];
+          const padSurf: StationFloorSurfaceDef =
+            def.id === 'BPO_StationCorridor_01'
+              ? { ...f0, minX: -8, maxX: 8, minY: -3.7, maxY: 3.7 }
+              : { ...f0, minX: -7.9, maxX: 7.9, minY: -7.9, maxY: 7.9 };
+          const slabShapeGeo = createFloorShapeGeometry(padSurf, 3.2);
+          const slabMesh = new THREE.Mesh(slabShapeGeo, slabMat);
+          slabMesh.position.set(cx, baseY - 0.02, cy);
+          slabMesh.rotation.y = rotY;
+          tempGroup.add(slabMesh);
+
+          const rimPts = edgesToPositions(new THREE.EdgesGeometry(slabShapeGeo));
+          const rimLine = createCrispLineSegments(rimPts, {
+            color: palette.slabEdge,
+            opacity: 1.0,
+            widthPx: 1.12,
+          });
+          rimLine.position.set(cx, baseY - 0.012, cy);
+          rimLine.rotation.y = rotY;
+          tempGroup.add(rimLine);
+
+          // Panoramic corner glass window double-mullion accent along the 45° NE bevel
+          if (def.id === 'BPO_StationCorner_01') {
+            const glassPts = [
+              -4.7, 0, -7.9, 7.9, 0, 4.7,
+              -4.2, 0, -7.4, 7.4, 0, 4.2,
+            ];
+            const glassLine = createCrispLineSegments(glassPts, {
+              color: palette.researchTint,
+              opacity: 0.85,
+              widthPx: 1.2,
+              lodTier: 'primary',
+            });
+            glassLine.position.set(cx, baseY + 0.03, cy);
+            glassLine.rotation.y = rotY;
+            tempGroup.add(glassLine);
+          }
+        } else if (def.id === 'BPO_Dock_2') {
+          const bayHolder = new THREE.Group();
+          bayHolder.position.set(cx, baseY, cy);
+          bayHolder.rotation.y = rotY;
+
+          const bayGeo = new THREE.BoxGeometry(15.9, 0.28, 31.8);
+          const bayMesh = new THREE.Mesh(bayGeo, slabMat);
+          bayMesh.position.set(-15.95, -0.16, 0);
+          bayHolder.add(bayMesh);
+
+          const bayRimPts = [
+            -23.9, -0.015, -15.9, -8.0, -0.015, -15.9,
+            -8.0, -0.015, -15.9, -8.0, -0.015, 15.9,
+            -8.0, -0.015, 15.9, -23.9, -0.015, 15.9,
+            -23.9, -0.015, 15.9, -23.9, -0.015, -15.9,
+          ];
+          bayHolder.add(createCrispLineSegments(bayRimPts, { color: palette.slabEdge, opacity: 1.0, widthPx: 1.15 }));
+          tempGroup.add(bayHolder);
+
+          const gantryArt = buildIndustrialDockGantryArt(mod, def, baseY, 1.0, false, palette);
+          bucket.ingestObject(gantryArt.root, gantryArt.extrudeGroup, 'always');
+        } else {
+          const slabThickness = 0.28;
+          const slabW = wM - 0.1;
+          const slabD = dM - 0.1;
+          const slabGeo = new THREE.BoxGeometry(slabW, slabThickness, slabD);
+          const slab = new THREE.Mesh(slabGeo, slabMat);
+          slab.position.set(cx, baseY - slabThickness / 2 - 0.02, cy);
+          tempGroup.add(slab);
+
+          const shw = slabW / 2;
+          const shd = slabD / 2;
+          const topRimY = baseY - 0.015;
+          const slabTopPts = [
+            cx - shw, topRimY, cy - shd, cx + shw, topRimY, cy - shd,
+            cx + shw, topRimY, cy - shd, cx + shw, topRimY, cy + shd,
+            cx + shw, topRimY, cy + shd, cx - shw, topRimY, cy + shd,
+            cx - shw, topRimY, cy + shd, cx - shw, topRimY, cy - shd,
+          ];
+          tempGroup.add(createCrispLineSegments(slabTopPts, { color: palette.slabEdge, opacity: 1.0, widthPx: 1.12 }));
+        }
+        bucket.ingestObject(tempGroup, null, 'always');
+      }
+
+      // Floor surface(s) placed into their respective floor bucket (only if dirty)!
       for (const surf of def.floors) {
         const surfFloor = mod.floor + surf.floorOffset;
+        if (allowedFloors && !allowedFloors.has(surfFloor)) continue;
         const surfBucket = this.getOrCreateFloorBucket(surfFloor);
         const surfY = surfFloor * FLOOR_VISUAL_SPACING;
 
@@ -1056,7 +1311,6 @@ export class CadSceneController {
         floorWrap.add(floorMesh);
         surfBucket.ingestObject(floorWrap, null, 'always');
 
-        // Floor border: always shown on L+1 balconies & rings; shown only in Building View on standard floors!
         const borderPts = edgesToPositions(new THREE.EdgesGeometry(floorGeo));
         const borderLine = createCrispLineSegments(borderPts, {
           color: surf.floorOffset > 0 ? palette.floorBalconyEdge : palette.floorEdge,
@@ -1074,7 +1328,7 @@ export class CadSceneController {
       }
 
       // Double-height corner wireframe guides
-      if (hu > 1) {
+      if (bucket && hu > 1) {
         const topRelY = (hu - 1) * FLOOR_VISUAL_SPACING;
         const hw = wM / 2 - 0.25;
         const hd = dM / 2 - 0.25;
@@ -1096,8 +1350,9 @@ export class CadSceneController {
       }
     }
 
-    // Connectors placed into their own connector floor bucket!
+    // Connectors placed into their own connector floor bucket (only if dirty)!
     for (const c of getModuleWorldConnectors(mod, def)) {
+      if (allowedFloors && !allowedFloors.has(c.floor)) continue;
       const cBucket = this.getOrCreateFloorBucket(c.floor);
       const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.05;
       if (c.type.startsWith('Vertical')) {
@@ -1131,6 +1386,8 @@ export class CadSceneController {
         cBucket.ingestObject(wrap, null, 'station');
       }
     }
+
+    if (!bucket) return;
 
     // Station Overview caption label
     const shortName = getShortLabel(def.id, def.nameZh);
@@ -1519,13 +1776,20 @@ export class CadSceneController {
     return THREE.MathUtils.clamp(1.0 - (dist - 65) / 175, 0.22, 1.0);
   }
 
+  private computeMicroLod(): number {
+    const dist = this.rig.currentDistance;
+    return THREE.MathUtils.clamp(1.0 - (dist - 55) / 85, 0.0, 1.0);
+  }
+
   private applyDistanceLodAndFog(): void {
     const dist = this.rig.currentDistance;
     const lod = this.computeDistanceLod();
-    if (Math.abs(lod - this.lastDetailLod) > 0.012) {
+    const microLod = this.computeMicroLod();
+    if (Math.abs(lod - this.lastDetailLod) > 0.012 || Math.abs(microLod - this.lastMicroLod) > 0.012) {
       this.lastDetailLod = lod;
+      this.lastMicroLod = microLod;
       for (const bucket of this.floorBuckets.values()) {
-        bucket.applyDetailLodOnly(lod);
+        bucket.applyDetailLodOnly(lod, microLod);
       }
     }
 
@@ -1765,7 +2029,7 @@ export class CadSceneController {
       return;
     }
 
-    // 4. Blueprint Stamp Ghost (batched for large stamps!)
+    // 4. Blueprint Stamp Ghost (O(1) spatial-indexed conflict check; zero cloning of doc.buildings!)
     if (state.activeTool.kind === 'stamp-blueprint') {
       const anchorX = Math.floor(state.cursorWorld.x);
       const anchorY = Math.floor(state.cursorWorld.y);
@@ -1776,10 +2040,10 @@ export class CadSceneController {
         floor: anchorFloor,
       });
 
-      const tempDoc: BlueprintDocument = {
-        ...state.doc,
-        modules: [...state.doc.modules, ...modules],
-      };
+      // Tiny module-only doc so we NEVER miss state.doc's WeakMap spatial index!
+      const stampModDoc: BlueprintDocument | null =
+        modules.length > 0 ? { ...state.doc, modules, buildings: [] } : null;
+      const baseIdx = getDocSpatialIndex(state.doc);
 
       const validPts: number[] = [];
       const invalidPts: number[] = [];
@@ -1803,16 +2067,51 @@ export class CadSceneController {
         }
       }
 
-      for (const b of buildings) {
+      const maxGhostBlds = 2500;
+      const stepBld = buildings.length > maxGhostBlds ? Math.ceil(buildings.length / maxGhostBlds) : 1;
+      for (let i = 0; i < buildings.length; i += stepBld) {
+        const b = buildings[i];
         const def = getBuildableDef(b.type);
         if (!def) continue;
-        const issue = validateBuildingPlacement(tempDoc, b, {
-          allowBeltReplace: true,
-          allowForceReplace: state.forceReplaceHeld,
-        });
         const [w, d] = getBuildingSizeCells(def, b.rotation);
+        let isBad = false;
+        // O(w*d) floor + overlap check against cached spatial index
+        for (let dx = 0; dx < w && !isBad; dx++) {
+          for (let dy = 0; dy < d; dy++) {
+            const cx = b.x + dx;
+            const cy = b.y + dy;
+            const onFloor =
+              Boolean(isCellBuildable(state.doc, cx, cy, b.floor)) ||
+              Boolean(stampModDoc && isCellBuildable(stampModDoc, cx, cy, b.floor));
+            if (!onFloor) {
+              isBad = true;
+              break;
+            }
+            if (!state.forceReplaceHeld) {
+              const cellMap = baseIdx.buildingCellByFloor.get(b.floor);
+              const hit = cellMap?.get(packCellKey(cx, cy));
+              if (hit) {
+                if (Array.isArray(hit)) {
+                  for (let k = 0; k < hit.length; k++) {
+                    const eDef = getBuildableDef(hit[k].type);
+                    if (!(def.kind === 'belt' && eDef?.kind === 'belt')) {
+                      isBad = true;
+                      break;
+                    }
+                  }
+                } else {
+                  const eDef = getBuildableDef(hit.type);
+                  if (!(def.kind === 'belt' && eDef?.kind === 'belt')) {
+                    isBad = true;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
         const y = b.floor * FLOOR_VISUAL_SPACING + 0.09;
-        const dst = issue ? invalidPts : validPts;
+        const dst = isBad ? invalidPts : validPts;
         dst.push(
           b.x + 0.1, y, b.y + 0.1, b.x + w - 0.1, y, b.y + 0.1,
           b.x + w - 0.1, y, b.y + 0.1, b.x + w - 0.1, y, b.y + d - 0.1,
@@ -1887,7 +2186,11 @@ export class CadSceneController {
     }
 
     this.rig.update(dt, now);
-    this.applyExtrusionScale(this.getCurrentExtrusionScale());
+    const yScale = this.getCurrentExtrusionScale();
+    if (Math.abs(yScale - this.lastExtrusionScale) > 1e-4) {
+      this.lastExtrusionScale = yScale;
+      this.applyExtrusionScale(yScale);
+    }
     this.applyDistanceLodAndFog();
     this.renderer.render(this.scene, this.rig.camera);
   };

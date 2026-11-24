@@ -1289,12 +1289,16 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
       clear: () => mem.clear(),
     };
 
+    let putAttempt = 0;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? 'GET';
       calls.push({ url, method, body: typeof init?.body === 'string' ? init.body : undefined });
 
-      if (url.includes('/git/trees/main?recursive=1')) {
+      if (url.includes('/git/ref/heads/main')) {
+        return new Response(JSON.stringify({ object: { sha: 'commit_latest_1' } }), { status: 200 });
+      }
+      if (url.includes('/git/trees/commit_latest_1?recursive=1')) {
         return new Response(
           JSON.stringify({
             tree: [
@@ -1309,7 +1313,16 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
       if (url.includes('/git/blobs/sha_main_1')) {
         return new Response(JSON.stringify({ encoding: 'base64', content: b64Content }), { status: 200 });
       }
+      if (method === 'GET' && url.includes('/contents/')) {
+        return new Response(JSON.stringify({ sha: 'sha_remote_live' }), { status: 200 });
+      }
       if (method === 'PUT' && url.includes('/contents/')) {
+        putAttempt++;
+        const parsedBody = JSON.parse(String(init?.body ?? '{}')) as { sha?: string };
+        // Simulate external repo push causing 409 conflict on first PUT with stale sha_main_1
+        if (putAttempt === 1 && parsedBody.sha === 'sha_main_1') {
+          return new Response(JSON.stringify({ message: 'does not match sha_remote_live' }), { status: 409 });
+        }
         return new Response(JSON.stringify({ content: { sha: 'sha_main_2' } }), { status: 200 });
       }
       if (method === 'DELETE' && url.includes('/contents/')) {
@@ -1330,18 +1343,24 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
       if (tree[0].kind === 'folder') {
         expect(tree[0].name).toBe('星穹总线超市');
         expect(tree[0].children.length).toBe(1);
-        expect(tree[0].children[0].path).toBe('星穹总线超市/主站.json');
+        const child = tree[0].children[0];
+        expect(child.path).toBe('星穹总线超市/主站.json');
+        if (child.kind === 'file') {
+          expect(child.contentHash).toBe('sha_main_1');
+        }
       }
 
       const { doc } = await drv.readBlueprint('星穹总线超市/主站.json');
       expect(doc.name).toBe('私有星穹主站');
       expect(doc.modules.length).toBe(starter.modules.length);
 
-      // Updating existing file sends cached sha_main_1 and updates cache to sha_main_2
+      // Updating after an external push recovers automatically from HTTP 409 by fetching live SHA and retrying!
       doc.name = '私有星穹主站-已修改';
       await drv.writeBlueprint('星穹总线超市/主站.json', doc);
-      const putCall = calls.find((c) => c.method === 'PUT')!;
-      expect(JSON.parse(putCall.body!).sha).toBe('sha_main_1');
+      const putCalls = calls.filter((c) => c.method === 'PUT');
+      expect(putCalls.length).toBe(2);
+      expect(JSON.parse(putCalls[0].body!).sha).toBe('sha_main_1');
+      expect(JSON.parse(putCalls[1].body!).sha).toBe('sha_remote_live');
 
       // Deleting uses updated sha_main_2
       await drv.deleteEntry('星穹总线超市/主站.json');
@@ -1364,5 +1383,61 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
       globalThis.fetch = prevFetch;
       (globalThis as { localStorage?: unknown }).localStorage = prevStorage;
     }
+  });
+
+  it('keeps build, belt-drag, and Ctrl+X/V cut-paste sub-50ms even on 26k-building mega-stations', () => {
+    const mega = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('02-星穹金字塔-完整带线总图'));
+    if (!mega) return;
+    const doc = mega.doc;
+    expect(doc.buildings.length).toBeGreaterThan(20000);
+
+    // Warm WeakMap spatial index once
+    const tIdx0 = performance.now();
+    validateBuildingPlacement(doc, { type: 'DAT_ConveyorBelt3', x: 10, y: 10, floor: 0, rotation: 0 }, { allowBeltReplace: true });
+    const tIndexMs = performance.now() - tIdx0;
+
+    // 1. 100x hover validation
+    const tVal0 = performance.now();
+    for (let i = 0; i < 100; i++) {
+      validateBuildingPlacement(
+        doc,
+        { type: 'DAT_ConveyorBelt3', x: 50 + (i % 10), y: 50 + Math.floor(i / 10), floor: 0, rotation: 0 },
+        { allowBeltReplace: true }
+      );
+    }
+    const tValMs = performance.now() - tVal0;
+
+    // 2. 40-tile belt drag
+    const segs = Array.from({ length: 40 }, (_, i) => ({ x: 50 + i, y: 50, rotation: 0 as const }));
+    const tBelt0 = performance.now();
+    placeBeltRunCmd(doc, 'DAT_ConveyorBelt3', 0, segs);
+    const tBeltMs = performance.now() - tBelt0;
+
+    // 3. Full factory module Ctrl+X + Ctrl+V atomic cut & paste
+    const sampleMod = doc.modules.find((m) => m.floor === 0 && getModuleDef(m.type)?.hasFactoryFloor)!;
+    const sel = { moduleIds: [sampleMod.id], buildingIds: [] };
+    const tCut0 = performance.now();
+    const bp = extractSelectionAsBlueprint(doc, sel, 'cut-bench')!;
+    const afterCut = deleteSelectionCmd(doc, sel, { cascadeBuildingsInModules: true });
+    const tCutMs = performance.now() - tCut0;
+
+    const tPaste0 = performance.now();
+    const afterPaste = stampBlueprintCmd(afterCut.doc, bp, {
+      x: sampleMod.gx * 16,
+      y: sampleMod.gy * 16,
+      floor: sampleMod.floor,
+    });
+    const tPasteMs = performance.now() - tPaste0;
+
+    expect(afterPaste.changed).toBe(true);
+    expect(afterPaste.doc.modules.length).toBe(doc.modules.length);
+    expect(afterPaste.doc.buildings.length).toBe(doc.buildings.length);
+    console.log(
+      `[Perf 26k mega-station] index=${tIndexMs.toFixed(2)}ms | 100xValidate=${tValMs.toFixed(2)}ms | 40BeltDrag=${tBeltMs.toFixed(2)}ms | Ctrl+X(${bp.buildings.length}b)=${tCutMs.toFixed(2)}ms | Ctrl+V=${tPasteMs.toFixed(2)}ms`
+    );
+    expect(tValMs).toBeLessThan(15);
+    expect(tBeltMs).toBeLessThan(30);
+    expect(tCutMs).toBeLessThan(80);
+    expect(tPasteMs).toBeLessThan(80);
   });
 });

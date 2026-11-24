@@ -243,6 +243,8 @@ export interface LibraryFileEntry {
   buildingCount: number;
   floorSpan: number;
   updatedAt: number;
+  /** Optional remote blob SHA / revision tag so cache invalidates accurately on cloud refresh/save */
+  contentHash?: string;
 }
 
 export interface LibraryFolderEntry {

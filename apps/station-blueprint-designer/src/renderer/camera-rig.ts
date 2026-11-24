@@ -62,6 +62,15 @@ export class CadCameraRig {
   private onAutoViewModeChange?: (mode: ViewMode) => void;
   private onTelemetryChange?: (info: { yawDeg: number; pitchDeg: number; distance: number }) => void;
   private lastTelemetryTime = 0;
+  private lastTelemetryYaw = -1;
+  private lastTelemetryPitch = -1;
+  private lastTelemetryDist = -1;
+
+  // Reusable scratch objects for zero-GC 144Hz pointer raycasting
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly ndcVec = new THREE.Vector2();
+  private readonly focusPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly hitVec = new THREE.Vector3();
 
   constructor(
     aspect: number,
@@ -244,13 +253,12 @@ export class CadCameraRig {
     }
   }
 
-  /** Raycast NDC pointer onto the horizontal plane of the current focus floor */
+  /** Raycast NDC pointer onto the horizontal plane of the current focus floor (zero-GC) */
   intersectFocusPlane(ndcX: number, ndcY: number): THREE.Vector3 | null {
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(this.focusFloor * FLOOR_VISUAL_SPACING));
-    const hit = new THREE.Vector3();
-    return raycaster.ray.intersectPlane(plane, hit) ? hit : null;
+    this.ndcVec.set(ndcX, ndcY);
+    this.raycaster.setFromCamera(this.ndcVec, this.camera);
+    this.focusPlane.constant = -(this.focusFloor * FLOOR_VISUAL_SPACING);
+    return this.raycaster.ray.intersectPlane(this.focusPlane, this.hitVec) ? this.hitVec : null;
   }
 
   update(dt: number, nowMs: number): void {
@@ -264,13 +272,21 @@ export class CadCameraRig {
 
     this.applyCameraTransform();
 
-    if (this.onTelemetryChange && nowMs - this.lastTelemetryTime > 90) {
-      this.lastTelemetryTime = nowMs;
-      this.onTelemetryChange({
-        yawDeg: Math.round((this.curYaw * 180) / Math.PI) % 360,
-        pitchDeg: Math.round((this.curPitch * 180) / Math.PI),
-        distance: Math.round(this.curDistance),
-      });
+    if (this.onTelemetryChange && nowMs - this.lastTelemetryTime > 60) {
+      const yawDeg = Math.round((this.curYaw * 180) / Math.PI) % 360;
+      const pitchDeg = Math.round((this.curPitch * 180) / Math.PI);
+      const distance = Math.round(this.curDistance);
+      if (
+        yawDeg !== this.lastTelemetryYaw ||
+        pitchDeg !== this.lastTelemetryPitch ||
+        distance !== this.lastTelemetryDist
+      ) {
+        this.lastTelemetryTime = nowMs;
+        this.lastTelemetryYaw = yawDeg;
+        this.lastTelemetryPitch = pitchDeg;
+        this.lastTelemetryDist = distance;
+        this.onTelemetryChange({ yawDeg, pitchDeg, distance });
+      }
     }
   }
 

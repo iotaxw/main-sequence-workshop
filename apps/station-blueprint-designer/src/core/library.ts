@@ -681,7 +681,10 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
   readonly rootLabel: string;
   readonly config: GitHubRepoConfig;
   private shaByRelPath = new Map<string, string>();
-  private metaByRelPath = new Map<string, { blueprintName: string; moduleCount: number; buildingCount: number; floorSpan: number }>();
+  private metaByRelPath = new Map<
+    string,
+    { sha: string; blueprintName: string; moduleCount: number; buildingCount: number; floorSpan: number }
+  >();
 
   constructor(config: GitHubRepoConfig) {
     this.config = {
@@ -702,8 +705,11 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
   }
 
   private async apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const resp = await fetch(`https://api.github.com${path}`, {
+    const method = (init.method ?? 'GET').toUpperCase();
+    const url = `https://api.github.com${path}`;
+    const resp = await fetch(url, {
       ...init,
+      ...(method === 'GET' ? { cache: 'no-store' as RequestCache } : {}),
       headers: {
         Accept: 'application/vnd.github+json',
         Authorization: `Bearer ${this.config.token}`,
@@ -720,17 +726,50 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
       } catch {
         // ignore body parse failure
       }
-      throw new Error(`GitHub 私有库请求失败 (${detail})`);
+      const err = new Error(`GitHub 私有库请求失败 (${detail})`) as Error & { status?: number };
+      err.status = resp.status;
+      throw err;
     }
     return (await resp.json()) as T;
   }
 
+  private async resolveLatestTreeRef(): Promise<string> {
+    const { owner, repo, branch } = this.config;
+    // Resolve branch ref with cache-busting timestamp so GitHub's 60s CDN cache NEVER serves stale trees on refresh!
+    try {
+      const refResp = await this.apiRequest<{ object?: { sha?: string } }>(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/heads/${encodeURIComponent(branch)}?_=${Date.now()}`
+      );
+      if (refResp.object?.sha) {
+        return refResp.object.sha;
+      }
+    } catch {
+      // Fallback to branch name if ref endpoint unavailable
+    }
+    return branch;
+  }
+
+  private async fetchLiveFileSha(fullEncodedPath: string): Promise<string | undefined> {
+    const { owner, repo, branch } = this.config;
+    try {
+      const fileResp = await this.apiRequest<{ sha?: string }>(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${fullEncodedPath}?ref=${encodeURIComponent(branch)}&_=${Date.now()}`
+      );
+      return fileResp.sha;
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      if (status === 404) return undefined;
+      throw err;
+    }
+  }
+
   async listTree(): Promise<LibraryNode[]> {
-    const { owner, repo, branch, basePath } = this.config;
+    const { owner, repo, basePath } = this.config;
+    const treeRef = await this.resolveLatestTreeRef();
     const treeResp = await this.apiRequest<{
       tree?: Array<{ path: string; type: string; sha: string }>;
       truncated?: boolean;
-    }>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+    }>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(treeRef)}?recursive=1`);
 
     this.shaByRelPath.clear();
     const prefix = basePath ? `${basePath}/` : '';
@@ -776,16 +815,22 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
       const segs = norm.split('/');
       const fileName = segs[segs.length - 1];
       const cached = this.metaByRelPath.get(norm);
+      // Invalidate cached metadata immediately if remote blob SHA changed!
+      const validCached = cached && cached.sha === item.sha ? cached : undefined;
+      if (cached && !validCached) {
+        this.metaByRelPath.delete(norm);
+      }
       const fileNode: LibraryFileEntry = {
         kind: 'file',
         path: norm,
         name: fileName.replace(/\.json$/i, ''),
         fileName,
-        blueprintName: cached?.blueprintName ?? fileName.replace(/\.json$/i, ''),
-        moduleCount: cached?.moduleCount ?? 0,
-        buildingCount: cached?.buildingCount ?? 0,
-        floorSpan: cached?.floorSpan ?? 1,
+        blueprintName: validCached?.blueprintName ?? fileName.replace(/\.json$/i, ''),
+        moduleCount: validCached?.moduleCount ?? 0,
+        buildingCount: validCached?.buildingCount ?? 0,
+        floorSpan: validCached?.floorSpan ?? 1,
         updatedAt: 0,
+        contentHash: item.sha,
       };
       if (segs.length === 1) {
         rootChildren.push(fileNode);
@@ -812,7 +857,7 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
     } else {
       const full = encodeGitHubPath(this.fullRepoPath(norm));
       const fileResp = await this.apiRequest<{ sha: string; content?: string; encoding?: string }>(
-        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${full}?ref=${encodeURIComponent(branch)}`
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${full}?ref=${encodeURIComponent(branch)}&_=${Date.now()}`
       );
       sha = fileResp.sha;
       this.shaByRelPath.set(norm, sha);
@@ -830,6 +875,7 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
     if (!decoded.ok) throw new Error(decoded.error);
     const range = getDocumentFloorRange(decoded.doc);
     this.metaByRelPath.set(norm, {
+      sha,
       blueprintName: decoded.doc.name,
       moduleCount: decoded.doc.modules.length,
       buildingCount: decoded.doc.buildings.length,
@@ -846,23 +892,50 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
     const finalRel = parts.length > 0 ? `${parts.join('/')}/${fileName}` : fileName;
     const full = encodeGitHubPath(this.fullRepoPath(finalRel));
 
-    const existingSha = this.shaByRelPath.get(finalRel);
-    const body: Record<string, unknown> = {
-      message: `chore(blueprints): save ${finalRel}`,
-      content: utf8ToBase64(serializeBlueprint(doc)),
-      branch,
-      ...(existingSha ? { sha: existingSha } : {}),
+    // Use compact JSON for mega-stations (>2000 buildings) to keep GitHub PUT payloads fast & lean
+    const jsonText = doc.buildings.length > 2000 ? serializeCompact(doc) : serializeBlueprint(doc);
+    const b64 = utf8ToBase64(jsonText);
+
+    const putWithSha = async (sha?: string) => {
+      const body: Record<string, unknown> = {
+        message: `chore(blueprints): save ${finalRel}`,
+        content: b64,
+        branch,
+        ...(sha ? { sha } : {}),
+      };
+      return this.apiRequest<{ content?: { sha?: string } }>(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${full}`,
+        { method: 'PUT', body: JSON.stringify(body) }
+      );
     };
 
-    const res = await this.apiRequest<{ content?: { sha?: string } }>(
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${full}`,
-      { method: 'PUT', body: JSON.stringify(body) }
-    );
-    if (res.content?.sha) {
-      this.shaByRelPath.set(finalRel, res.content.sha);
+    let existingSha = this.shaByRelPath.get(finalRel);
+    let res: { content?: { sha?: string } };
+    try {
+      res = await putWithSha(existingSha);
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      // On 409 (stale SHA from external sync) or 422 (file exists remotely without local SHA), fetch live SHA & retry once!
+      if (status === 409 || status === 422) {
+        const liveSha = await this.fetchLiveFileSha(full);
+        if (liveSha && liveSha !== existingSha) {
+          existingSha = liveSha;
+          res = await putWithSha(liveSha);
+        } else {
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    }
+
+    const newSha = res.content?.sha ?? existingSha ?? '';
+    if (newSha) {
+      this.shaByRelPath.set(finalRel, newSha);
     }
     const range = getDocumentFloorRange(doc);
     this.metaByRelPath.set(finalRel, {
+      sha: newSha,
       blueprintName: doc.name,
       moduleCount: doc.modules.length,
       buildingCount: doc.buildings.length,

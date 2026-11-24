@@ -116,7 +116,7 @@ function buildLineSegments(
   color: number,
   opacity: number,
   widthPx = 1.1,
-  lodTier: 'primary' | 'detail' = 'primary'
+  lodTier: 'primary' | 'detail' | 'micro' = 'primary'
 ): THREE.Object3D {
   return createCrispLineSegments(pts, { color, opacity, widthPx, lodTier });
 }
@@ -472,6 +472,22 @@ function buildPortFilterPip(
   return segs;
 }
 
+/** Precompute O(1) spatial lookup of all logistics cells for fast O(N) belt-turn rendering */
+export function buildLogisticsCellMap(doc: BlueprintDocument): Map<string, PlacedBuilding> {
+  const map = new Map<string, PlacedBuilding>();
+  for (const b of doc.buildings) {
+    const def = getBuildableDef(b.type);
+    if (!def || !['belt', 'splitter', 'balancer', 'underground'].includes(def.kind)) continue;
+    const [w, d] = getBuildingSizeCells(def, b.rotation);
+    for (let dx = 0; dx < w; dx++) {
+      for (let dy = 0; dy < d; dy++) {
+        map.set(`${b.floor}:${b.x + dx},${b.y + dy}`, b);
+      }
+    }
+  }
+  return map;
+}
+
 /** Check whether a neighbor cell outputs logistics flow into `(targetX, targetY)` */
 function doesNeighborFeedCell(
   doc: BlueprintDocument,
@@ -479,9 +495,10 @@ function doesNeighborFeedCell(
   nbY: number,
   floor: number,
   dxFromTarget: number,
-  dyFromTarget: number
+  dyFromTarget: number,
+  cellMap?: Map<string, PlacedBuilding>
 ): boolean {
-  const nb = findBuildingAtCell(doc, nbX, nbY, floor);
+  const nb = cellMap ? cellMap.get(`${floor}:${nbX},${nbY}`) : findBuildingAtCell(doc, nbX, nbY, floor);
   if (!nb) return false;
   const nbDef = getBuildableDef(nb.type);
   if (!nbDef || !['belt', 'splitter', 'balancer', 'underground'].includes(nbDef.kind)) return false;
@@ -504,7 +521,8 @@ export function buildBeltLineArt(
   baseY: number,
   opacity: number,
   isSelected: boolean,
-  palette: CadThemePalette = CAD_THEMES['platinum-gold']
+  palette: CadThemePalette = CAD_THEMES['platinum-gold'],
+  cellMap?: Map<string, PlacedBuilding>
 ): THREE.Group {
   const group = new THREE.Group();
   const cx = b.x + 0.5;
@@ -515,7 +533,7 @@ export function buildBeltLineArt(
 
   // 1. Check straight-behind FIRST so straight runs are never hijacked by side merges!
   let inDir: [number, number] | null = null;
-  if (doesNeighborFeedCell(doc, b.x - outDx, b.y - outDy, b.floor, -outDx, -outDy)) {
+  if (doesNeighborFeedCell(doc, b.x - outDx, b.y - outDy, b.floor, -outDx, -outDy, cellMap)) {
     inDir = [outDx, outDy];
   } else {
     // 2. Otherwise inspect the two perpendicular sides for a clean L-turn
@@ -524,7 +542,7 @@ export function buildBeltLineArt(
       [outDy, -outDx],
     ];
     for (const [dx, dy] of perpDirs) {
-      if (doesNeighborFeedCell(doc, b.x + dx, b.y + dy, b.floor, dx, dy)) {
+      if (doesNeighborFeedCell(doc, b.x + dx, b.y + dy, b.floor, dx, dy, cellMap)) {
         inDir = [-dx, -dy];
         break;
       }
@@ -613,13 +631,146 @@ export function buildBeltLineArt(
     isSelected ? palette.lineSelected : palette.beltArrow,
     opacity,
     0.9,
-    'detail'
+    'micro'
   );
   chevLines.position.set(cx, y + 0.015, cz);
   chevLines.rotation.y = -b.rotation * (Math.PI / 2);
   group.add(chevLines);
 
   return group;
+}
+
+/**
+ * Zero-allocation direct belt geometry emitter for batched FloorRenderBucket ingestion.
+ * Produces pixel-identical straight/quarter-arc beds, rails, and Mk1-3 chevrons directly into
+ * flat float arrays without creating any temporary THREE.Group/Geometry/Material objects.
+ */
+export function emitBeltDirectToBuffers(
+  doc: BlueprintDocument,
+  b: PlacedBuilding,
+  def: BuildableDef,
+  bedTrisOut: number[],
+  railPtsOut: number[],
+  chevPtsOut: number[]
+): void {
+  const cx = b.x + 0.5;
+  const cz = b.y + 0.5;
+  const yBed = 0.03;
+  const yRail = 0.05;
+  const yChev = 0.055;
+
+  const [outDx, outDy] = rotationToDelta(b.rotation);
+
+  let inDir: [number, number] | null = null;
+  if (doesNeighborFeedCell(doc, b.x - outDx, b.y - outDy, b.floor, -outDx, -outDy)) {
+    inDir = [outDx, outDy];
+  } else {
+    const px1 = -outDy;
+    const py1 = outDx;
+    if (doesNeighborFeedCell(doc, b.x + px1, b.y + py1, b.floor, px1, py1)) {
+      inDir = [-px1, -py1];
+    } else {
+      const px2 = outDy;
+      const py2 = -outDx;
+      if (doesNeighborFeedCell(doc, b.x + px2, b.y + py2, b.floor, px2, py2)) {
+        inDir = [-px2, -py2];
+      }
+    }
+  }
+
+  let localTurn: 0 | 1 | 2 = 0; // 0=straight, 1=right, 2=left
+  if (inDir) {
+    const cross = inDir[0] * outDy - inDir[1] * outDx;
+    if (cross > 0) localTurn = 1;
+    else if (cross < 0) localTurn = 2;
+  }
+
+  // Rotation around Y by -rot * PI/2 maps local (lx, lz) -> world:
+  // rot 0: (+lx, +lz), rot 1: (-lz, +lx), rot 2: (-lx, -lz), rot 3: (+lz, -lx)
+  const rot = b.rotation;
+  const toWX = (lx: number, lz: number) =>
+    cx + (rot === 0 ? lx : rot === 1 ? -lz : rot === 2 ? -lx : lz);
+  const toWZ = (lx: number, lz: number) =>
+    cz + (rot === 0 ? lz : rot === 1 ? lx : rot === 2 ? -lz : -lx);
+
+  const pushTri = (ax: number, az: number, bx: number, bz: number, dx: number, dz: number) => {
+    bedTrisOut.push(
+      toWX(ax, az), yBed, toWZ(ax, az),
+      toWX(bx, bz), yBed, toWZ(bx, bz),
+      toWX(dx, dz), yBed, toWZ(dx, dz)
+    );
+  };
+
+  const pushWorldSeg = (out: number[], x1: number, z1: number, x2: number, z2: number, y: number) => {
+    out.push(toWX(x1, z1), y, toWZ(x1, z1), toWX(x2, z2), y, toWZ(x2, z2));
+  };
+
+  const r = 0.27;
+  if (localTurn === 0) {
+    // Straight bed quad (two CCW triangles looking from +Y)
+    pushTri(-0.49, -r, -0.49, r, 0.49, r);
+    pushTri(-0.49, -r, 0.49, r, 0.49, -r);
+    // Straight rails
+    pushWorldSeg(railPtsOut, -0.5, -r, 0.5, -r, yRail);
+    pushWorldSeg(railPtsOut, -0.5, r, 0.5, r, yRail);
+  } else {
+    // Quarter-circle arc bed + inner/outer rails
+    const isRight = localTurn === 1;
+    const pivX = 0.5;
+    const pivZ = isRight ? 0.5 : -0.5;
+    const rIn = 0.5 - r;
+    const rOut = 0.5 + r;
+    const steps = 10;
+    const aStart = Math.PI;
+    const aEnd = isRight ? Math.PI * 1.5 : Math.PI * 0.5;
+    const stepA = (aEnd - aStart) / steps;
+
+    for (let i = 0; i < steps; i++) {
+      const a0 = aStart + i * stepA;
+      const a1 = a0 + stepA;
+      const c0 = Math.cos(a0);
+      const s0 = Math.sin(a0);
+      const c1 = Math.cos(a1);
+      const s1 = Math.sin(a1);
+      const ix0 = pivX + c0 * rIn;
+      const iz0 = pivZ + s0 * rIn;
+      const ox0 = pivX + c0 * rOut;
+      const oz0 = pivZ + s0 * rOut;
+      const ix1 = pivX + c1 * rIn;
+      const iz1 = pivZ + s1 * rIn;
+      const ox1 = pivX + c1 * rOut;
+      const oz1 = pivZ + s1 * rOut;
+
+      if (isRight) {
+        pushTri(ix0, iz0, ox0, oz0, ox1, oz1);
+        pushTri(ix0, iz0, ox1, oz1, ix1, iz1);
+      } else {
+        pushTri(ix0, iz0, ox1, oz1, ox0, oz0);
+        pushTri(ix0, iz0, ix1, iz1, ox1, oz1);
+      }
+      pushWorldSeg(railPtsOut, ox0, oz0, ox1, oz1, yRail);
+      pushWorldSeg(railPtsOut, ix0, iz0, ix1, iz1, yRail);
+    }
+  }
+
+  // Tier 1 / 2 / 3 chevrons
+  const emitChev = (ox: number, size: number) => {
+    const xL = ox - size * 0.45;
+    const xR = ox + size * 0.48;
+    const zH = size * 0.48;
+    pushWorldSeg(chevPtsOut, xL, -zH, xR, 0, yChev);
+    pushWorldSeg(chevPtsOut, xR, 0, xL, zH, yChev);
+  };
+  if (def.tier === 1) {
+    emitChev(0, 0.22);
+  } else if (def.tier === 2) {
+    emitChev(-0.09, 0.2);
+    emitChev(0.11, 0.2);
+  } else {
+    emitChev(-0.16, 0.18);
+    emitChev(0.0, 0.18);
+    emitChev(0.16, 0.18);
+  }
 }
 
 /**

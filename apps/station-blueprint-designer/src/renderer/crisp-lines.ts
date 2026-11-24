@@ -36,7 +36,7 @@ export interface CrispLineOptions {
   dashed?: boolean;
   dashSize?: number;
   gapSize?: number;
-  lodTier?: 'primary' | 'detail';
+  lodTier?: 'primary' | 'detail' | 'micro';
 }
 
 export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
