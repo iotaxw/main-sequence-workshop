@@ -111,6 +111,16 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
     }
     const mid = typeof m.id === 'string' && m.id && !seenModIds.has(m.id) ? m.id : createEntityId('mod');
     seenModIds.add(mid);
+    const dockPorts = Array.isArray(m.dockPorts)
+      ? m.dockPorts.flatMap((entry) => {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+          const rec = entry as Record<string, unknown>;
+          if (!isFiniteInt(rec.portIndex) || rec.portIndex < 0) return [];
+          if (typeof rec.itemId !== 'string' || !rec.itemId.trim()) return [];
+          if (rec.mode !== 'load' && rec.mode !== 'unload') return [];
+          return [{ portIndex: rec.portIndex, itemId: rec.itemId.trim(), mode: rec.mode as 'load' | 'unload' }];
+        })
+      : undefined;
     modules.push({
       id: mid,
       type: m.type,
@@ -122,6 +132,8 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
       ...(isFiniteInt(m.paletteId) && m.paletteId !== 0 ? { paletteId: m.paletteId } : {}),
       ...(typeof m.miningItem === 'string' && m.miningItem ? { miningItem: m.miningItem } : {}),
       ...(typeof m.dockName === 'string' && m.dockName ? { dockName: m.dockName } : {}),
+      ...(typeof m.recipeId === 'string' && m.recipeId ? { recipeId: m.recipeId } : {}),
+      ...(dockPorts && dockPorts.length > 0 ? { dockPorts } : {}),
       ...(m.nativeMeta && typeof m.nativeMeta === 'object' && !Array.isArray(m.nativeMeta)
         ? { nativeMeta: m.nativeMeta as Record<string, unknown> }
         : {}),
