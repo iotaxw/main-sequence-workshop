@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { getMatchingUndergroundType, type BeltCellSpec } from '../core/belt-router';
 import { getBuildableDef, getItemNameZh, getModuleDef, getRecipeDef } from '../core/catalog';
 import { computeStampCandidates, getBlueprintBoundsM } from '../core/commands';
 import {
@@ -31,7 +32,6 @@ import type {
   BlueprintDocument,
   PlacedBuilding,
   PlacedModule,
-  Rotation,
   SelectionLayerMode,
   SelectionState,
   StationFloorSurfaceDef,
@@ -61,7 +61,7 @@ export interface SceneRenderState {
   selectionLayerMode: SelectionLayerMode;
   activeTool: ActiveTool;
   cursorWorld: { x: number; y: number } | null;
-  beltPreview: Array<{ x: number; y: number; rotation: Rotation }>;
+  beltPreview: BeltCellSpec[];
   boxSelectRect: { minX: number; minY: number; maxX: number; maxY: number } | null;
   forceReplaceHeld: boolean;
   simulationIssues?: Array<{
@@ -817,10 +817,25 @@ export class CadSceneController {
     if (state.beltPreview.length > 0 && state.activeTool.kind === 'place-building') {
       const first = state.beltPreview[0];
       const last = state.beltPreview[state.beltPreview.length - 1];
-      return `belt:${state.activeTool.buildingType}:${state.focusFloor}:${state.beltPreview.length}:${first.x},${first.y},${first.rotation}:${last.x},${last.y},${last.rotation}`;
+      let ugCount = 0;
+      for (let i = 0; i < state.beltPreview.length; i++) {
+        if (state.beltPreview[i].kind && state.beltPreview[i].kind !== 'belt') ugCount++;
+      }
+      return `belt:${state.activeTool.buildingType}:${state.focusFloor}:${state.beltPreview.length}:${ugCount}:${first.x},${first.y},${first.rotation},${first.kind ?? 'b'}:${last.x},${last.y},${last.rotation},${last.kind ?? 'b'}`;
     }
     const tool = state.activeTool;
-    if (!cursor || tool.kind === 'select') return 'none';
+    if (!cursor) return 'none';
+    if (tool.kind === 'select') {
+      if (state.boxSelectRect) return 'none';
+      if (state.viewMode === 'station') {
+        const gx = Math.floor(cursor.x / STATION_UNIT_M);
+        const gy = Math.floor(cursor.y / STATION_UNIT_M);
+        return `hov:m:${state.focusFloor}:${gx},${gy}`;
+      }
+      const cx = Math.floor(cursor.x);
+      const cy = Math.floor(cursor.y);
+      return `hov:b:${state.focusFloor}:${cx},${cy}`;
+    }
     if (tool.kind === 'demolish') {
       if (state.boxSelectRect) return 'none';
       if (state.viewMode === 'station') {
@@ -1998,25 +2013,129 @@ export class CadSceneController {
 
     if (state.beltPreview.length > 0 && state.activeTool.kind === 'place-building') {
       const beltType = state.activeTool.buildingType;
+      const ugType = getMatchingUndergroundType(beltType) ?? beltType;
       const baseY = state.focusFloor * FLOOR_VISUAL_SPACING + 0.07;
+      const pairEndpoints = new Map<number, { inSeg?: BeltCellSpec; outSeg?: BeltCellSpec; valid: boolean }>();
+
       for (const seg of state.beltPreview) {
+        const isUg = seg.kind === 'underground-in' || seg.kind === 'underground-out';
         const issue = validateBuildingPlacement(
           state.doc,
-          { type: beltType, x: seg.x, y: seg.y, floor: state.focusFloor, rotation: seg.rotation },
+          { type: isUg ? ugType : beltType, x: seg.x, y: seg.y, floor: state.focusFloor, rotation: seg.rotation },
           { allowBeltReplace: true }
         );
         const col = issue ? palette.invalidGhost : palette.validGhost;
-        this.addFlatRectGhost(seg.x + 0.14, seg.y + 0.14, seg.x + 0.86, seg.y + 0.86, baseY, col, 0.6);
-        const chev = createDirectionalChevron(0.28, col, 0.94);
-        chev.position.set(seg.x + 0.5, baseY + 0.01, seg.y + 0.5);
-        chev.rotation.y = -seg.rotation * (Math.PI / 2);
-        this.previewGroup.add(chev);
+        if (isUg) {
+          // Crisp double-framed underground hood preview (IN / OUT)
+          this.addFlatRectGhost(seg.x + 0.06, seg.y + 0.06, seg.x + 0.94, seg.y + 0.94, baseY + 0.02, col, 0.96);
+          this.addFlatRectGhost(seg.x + 0.2, seg.y + 0.2, seg.x + 0.8, seg.y + 0.8, baseY + 0.02, col, 0.72);
+          const pad = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.84, 0.84),
+            new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })
+          );
+          pad.rotation.x = -Math.PI / 2;
+          pad.position.set(seg.x + 0.5, baseY + 0.01, seg.y + 0.5);
+          this.previewGroup.add(pad);
+          const chev = createDirectionalChevron(0.32, col, 0.98);
+          chev.position.set(seg.x + 0.5, baseY + 0.03, seg.y + 0.5);
+          chev.rotation.y = -seg.rotation * (Math.PI / 2);
+          this.previewGroup.add(chev);
+
+          if (seg.pairIndex !== undefined) {
+            const p = pairEndpoints.get(seg.pairIndex) ?? { valid: true };
+            if (seg.kind === 'underground-in') p.inSeg = seg;
+            else p.outSeg = seg;
+            if (issue) p.valid = false;
+            pairEndpoints.set(seg.pairIndex, p);
+          } else if (seg.kind === 'underground-in') {
+            // Armed underground dive (distance 0): draw dashed reach guide ray forward up to 8 cells
+            const dx = seg.rotation === 0 ? 1 : seg.rotation === 2 ? -1 : 0;
+            const dy = seg.rotation === 1 ? 1 : seg.rotation === 3 ? -1 : 0;
+            this.previewGroup.add(
+              createCrispLineSegments(
+                [seg.x + 0.5, baseY + 0.04, seg.y + 0.5, seg.x + 0.5 + dx * 8, baseY + 0.04, seg.y + 0.5 + dy * 8],
+                { color: col, opacity: 0.85, widthPx: 1.4, dashed: true, dashSize: 0.35, gapSize: 0.24 }
+              )
+            );
+          }
+        } else {
+          this.addFlatRectGhost(seg.x + 0.14, seg.y + 0.14, seg.x + 0.86, seg.y + 0.86, baseY, col, 0.6);
+          const chev = createDirectionalChevron(0.28, col, 0.94);
+          chev.position.set(seg.x + 0.5, baseY + 0.01, seg.y + 0.5);
+          chev.rotation.y = -seg.rotation * (Math.PI / 2);
+          this.previewGroup.add(chev);
+        }
+      }
+
+      // Draw crisp dashed underground tunnel bridges between each matched IN/OUT pair
+      for (const pair of pairEndpoints.values()) {
+        if (!pair.inSeg || !pair.outSeg) continue;
+        const linkCol = pair.valid ? palette.validGhost : palette.invalidGhost;
+        this.previewGroup.add(
+          createCrispLineSegments(
+            [
+              pair.inSeg.x + 0.5, baseY + 0.04, pair.inSeg.y + 0.5,
+              pair.outSeg.x + 0.5, baseY + 0.04, pair.outSeg.y + 0.5,
+            ],
+            { color: linkCol, opacity: 0.94, widthPx: 1.7, dashed: true, dashSize: 0.34, gapSize: 0.22 }
+          )
+        );
       }
       return;
     }
 
     if (!state.cursorWorld) return;
     const baseY = state.focusFloor * FLOOR_VISUAL_SPACING;
+
+    // 1a. Select mode live hover highlight (shapez 2 whisper-light outline around hovered machine/belt/module)
+    if (state.activeTool.kind === 'select') {
+      if (state.boxSelectRect) return;
+      const col = palette.selectOutline;
+      if (state.viewMode === 'building') {
+        const cx = Math.floor(state.cursorWorld.x);
+        const cy = Math.floor(state.cursorWorld.y);
+        const hit = findBuildingAtCell(state.doc, cx, cy, state.focusFloor);
+        if (hit) {
+          const def = getBuildableDef(hit.type);
+          const [w, d] = def ? getBuildingSizeCells(def, hit.rotation) : [1, 1];
+          const x0 = hit.x + 0.03;
+          const z0 = hit.y + 0.03;
+          const x1 = hit.x + w - 0.03;
+          const z1 = hit.y + d - 0.03;
+          const y = baseY + 0.13;
+          const pad = new THREE.Mesh(
+            new THREE.PlaneGeometry(Math.max(0.1, x1 - x0), Math.max(0.1, z1 - z0)),
+            new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide })
+          );
+          pad.rotation.x = -Math.PI / 2;
+          pad.position.set((x0 + x1) / 2, y - 0.01, (z0 + z1) / 2);
+          this.previewGroup.add(pad);
+          this.addFlatRectGhost(x0, z0, x1, z1, y, col, 0.72);
+        }
+      } else {
+        const hit = findModuleAtWorldPoint(state.doc, state.cursorWorld.x, state.cursorWorld.y, state.focusFloor);
+        if (hit) {
+          const def = getModuleDef(hit.type);
+          if (def) {
+            const [minX, minY, maxX, maxY] = getModuleBoundsM(hit, def);
+            const x0 = minX + 0.16;
+            const z0 = minY + 0.16;
+            const x1 = maxX - 0.16;
+            const z1 = maxY - 0.16;
+            const y = baseY + 0.14;
+            const pad = new THREE.Mesh(
+              new THREE.PlaneGeometry(Math.max(1, x1 - x0), Math.max(1, z1 - z0)),
+              new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.055, depthWrite: false, side: THREE.DoubleSide })
+            );
+            pad.rotation.x = -Math.PI / 2;
+            pad.position.set((x0 + x1) / 2, y - 0.01, (z0 + z1) / 2);
+            this.previewGroup.add(pad);
+            this.addFlatRectGhost(x0, z0, x1, z1, y, col, 0.62);
+          }
+        }
+      }
+      return;
+    }
 
     // 1b. Demolish brush live target highlight (red footprint + subtle diagonal X on hovered target)
     if (state.activeTool.kind === 'demolish') {

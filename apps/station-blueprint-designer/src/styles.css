@@ -1919,6 +1919,212 @@ body,
   color: var(--text-warn);
 }
 
+/* ================================================================
+   Select-Mode Floating Hover Inspection Pill (Zero-React DOM)
+   ================================================================ */
+.cad-hover-tip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 62;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 268px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+  will-change: transform;
+}
+
+.cad-hover-tip[data-tone='error'] {
+  border-color: var(--line-disabled);
+}
+
+.cad-hover-tip[data-tone='warn'] {
+  border-color: var(--line-warn);
+}
+
+.cad-hover-tip-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cad-hover-tip-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cad-hover-tip[data-tone='error'] .cad-hover-tip-sub {
+  color: var(--text-danger);
+}
+
+.cad-hover-tip[data-tone='warn'] .cad-hover-tip-sub {
+  color: var(--text-warn);
+}
+
+.cad-hover-tip-note {
+  font-size: 10px;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ================================================================
+   Vertical Compact Floor-Layer Stack Rail (Shapez 2 Layer Picker)
+   ================================================================ */
+.cad-floor-rail {
+  position: absolute;
+  top: 68px;
+  right: 14px;
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 5px;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-hairline);
+  backdrop-filter: blur(8px);
+  transition: right 180ms ease;
+}
+
+.cad-floor-rail.shifted {
+  right: 318px;
+}
+
+.floor-rail-eye {
+  width: 34px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.floor-rail-eye:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.floor-rail-eye.active {
+  background: var(--bg-active);
+  border-color: var(--border-focus);
+  color: var(--text-bright);
+}
+
+.floor-rail-step {
+  width: 34px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 9px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.floor-rail-step:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.floor-rail-step:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.floor-rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.floor-rail-list::-webkit-scrollbar {
+  display: none;
+}
+
+.floor-rail-pill {
+  position: relative;
+  width: 34px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.floor-rail-pill:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.floor-rail-pill.populated {
+  color: var(--text-main);
+}
+
+.floor-rail-pill.active {
+  background: var(--bg-active);
+  border-color: var(--border-focus);
+  color: var(--text-bright);
+  font-weight: 600;
+}
+
+.floor-rail-pill.dimmed {
+  opacity: 0.42;
+}
+
+.floor-rail-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.floor-rail-pill.populated .floor-rail-dot {
+  background: var(--line-active);
+}
+
+.floor-rail-pill.active .floor-rail-dot {
+  background: var(--text-bright);
+}
+
 .hud-row {
   display: flex;
   align-items: center;

@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { buildPlannedBeltPath, extendBeltStroke, selectConnectedBeltChain } from './belt-router';
+import {
+  buildBeltStrokeSpecs,
+  buildPlannedBeltPath,
+  buildPlannedBeltPathWithTunnels,
+  extendBeltStroke,
+  extendBeltStrokeWithTunnels,
+  getMatchingBeltType,
+  getMatchingUndergroundType,
+  selectConnectedBeltChain,
+  toggleBeltStrokeTunnel,
+  type BeltStrokeTunnel,
+} from './belt-router';
 import { CATALOG, getBuildableDef, getModuleDef, getRecipeDef, getRecipesForCrafter } from './catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './codec';
 import {
@@ -1439,5 +1450,112 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
     expect(tBeltMs).toBeLessThan(30);
     expect(tCutMs).toBeLessThan(80);
     expect(tPasteMs).toBeLessThan(80);
+  });
+
+  it('preserves BPO_Dock_2 dockPorts and BPO_DeepSpaceObservatory recipeId across serialize/deserialize round-trips', () => {
+    const doc = createEmptyBlueprint();
+    doc.modules.push(
+      {
+        id: 'mod_dock',
+        type: 'BPO_Dock_2',
+        gx: -6,
+        gy: -4,
+        floor: 0,
+        rotation: 2,
+        dockPorts: [
+          { portIndex: 7, itemId: 'ITEM_StrangeMatterCrystal', mode: 'unload' },
+          { portIndex: 6, itemId: 'ITEM_NitrogenGas', mode: 'unload' },
+        ],
+      },
+      {
+        id: 'mod_obs',
+        type: 'BPO_DeepSpaceObservatory',
+        gx: 4,
+        gy: -4,
+        floor: 0,
+        rotation: 0,
+        recipeId: 'REC_StrangeWarpFuel',
+      }
+    );
+    const decoded = deserializeBlueprint(serializeBlueprint(doc));
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.doc.modules.find((m) => m.id === 'mod_dock')?.dockPorts).toEqual([
+      { portIndex: 7, itemId: 'ITEM_StrangeMatterCrystal', mode: 'unload' },
+      { portIndex: 6, itemId: 'ITEM_NitrogenGas', mode: 'unload' },
+    ]);
+    expect(decoded.doc.modules.find((m) => m.id === 'mod_obs')?.recipeId).toBe('REC_StrangeWarpFuel');
+  });
+
+  it('supports hotkey-triggered underground tunnel bridging in freehand strokes and planned L-paths', () => {
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    // Place a perpendicular North-South belt obstacle at x=10, y=8..12
+    for (let y = 8; y <= 12; y++) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 10, y, floor: 0, rotation: 1 }).doc;
+    }
+
+    expect(getMatchingUndergroundType('DAT_ConveyorBelt3')).toBe('DAT_UndergroundBelt_3');
+    expect(getMatchingBeltType('DAT_UndergroundBelt_3')).toBe('DAT_ConveyorBelt3');
+
+    // Case A: Freehand stroke -> drag (7,10)->(9,10), tap T/U to dive, drag to (11,10), tap T/U to surface, drag to (13,10)
+    let cells: Array<[number, number]> = [[7, 10]];
+    let tunnels: BeltStrokeTunnel[] = [];
+    ({ cells, tunnels } = extendBeltStrokeWithTunnels(cells, tunnels, [9, 10]));
+    const diveRes = toggleBeltStrokeTunnel(cells, tunnels);
+    expect(diveRes.action).toBe('dive');
+    tunnels = diveRes.tunnels;
+    ({ cells, tunnels } = extendBeltStrokeWithTunnels(cells, tunnels, [11, 10]));
+    const surfRes = toggleBeltStrokeTunnel(cells, tunnels);
+    expect(surfRes.action).toBe('surface');
+    tunnels = surfRes.tunnels;
+    ({ cells, tunnels } = extendBeltStrokeWithTunnels(cells, tunnels, [13, 10]));
+
+    const strokeSpecs = buildBeltStrokeSpecs(cells, tunnels, 0);
+    expect(strokeSpecs.map((s) => `${s.x},${s.y}:${s.kind ?? 'belt'}`)).toEqual([
+      '7,10:belt',
+      '8,10:belt',
+      '9,10:underground-in',
+      '11,10:underground-out',
+      '12,10:belt',
+      '13,10:belt',
+    ]);
+
+    const runRes = placeBeltRunCmd(doc, 'DAT_ConveyorBelt3', 0, strokeSpecs);
+    expect(runRes.changed).toBe(true);
+    // Original perpendicular belt at (10,10) stays intact!
+    expect(runRes.doc.buildings.find((b) => b.x === 10 && b.y === 10)?.rotation).toBe(1);
+    const ugIn = runRes.doc.buildings.find((b) => b.x === 9 && b.y === 10);
+    const ugOut = runRes.doc.buildings.find((b) => b.x === 11 && b.y === 10);
+    expect(ugIn?.type).toBe('DAT_UndergroundBelt_3');
+    expect(ugIn?.undergroundMode).toBe('in');
+    expect(ugOut?.type).toBe('DAT_UndergroundBelt_3');
+    expect(ugOut?.undergroundMode).toBe('out');
+    expect(ugIn?.undergroundPartnerId).toBe(ugOut?.id);
+    expect(ugOut?.undergroundPartnerId).toBe(ugIn?.id);
+
+    // Case B: Planned L-path does NOT bridge automatically unless tunnelObstacles is explicitly toggled on
+    const plainPlan = buildPlannedBeltPathWithTunnels(doc, 0, [7, 11], [13, 11], {
+      flipCorner: false,
+      reverse: false,
+      fallbackRotation: 0,
+      tunnelObstacles: false,
+    });
+    expect(plainPlan.every((s) => (s.kind ?? 'belt') === 'belt')).toBe(true);
+
+    const bridgedPlan = buildPlannedBeltPathWithTunnels(doc, 0, [7, 11], [13, 11], {
+      flipCorner: false,
+      reverse: false,
+      fallbackRotation: 0,
+      tunnelObstacles: true,
+    });
+    expect(bridgedPlan.map((s) => `${s.x},${s.y}:${s.kind ?? 'belt'}`)).toEqual([
+      '7,11:belt',
+      '8,11:belt',
+      '9,11:underground-in',
+      '11,11:underground-out',
+      '12,11:belt',
+      '13,11:belt',
+    ]);
   });
 });

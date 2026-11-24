@@ -1,3 +1,4 @@
+import { getMatchingUndergroundType, type BeltCellSpec } from './belt-router';
 import { CATALOG, getBuildableDef, getModuleDef } from './catalog';
 import {
   findBuildingsInsideModule,
@@ -254,65 +255,106 @@ export function placeBuildingCmd(
   };
 }
 
-/** Place an entire belt stroke / planned belt path as a single O(K) atomic transaction (zero repeated array copies!) */
+/** Place an entire belt stroke / planned belt path (including optional hotkey underground pairs) as a single O(K) atomic transaction */
 export function placeBeltRunCmd(
   doc: BlueprintDocument,
   beltType: string,
   floor: number,
-  segments: Array<{ x: number; y: number; rotation: Rotation }>
+  segments: BeltCellSpec[]
 ): CommandResult {
   if (segments.length === 0) return { doc, changed: false };
   const def = getBuildableDef(beltType);
   if (!def || def.kind !== 'belt') return { doc, changed: false };
+  const ugType = getMatchingUndergroundType(beltType);
 
   const idx = getDocSpatialIndex(doc);
   const existingFloorMap = idx.buildingCellByFloor.get(floor);
-  // Local mutable overlay for cells modified within this stroke
-  const addedByKey = new Map<number, PlacedBuilding>();
-  const removeIds = new Set<string>();
-
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    if (!isCellBuildable(doc, seg.x, seg.y, floor)) continue;
+  const canPlaceAt = (seg: BeltCellSpec): { ok: boolean; removeList: string[] } => {
+    if (!isCellBuildable(doc, seg.x, seg.y, floor)) return { ok: false, removeList: [] };
     const key = packCellKey(seg.x, seg.y);
-
-    // Check existing buildings at this cell
     const curEntry = existingFloorMap?.get(key);
-    let blocked = false;
+    const removeList: string[] = [];
     if (curEntry) {
       if (Array.isArray(curEntry)) {
         for (let j = 0; j < curEntry.length; j++) {
           const eb = curEntry[j];
-          if (removeIds.has(eb.id)) continue;
-          if (getBuildableDef(eb.type)?.kind !== 'belt') {
-            blocked = true;
-            break;
-          }
+          if (getBuildableDef(eb.type)?.kind !== 'belt') return { ok: false, removeList: [] };
+          removeList.push(eb.id);
         }
-        if (!blocked) {
-          for (let j = 0; j < curEntry.length; j++) {
-            removeIds.add(curEntry[j].id);
-          }
-        }
-      } else if (!removeIds.has(curEntry.id)) {
-        if (getBuildableDef(curEntry.type)?.kind !== 'belt') {
-          blocked = true;
-        } else {
-          removeIds.add(curEntry.id);
-        }
+      } else {
+        if (getBuildableDef(curEntry.type)?.kind !== 'belt') return { ok: false, removeList: [] };
+        removeList.push(curEntry.id);
       }
     }
-    if (blocked) continue;
+    return { ok: true, removeList };
+  };
 
-    const belt: PlacedBuilding = {
-      id: createEntityId('bld'),
-      type: beltType,
-      x: seg.x,
-      y: seg.y,
-      floor,
-      rotation: normalizeRotation(seg.rotation),
-    };
-    addedByKey.set(key, belt);
+  // Pre-validate underground IN/OUT pairs so a blocked exit never leaves an orphaned half-tunnel
+  const pairSegments = new Map<number, BeltCellSpec[]>();
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.pairIndex !== undefined) {
+      const arr = pairSegments.get(seg.pairIndex) ?? [];
+      arr.push(seg);
+      pairSegments.set(seg.pairIndex, arr);
+    }
+  }
+  const blockedPairs = new Set<number>();
+  for (const [pid, pair] of pairSegments.entries()) {
+    if (!ugType || pair.some((s) => !canPlaceAt(s).ok)) {
+      blockedPairs.add(pid);
+    }
+  }
+
+  // Local mutable overlay for cells modified within this stroke
+  const addedByKey = new Map<number, PlacedBuilding>();
+  const removeIds = new Set<string>();
+  const createdByPair = new Map<number, { inBld?: PlacedBuilding; outBld?: PlacedBuilding }>();
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.pairIndex !== undefined && blockedPairs.has(seg.pairIndex)) continue;
+    const isUg = seg.kind === 'underground-in' || seg.kind === 'underground-out';
+    if (isUg && !ugType) continue;
+
+    const check = canPlaceAt(seg);
+    if (!check.ok) continue;
+    for (const rid of check.removeList) removeIds.add(rid);
+
+    const key = packCellKey(seg.x, seg.y);
+    const bld: PlacedBuilding = isUg
+      ? {
+          id: createEntityId('bld'),
+          type: ugType!,
+          x: seg.x,
+          y: seg.y,
+          floor,
+          rotation: normalizeRotation(seg.rotation),
+          undergroundMode: seg.kind === 'underground-in' ? 'in' : 'out',
+        }
+      : {
+          id: createEntityId('bld'),
+          type: beltType,
+          x: seg.x,
+          y: seg.y,
+          floor,
+          rotation: normalizeRotation(seg.rotation),
+        };
+    addedByKey.set(key, bld);
+
+    if (isUg && seg.pairIndex !== undefined) {
+      const entry = createdByPair.get(seg.pairIndex) ?? {};
+      if (seg.kind === 'underground-in') entry.inBld = bld;
+      else entry.outBld = bld;
+      createdByPair.set(seg.pairIndex, entry);
+    }
+  }
+
+  for (const pair of createdByPair.values()) {
+    if (pair.inBld && pair.outBld) {
+      pair.inBld.undergroundPartnerId = pair.outBld.id;
+      pair.outBld.undergroundPartnerId = pair.inBld.id;
+    }
   }
 
   if (addedByKey.size === 0) return { doc, changed: false };
