@@ -83,9 +83,9 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
       <div className="panel-header">
         <div className="panel-title-wrap">
           <span className="panel-tag">SIM</span>
-          <span className="panel-title">产线模拟与体检</span>
+          <span className="panel-title">产线诊断</span>
         </div>
-        <button type="button" className="icon-btn" onClick={onClose} title="关闭产线模拟">
+        <button type="button" className="icon-btn" onClick={onClose} title="关闭 (Esc)">
           ×
         </button>
       </div>
@@ -146,7 +146,7 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
 
         {report.netInputs.length > 0 && (
           <div className="sim-section">
-            <div className="section-label">净外部输入（总需求速率）</div>
+            <div className="section-label">净输入</div>
             <div className="sim-rate-list">
               {report.netInputs.map((item) => (
                 <div key={item.itemId} className="sim-rate-row">
@@ -162,7 +162,7 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
 
         {report.netOutputs.length > 0 && (
           <div className="sim-section">
-            <div className="section-label">净外部输出（稳态产出）</div>
+            <div className="section-label">净输出</div>
             <div className="sim-rate-list">
               {report.netOutputs.map((item) => (
                 <div key={item.itemId} className="sim-rate-row">
@@ -178,7 +178,7 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
 
         {report.recipeStats.length > 0 && (
           <div className="sim-section">
-            <div className="section-label">配方运行一览</div>
+            <div className="section-label">配方</div>
             <div className="sim-rate-list">
               {report.recipeStats.map((rs) => (
                 <div key={rs.recipeId} className="sim-rate-row">
@@ -197,7 +197,7 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
 
         {report.balanceHints.length > 0 && (
           <div className="sim-section">
-            <div className="section-label">中段配平反压提示（{report.balanceHints.length}）</div>
+            <div className="section-label">配平提示（{report.balanceHints.length}）</div>
             <div className="sim-rate-list">
               {report.balanceHints.slice(0, 12).map((bh) => (
                 <button
@@ -224,11 +224,9 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
         )}
 
         <div className="sim-section">
-          <div className="section-label">
-            提示与异常清单（{report.issues.length}）{report.issues.length > 0 ? ' · 点击画布或列表双向定位' : ''}
-          </div>
+          <div className="section-label">诊断项（{report.issues.length}）</div>
           {report.issues.length === 0 ? (
-            <div className="sim-empty">无断带、无悬空、无错接，且无需额外入料。</div>
+            <div className="sim-empty">无异常</div>
           ) : (
             (() => {
               const activeIdx = activeIssueId ? report.issues.findIndex((i) => i.id === activeIssueId) : -1;

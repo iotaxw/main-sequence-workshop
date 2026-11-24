@@ -1567,9 +1567,9 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
             if (got <= 1e-4 && headSet?.has(inp.itemId)) {
               got = need;
             }
-            // Ignite closed self-recycling & multi-machine regenerative loops (e.g. Xenobacteria <-> Biomass) on iter 0..1;
-            // subsequent iterations run WITHOUT seed injection so any non-conserving/broken loop decays to 0!
-            if (iter <= 1 && got < need) {
+            // Ignite closed self-recycling & multi-machine regenerative loops (e.g. Xenobacteria <-> Enzyme <-> Biomass) on iter 0..3;
+            // subsequent iterations (iter 4..31) run WITHOUT seed injection so any non-conserving/broken loop still decays to 0!
+            if (iter <= 3 && got < need) {
               const isSelfLoop = rec.outputs.some((o) => o.itemId === inp.itemId);
               const hasInternalCycleProducer =
                 !isSelfLoop &&
@@ -1813,7 +1813,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       }
     }
 
-    if (iter > 1 && maxDelta < 1e-5) break;
+    if (iter > 4 && maxDelta < 1e-5) break;
   }
 
   // 7. Emit yellow 'external-input-needed' warnings at EVERY external raw-material entry spot

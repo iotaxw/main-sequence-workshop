@@ -426,7 +426,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           {recipes.length > 0 && (
             <div className="inspector-section">
               <div className="section-head">
-                <span className="section-label">配方配置（规划标注）</span>
+                <span className="section-label">配方</span>
                 {currentRecipe && (
                   <button
                     type="button"
@@ -563,7 +563,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <PortDiagram building={singleBuilding} onTogglePort={handleTogglePort} />
               <div className="port-legend">
                 <span><i className="dot green" /> 活跃</span>
-                <span><i className="dot red" /> 禁用（点击切换）</span>
+                <span><i className="dot red" /> 禁用</span>
               </div>
             </div>
           )}
@@ -571,20 +571,20 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           {/* Read-only lane reference diagram for Belt Balancer (all 4 lanes are fixed always-on) */}
           {def?.kind === 'balancer' && (
             <div className="inspector-section">
-              <div className="section-label">通道方位示意（四口固定启用）</div>
+              <div className="section-label">通道方位</div>
               <PortDiagram building={singleBuilding} />
             </div>
           )}
 
           {/* Custom planning note */}
           <div className="inspector-section">
-            <div className="section-label">自定义规划标注</div>
+            <div className="section-label">标注</div>
             <input
               id="building-label"
               name="buildingLabel"
               type="text"
               className="cad-input"
-              placeholder="输入简短标注（显示在 3D 顶面）"
+              placeholder="输入标注"
               value={singleBuilding.label ?? ''}
               onChange={(e) => onUpdateBuilding([singleBuilding.id], { label: e.target.value })}
             />
@@ -630,13 +630,13 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             </div>
           )}
           <div className="inspector-section">
-            <div className="section-label">模块规划标注</div>
+            <div className="section-label">标注</div>
             <input
               id="module-label"
               name="moduleLabel"
               type="text"
               className="cad-input"
-              placeholder="例如：电路板装配区"
+              placeholder="输入标注"
               value={singleModule.label ?? ''}
               onChange={(e) => onUpdateModuleLabel(singleModule.id, e.target.value)}
             />

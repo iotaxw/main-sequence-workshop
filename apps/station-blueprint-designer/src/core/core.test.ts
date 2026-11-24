@@ -1319,7 +1319,7 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
     }) as typeof fetch;
 
     try {
-      const cfg = { owner: 'iotaxw', repo: 'ms-private-bps', branch: 'main', basePath: 'blueprints', token: 'ghp_test_token' };
+      const cfg = { owner: 'example-user', repo: 'my-blueprints-private', branch: 'main', basePath: 'blueprints', token: 'ghp_test_token' };
       saveGitHubConfig(cfg);
       expect(loadSavedGitHubConfig()).toEqual(cfg);
 

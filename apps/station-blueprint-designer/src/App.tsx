@@ -1505,11 +1505,11 @@ export const App: React.FC = () => {
       .split('/')
       .filter(Boolean);
     if (parts.length < 2) {
-      setGhModal({ ...ghModal, error: '请填写仓库格式 owner/repo（例如 iotaxw/main-sequence-blueprints-private）。' });
+      setGhModal({ ...ghModal, error: '请填写 owner/repo 格式' });
       return;
     }
     if (!ghModal.token.trim()) {
-      setGhModal({ ...ghModal, error: '请填写仅授权该私有仓库 Contents 读写的 Fine-grained Token。' });
+      setGhModal({ ...ghModal, error: '请填写 Fine-grained PAT' });
       return;
     }
     setGhModal({ ...ghModal, busy: true, error: null });
@@ -2003,33 +2003,27 @@ export const App: React.FC = () => {
 
         {activeTool.kind !== 'select' && (
           <div className="cad-tool-banner">
-            {activeTool.kind === 'demolish' && '拆除刷 · 左键扫过拆除 · 右键 / Esc 退出'}
+            {activeTool.kind === 'demolish' && '拆除刷 · Esc 退出'}
             {activeTool.kind === 'place-module' &&
               `${getShortLabel(activeTool.moduleType, getModuleDef(activeTool.moduleType)?.nameZh)}${
                 activeTool.label ? ` [${activeTool.label}]` : ''
               }${
                 activeTool.moduleType === 'BPO_StationArmour_01' || activeTool.moduleType === 'BPO_StationArmour_01B'
-                  ? ' · M/F 上下翻转'
+                  ? ' · M 翻转'
                   : ''
-              } · Tab 组内轮换 · R 旋转 · Q/E 切层 · 右键取消`}
+              } · R 旋转 · Q/E 切层 · Esc 取消`}
             {activeTool.kind === 'place-building' &&
               `${getShortLabel(activeTool.buildingType, getBuildableDef(activeTool.buildingType)?.nameZh)}${
                 activeTool.recipeId ? ` [${getRecipeDef(activeTool.recipeId)?.nameZh ?? activeTool.recipeId}]` : ''
-              }${activeTool.label ? ` · ${activeTool.label}` : ''}${
-                activeTool.disabledPorts && activeTool.disabledPorts.length > 0
-                  ? ` · 禁${activeTool.disabledPorts.length}口`
-                  : ''
               }${
-                getBuildableDef(activeTool.buildingType)?.kind === 'belt'
-                  ? ' · 左键拖拉 · Shift+拖 L形规划 · Tab 换级'
-                  : getBuildableDef(activeTool.buildingType)?.kind === 'underground'
-                    ? ` (${activeTool.undergroundMode === 'out' ? '出口 OUT' : '入口 IN'}) · Tab 换级`
-                    : ' · Tab 组内轮换 · R 旋转 · Shift+左键覆盖'
-              } · 右键取消`}
+                getBuildableDef(activeTool.buildingType)?.kind === 'underground'
+                  ? ` · ${activeTool.undergroundMode === 'out' ? 'OUT' : 'IN'}`
+                  : ''
+              } · R 旋转 · Tab 换型 · Esc 取消`}
             {activeTool.kind === 'stamp-blueprint' &&
               (activeTool.fromCut
-                ? `剪切搬移「${activeTool.name}」 · 左键落位 · Shift 覆盖 · R 旋转 · M 镜像 · Q/E 切层 · Esc 取消(Ctrl+Z 撤销)`
-                : `幽灵蓝图「${activeTool.name}」 · 左键连续盖章 · Shift 覆盖 · R 旋转 · M 镜像 · 右键 / Esc 放下`)}
+                ? `剪切搬移「${activeTool.name}」 · R 旋转 · M 镜像 · Q/E 切层 · Esc 取消`
+                : `盖章「${activeTool.name}」 · Shift 覆盖 · R 旋转 · M 镜像 · Esc 放下`)}
           </div>
         )}
 
@@ -2077,21 +2071,18 @@ export const App: React.FC = () => {
           <div className="cad-modal" onClick={(e) => e.stopPropagation()}>
             <div className="panel-header">
               <div className="panel-title-wrap">
-                <span className="panel-tag">PRIVATE CLOUD</span>
-                <span className="panel-title">连接个人 GitHub 私有蓝图库</span>
+                <span className="panel-tag">CLOUD</span>
+                <span className="panel-title">GitHub 私有蓝图库</span>
               </div>
               <button type="button" className="icon-btn" onClick={() => !ghModal.busy && setGhModal(null)}>×</button>
             </div>
             <div className="modal-body">
-              <div className="modal-sub">
-                直接使用当前公开网页（代码永久同步），仅凭您本机浏览器内的 Fine-grained PAT 直连您的 GitHub 私有仓库读写私人蓝图，无需 GitHub Pro，也绝不暴露给其他访客。
-              </div>
               <label className="field-label">
-                <span>私有仓库（owner/repo）</span>
+                <span>仓库</span>
                 <input
                   type="text"
                   className="cad-input"
-                  placeholder="例如：iotaxw/main-sequence-blueprints-private"
+                  placeholder="owner/repo"
                   value={ghModal.repoSlug}
                   onChange={(e) => setGhModal({ ...ghModal, repoSlug: e.target.value })}
                 />
@@ -2107,18 +2098,18 @@ export const App: React.FC = () => {
                   />
                 </label>
                 <label className="field-label">
-                  <span>子目录（留空为仓库根目录）</span>
+                  <span>子目录</span>
                   <input
                     type="text"
                     className="cad-input"
-                    placeholder="例如：blueprints"
+                    placeholder="留空为根目录"
                     value={ghModal.basePath}
                     onChange={(e) => setGhModal({ ...ghModal, basePath: e.target.value })}
                   />
                 </label>
               </div>
               <label className="field-label">
-                <span>GitHub Fine-grained PAT（仅需该私有仓库 Contents 读写权限）</span>
+                <span>Fine-grained PAT</span>
                 <input
                   type="password"
                   className="cad-input"
@@ -2130,9 +2121,7 @@ export const App: React.FC = () => {
                   }}
                 />
               </label>
-              <div className="modal-sub">
-                安全说明：Token 仅存在当前浏览器 localStorage，仅发往官方 api.github.com；在公共设备用完点「断开并清除」即可立刻抹除。
-              </div>
+              <div className="modal-sub">Token 仅存本机浏览器，断开即清除</div>
               {ghModal.error && (
                 <div className="modal-sub" style={{ color: 'var(--line-disabled)' }}>
                   {ghModal.error}
@@ -2147,7 +2136,7 @@ export const App: React.FC = () => {
                   disabled={ghModal.busy}
                   onClick={() => void handleDisconnectGitHubRepo()}
                 >
-                  断开并清除 Token
+                  断开并清除
                 </button>
               )}
               <button type="button" className="cad-btn" disabled={ghModal.busy} onClick={() => setGhModal(null)}>
@@ -2159,7 +2148,7 @@ export const App: React.FC = () => {
                 disabled={ghModal.busy}
                 onClick={() => void handleConnectGitHubRepo()}
               >
-                {ghModal.busy ? '连接校验中...' : '测试并连接'}
+                {ghModal.busy ? '连接中...' : '连接'}
               </button>
             </div>
           </div>
@@ -2173,14 +2162,14 @@ export const App: React.FC = () => {
               <div className="panel-title-wrap">
                 <span className="panel-tag">SAVE</span>
                 <span className="panel-title">
-                  {saveDialog.mode === 'selection' ? '保存选区为新蓝图' : '保存当前空间站蓝图'}
+                  {saveDialog.mode === 'selection' ? '保存选区蓝图' : '保存蓝图'}
                 </span>
               </div>
               <button type="button" className="icon-btn" onClick={() => setSaveDialog(null)}>×</button>
             </div>
             <div className="modal-body">
               <label className="field-label">
-                <span>目标文件夹</span>
+                <span>目录</span>
                 <select
                   className="cad-input"
                   value={saveDialog.folder}
@@ -2188,13 +2177,13 @@ export const App: React.FC = () => {
                 >
                   {folderOptions.map((f) => (
                     <option key={f || '__root'} value={f}>
-                      {f ? `/${f}` : '/（根目录）'}
+                      {f ? `/${f}` : '/'}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="field-label">
-                <span>蓝图名称（自动保存为 .json）</span>
+                <span>名称</span>
                 <input
                   type="text"
                   className="cad-input"
@@ -2207,7 +2196,7 @@ export const App: React.FC = () => {
                 />
               </label>
               <div className="modal-sub">
-                包含 {saveDialog.docToSave.modules.length} 个空间站模块 · {saveDialog.docToSave.buildings.length} 个建筑
+                {saveDialog.docToSave.modules.length} 模 · {saveDialog.docToSave.buildings.length} 建
               </div>
             </div>
             <div className="modal-footer">
@@ -2226,14 +2215,14 @@ export const App: React.FC = () => {
             <div className="panel-header">
               <div className="panel-title-wrap">
                 <span className="panel-tag warn">CONFIRM</span>
-                <span className="panel-title">确认删除含内部建筑的模块</span>
+                <span className="panel-title">确认删除</span>
               </div>
               <button type="button" className="icon-btn" onClick={() => setDeleteConfirm(null)}>×</button>
             </div>
             <div className="modal-body">
               <p className="confirm-text">
-                即将删除 <strong>{deleteConfirm.moduleCount}</strong> 个空间站模块，将一并移除其内部的{' '}
-                <strong>{deleteConfirm.insideBuildingCount}</strong> 个机器/传送带（可用 Ctrl+Z 完整撤销）。
+                删除 <strong>{deleteConfirm.moduleCount}</strong> 个模块及内部{' '}
+                <strong>{deleteConfirm.insideBuildingCount}</strong> 个建筑（Ctrl+Z 可撤销）。
               </p>
             </div>
             <div className="modal-footer">
@@ -2250,7 +2239,7 @@ export const App: React.FC = () => {
                   setDeleteConfirm(null);
                 }}
               >
-                确认一并删除
+                确认删除
               </button>
             </div>
           </div>

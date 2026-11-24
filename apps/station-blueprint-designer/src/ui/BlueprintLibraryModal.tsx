@@ -326,18 +326,18 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                 ref={searchInputRef}
                 type="text"
                 className="cad-input bpm-search"
-                placeholder="搜索蓝图名称或路径..."
+                placeholder="搜索蓝图..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
               <span className="bpm-meta-hint">
-                {selectedFolder ? `/${selectedFolder}` : '全部'} · {visibleFiles.length} 份 · 单击抓取盖章 · 双击打开编辑 · Esc 关闭
+                {selectedFolder ? `/${selectedFolder}` : '全部'} · {visibleFiles.length} 份
               </span>
             </div>
 
             <div className="bpm-grid">
               {visibleFiles.length === 0 ? (
-                <div className="bpm-empty">当前目录下暂无蓝图，可点击右上角新建或拖入 .sav / .json 导入</div>
+                <div className="bpm-empty">暂无蓝图</div>
               ) : (
                 visibleFiles.map((file) => {
                   const cacheKey = `${file.path}@${file.updatedAt}`;

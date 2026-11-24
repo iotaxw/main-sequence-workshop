@@ -153,8 +153,6 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
           tree.map((node) => renderNode(node, 0))
         )}
       </div>
-
-      <div className="lib-hint">单击盖章 · 双击打开 · L 缩略图</div>
     </aside>
   );
 };
