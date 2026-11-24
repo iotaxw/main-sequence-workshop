@@ -3,9 +3,11 @@ import {
   findBuildingsInsideModule,
   findOverlappingBuildings,
   getBuildingSizeCells,
+  getBuildingSpatialIndex,
   getDocSpatialIndex,
   getModuleBoundsM,
   getModuleSizeUnits,
+  getModuleSpatialIndex,
   isCellBuildable,
   isPortToggleable,
   normalizeRotation,
@@ -515,23 +517,54 @@ export function boxSelectEntities(
   const buildingIds: string[] = [];
 
   if (viewMode === 'station') {
-    for (const m of doc.modules) {
-      const def = getModuleDef(m.type);
-      if (!def) continue;
-      if (!floorAllowed(m.floor, def.sizeUnits[2])) continue;
-      const [x0, y0, x1, y1] = getModuleBoundsM(m, def);
-      if (x1 >= box.minX && x0 <= box.maxX && y1 >= box.minY && y0 <= box.maxY) {
-        moduleIds.push(m.id);
+    if (layerMode === 'focus') {
+      const floorMods = getModuleSpatialIndex(doc.modules).modulesByFloor.get(focusFloor);
+      if (floorMods) {
+        const seen = new Set<string>();
+        for (let i = 0; i < floorMods.length; i++) {
+          const m = floorMods[i];
+          if (seen.has(m.id)) continue;
+          const def = getModuleDef(m.type);
+          if (!def) continue;
+          const [x0, y0, x1, y1] = getModuleBoundsM(m, def);
+          if (x1 >= box.minX && x0 <= box.maxX && y1 >= box.minY && y0 <= box.maxY) {
+            seen.add(m.id);
+            moduleIds.push(m.id);
+          }
+        }
+      }
+    } else {
+      for (let i = 0; i < doc.modules.length; i++) {
+        const m = doc.modules[i];
+        const def = getModuleDef(m.type);
+        if (!def) continue;
+        if (!floorAllowed(m.floor, def.sizeUnits[2])) continue;
+        const [x0, y0, x1, y1] = getModuleBoundsM(m, def);
+        if (x1 >= box.minX && x0 <= box.maxX && y1 >= box.minY && y0 <= box.maxY) {
+          moduleIds.push(m.id);
+        }
       }
     }
   } else {
-    for (const b of doc.buildings) {
-      const def = getBuildableDef(b.type);
-      if (!def) continue;
-      if (!floorAllowed(b.floor, 1)) continue;
-      const [w, d] = getBuildingSizeCells(def, b.rotation);
-      if (b.x + w >= box.minX && b.x <= box.maxX && b.y + d >= box.minY && b.y <= box.maxY) {
-        buildingIds.push(b.id);
+    const bIdx = getBuildingSpatialIndex(doc.buildings);
+    const checkFloor = (floorBlds: PlacedBuilding[]) => {
+      for (let i = 0; i < floorBlds.length; i++) {
+        const b = floorBlds[i];
+        const def = getBuildableDef(b.type);
+        if (!def) continue;
+        const [w, d] = getBuildingSizeCells(def, b.rotation);
+        if (b.x + w >= box.minX && b.x <= box.maxX && b.y + d >= box.minY && b.y <= box.maxY) {
+          buildingIds.push(b.id);
+        }
+      }
+    };
+    if (layerMode === 'focus') {
+      const floorBlds = bIdx.buildingsByFloor.get(focusFloor);
+      if (floorBlds) checkFloor(floorBlds);
+    } else {
+      for (const [f, floorBlds] of bIdx.buildingsByFloor.entries()) {
+        if (!floorAllowed(f, 1)) continue;
+        checkFloor(floorBlds);
       }
     }
   }

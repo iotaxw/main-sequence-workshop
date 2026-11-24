@@ -60,7 +60,7 @@ import type {
   ViewMode,
 } from './core/types';
 import { PITCH_SNAP_PRESETS } from './renderer/camera-rig';
-import { CadSceneController } from './renderer/scene-controller';
+import { type BoxSelectMode, CadSceneController } from './renderer/scene-controller';
 import { CAD_THEMES, type CadThemeId, loadSavedTheme, saveTheme } from './renderer/theme';
 import { BlueprintLibraryModal } from './ui/BlueprintLibraryModal';
 import { GameInteropMenu } from './ui/GameInteropMenu';
@@ -162,11 +162,33 @@ export const App: React.FC = () => {
   const hudCoordRef = useRef<HTMLSpanElement | null>(null);
   const hudGridRef = useRef<HTMLSpanElement | null>(null);
   const hudCamRef = useRef<HTMLSpanElement | null>(null);
+  const boxBadgeRef = useRef<HTMLDivElement | null>(null);
   const lastHudCellRef = useRef<string>('');
   const [beltPreview, setBeltPreview] = useState<Array<{ x: number; y: number; rotation: Rotation }>>([]);
-  const [boxSelectRect, setBoxSelectRect] = useState<{ minX: number; minY: number; maxX: number; maxY: number } | null>(null);
   const [forceReplaceHeld, setForceReplaceHeld] = useState(false);
   const [toast, setToast] = useState<{ text: string; kind: 'info' | 'warn' | 'error' } | null>(null);
+
+  const updateBoxBadge = useCallback(
+    (
+      visible: boolean,
+      clientX = 0,
+      clientY = 0,
+      text = '',
+      mode: BoxSelectMode = 'replace'
+    ) => {
+      const el = boxBadgeRef.current;
+      if (!el) return;
+      if (!visible) {
+        el.style.display = 'none';
+        return;
+      }
+      el.style.display = 'inline-flex';
+      el.style.transform = `translate3d(${Math.round(clientX + 16)}px, ${Math.round(clientY + 16)}px, 0)`;
+      el.dataset.mode = mode;
+      el.textContent = text;
+    },
+    []
+  );
 
   const updateLiveCursor = useCallback((world: { x: number; y: number } | null) => {
     cursorWorldRef.current = world;
@@ -231,7 +253,7 @@ export const App: React.FC = () => {
   };
 
   const dragRef = useRef<{
-    kind: 'none' | 'orbit' | 'pan' | 'box-select' | 'belt-stroke' | 'belt-plan' | 'demolish';
+    kind: 'none' | 'orbit' | 'pan' | 'box-select' | 'box-demolish' | 'shift-place-or-box' | 'belt-stroke' | 'belt-plan' | 'demolish';
     startX: number;
     startY: number;
     lastX: number;
@@ -241,7 +263,8 @@ export const App: React.FC = () => {
     beltCells: Array<[number, number]>;
     beltFlipCorner: boolean;
     beltReverse: boolean;
-    boxModifier: 'replace' | 'add' | 'sub';
+    boxModifier: BoxSelectMode;
+    liveSelection: SelectionState | null;
   }>({
     kind: 'none',
     startX: 0,
@@ -254,6 +277,7 @@ export const App: React.FC = () => {
     beltFlipCorner: false,
     beltReverse: false,
     boxModifier: 'replace',
+    liveSelection: null,
   });
 
   const spaceHeldRef = useRef(false);
@@ -361,7 +385,7 @@ export const App: React.FC = () => {
       activeTool,
       cursorWorld: cursorWorldRef.current,
       beltPreview,
-      boxSelectRect,
+      boxSelectRect: null,
       forceReplaceHeld,
       simulationIssues: simOverlayIssues,
     });
@@ -375,7 +399,6 @@ export const App: React.FC = () => {
     selectionLayerMode,
     activeTool,
     beltPreview,
-    boxSelectRect,
     forceReplaceHeld,
     simOverlayIssues,
   ]);
@@ -705,6 +728,14 @@ export const App: React.FC = () => {
       // Universal Esc close (works even while focused in search / text inputs!)
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (dragRef.current.kind === 'box-select' || dragRef.current.kind === 'box-demolish' || dragRef.current.kind === 'shift-place-or-box') {
+          dragRef.current.kind = 'none';
+          dragRef.current.moved = false;
+          dragRef.current.liveSelection = null;
+          sceneRef.current?.setLiveBoxSelect(null);
+          updateBoxBadge(false);
+          return;
+        }
         if (ghModal && !ghModal.busy) { setGhModal(null); return; }
         if (saveDialog) { setSaveDialog(null); return; }
         if (deleteConfirm) { setDeleteConfirm(null); return; }
@@ -1010,6 +1041,7 @@ export const App: React.FC = () => {
     showToast,
     simOpen,
     switchViewMode,
+    updateBoxBadge,
   ]);
 
   const clientToWorld = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
@@ -1059,6 +1091,21 @@ export const App: React.FC = () => {
     const { doc: curDoc, viewMode: vm, focusFloor: fl, activeTool: tool } = stateRef.current;
 
     if (tool.kind === 'demolish') {
+      if (e.shiftKey) {
+        dragRef.current = {
+          ...dragRef.current,
+          kind: 'box-demolish',
+          startX: e.clientX,
+          startY: e.clientY,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          moved: false,
+          startWorld: world,
+          boxModifier: 'demolish',
+          liveSelection: null,
+        };
+        return;
+      }
       dragRef.current = {
         ...dragRef.current,
         kind: 'demolish',
@@ -1082,6 +1129,21 @@ export const App: React.FC = () => {
     }
 
     if (tool.kind === 'place-module') {
+      if (e.shiftKey) {
+        dragRef.current = {
+          ...dragRef.current,
+          kind: 'shift-place-or-box',
+          startX: e.clientX,
+          startY: e.clientY,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          moved: false,
+          startWorld: world,
+          boxModifier: 'replace',
+          liveSelection: null,
+        };
+        return;
+      }
       const gx = Math.floor(world.x / STATION_UNIT_M);
       const gy = Math.floor(world.y / STATION_UNIT_M);
       const res = placeModuleCmd(curDoc, {
@@ -1120,6 +1182,22 @@ export const App: React.FC = () => {
         return;
       }
 
+      if (e.shiftKey) {
+        dragRef.current = {
+          ...dragRef.current,
+          kind: 'shift-place-or-box',
+          startX: e.clientX,
+          startY: e.clientY,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          moved: false,
+          startWorld: world,
+          boxModifier: 'replace',
+          liveSelection: null,
+        };
+        return;
+      }
+
       const [w, d] = getBuildingSizeCells(def, tool.rotation);
       const bx = Math.floor(world.x - w / 2 + 0.5);
       const by = Math.floor(world.y - d / 2 + 0.5);
@@ -1144,7 +1222,7 @@ export const App: React.FC = () => {
           ...(tool.portFilters && Object.keys(tool.portFilters).length > 0 ? { portFilters: { ...tool.portFilters } } : {}),
           ...(tool.filterItems && tool.filterItems.length > 0 ? { filterItems: [...tool.filterItems] } : {}),
         },
-        { allowForceReplace: e.shiftKey }
+        { allowForceReplace: false }
       );
       if (res.changed) {
         commitDoc(res.doc);
@@ -1194,6 +1272,7 @@ export const App: React.FC = () => {
       moved: false,
       startWorld: world,
       boxModifier: e.shiftKey ? 'add' : e.altKey ? 'sub' : 'replace',
+      liveSelection: null,
     };
   };
 
@@ -1223,13 +1302,62 @@ export const App: React.FC = () => {
     }
     if (!world) return;
 
-    if (d.kind === 'box-select' && d.moved && d.startWorld) {
-      setBoxSelectRect({
+    // Shapez 2 ergonomics: Shift+drag from a build tool smoothly transitions into real-time area select!
+    if (d.kind === 'shift-place-or-box' && d.moved) {
+      d.kind = 'box-select';
+      d.boxModifier = 'replace';
+    }
+
+    if ((d.kind === 'box-select' || d.kind === 'box-demolish') && d.moved && d.startWorld) {
+      const rect = {
         minX: Math.min(d.startWorld.x, world.x),
         minY: Math.min(d.startWorld.y, world.y),
         maxX: Math.max(d.startWorld.x, world.x),
         maxY: Math.max(d.startWorld.y, world.y),
-      });
+      };
+      const { doc: curDoc, viewMode: vm, focusFloor: fl, selection: prevSel, hideAbove: ha, selectionLayerMode: slm } =
+        stateRef.current;
+      const hitSel = boxSelectEntities(curDoc, rect, { viewMode: vm, focusFloor: fl, hideAbove: ha, layerMode: slm });
+
+      let effectiveSel: SelectionState;
+      if (d.kind === 'box-demolish') {
+        effectiveSel = hitSel;
+      } else if (d.boxModifier === 'add') {
+        effectiveSel = {
+          moduleIds: Array.from(new Set([...prevSel.moduleIds, ...hitSel.moduleIds])),
+          buildingIds: Array.from(new Set([...prevSel.buildingIds, ...hitSel.buildingIds])),
+        };
+      } else if (d.boxModifier === 'sub') {
+        const rmM = new Set(hitSel.moduleIds);
+        const rmB = new Set(hitSel.buildingIds);
+        effectiveSel = {
+          moduleIds: prevSel.moduleIds.filter((id) => !rmM.has(id)),
+          buildingIds: prevSel.buildingIds.filter((id) => !rmB.has(id)),
+        };
+      } else {
+        effectiveSel = hitSel;
+      }
+
+      d.liveSelection = effectiveSel;
+      sceneRef.current?.setLiveBoxSelect(rect, d.boxModifier, effectiveSel);
+
+      const mCnt = effectiveSel.moduleIds.length;
+      const bCnt = effectiveSel.buildingIds.length;
+      const countText =
+        mCnt > 0 && bCnt > 0
+          ? `${mCnt} 模 · ${bCnt} 建`
+          : mCnt > 0
+            ? `${mCnt} 模`
+            : `${bCnt} 建`;
+      const prefix =
+        d.kind === 'box-demolish'
+          ? '框选拆除'
+          : d.boxModifier === 'add'
+            ? '加选'
+            : d.boxModifier === 'sub'
+              ? '减选'
+              : '框选';
+      updateBoxBadge(true, e.clientX, e.clientY, `${prefix} ${countText}`, d.boxModifier);
       return;
     }
 
@@ -1280,34 +1408,106 @@ export const App: React.FC = () => {
       }
     } else if (d.kind === 'pan' && !d.moved && e.button === 1 && world) {
       pipetteAtWorld(world);
-    } else if (d.kind === 'box-select') {
-      const { doc: curDoc, viewMode: vm, focusFloor: fl, selection: prevSel, hideAbove: ha, selectionLayerMode: slm } =
-        stateRef.current;
-      if (d.moved && d.startWorld && world) {
-        const hitSel = boxSelectEntities(
-          curDoc,
-          {
-            minX: Math.min(d.startWorld.x, world.x),
-            minY: Math.min(d.startWorld.y, world.y),
-            maxX: Math.max(d.startWorld.x, world.x),
-            maxY: Math.max(d.startWorld.y, world.y),
-          },
-          { viewMode: vm, focusFloor: fl, hideAbove: ha, layerMode: slm }
-        );
-        if (d.boxModifier === 'add') {
-          setSelection({
-            moduleIds: Array.from(new Set([...prevSel.moduleIds, ...hitSel.moduleIds])),
-            buildingIds: Array.from(new Set([...prevSel.buildingIds, ...hitSel.buildingIds])),
-          });
-        } else if (d.boxModifier === 'sub') {
-          const rmM = new Set(hitSel.moduleIds);
-          const rmB = new Set(hitSel.buildingIds);
-          setSelection({
-            moduleIds: prevSel.moduleIds.filter((id) => !rmM.has(id)),
-            buildingIds: prevSel.buildingIds.filter((id) => !rmB.has(id)),
-          });
+    } else if (d.kind === 'shift-place-or-box' && !d.moved && world) {
+      // Short Shift+Click while holding a module or machine -> perform force-replace placement!
+      const { doc: curDoc, focusFloor: fl, activeTool: tool } = stateRef.current;
+      if (tool.kind === 'place-module') {
+        const gx = Math.floor(world.x / STATION_UNIT_M);
+        const gy = Math.floor(world.y / STATION_UNIT_M);
+        const res = placeModuleCmd(curDoc, {
+          type: tool.moduleType,
+          gx,
+          gy,
+          floor: fl,
+          rotation: tool.rotation,
+          ...(tool.label ? { label: tool.label } : {}),
+        });
+        if (res.changed) commitDoc(res.doc);
+        else if (res.message) showToast(res.message, 'warn');
+      } else if (tool.kind === 'place-building') {
+        const def = getBuildableDef(tool.buildingType);
+        if (def) {
+          const [w, dep] = getBuildingSizeCells(def, tool.rotation);
+          const bx = Math.floor(world.x - w / 2 + 0.5);
+          const by = Math.floor(world.y - dep / 2 + 0.5);
+          const ugMode = def.kind === 'underground' ? (tool.undergroundMode ?? 'in') : undefined;
+          const res = placeBuildingCmd(
+            curDoc,
+            {
+              type: tool.buildingType,
+              x: bx,
+              y: by,
+              floor: fl,
+              rotation: tool.rotation,
+              undergroundMode: ugMode,
+              ...(def.kind === 'underground' && ugMode === 'out' && tool.pendingUndergroundInId
+                ? { undergroundPartnerId: tool.pendingUndergroundInId }
+                : {}),
+              ...(tool.recipeId ? { recipeId: tool.recipeId } : {}),
+              ...(tool.label ? { label: tool.label } : {}),
+              ...(tool.disabledPorts && tool.disabledPorts.length > 0 ? { disabledPorts: [...tool.disabledPorts] } : {}),
+              ...(tool.priorityIn !== undefined ? { priorityIn: tool.priorityIn } : {}),
+              ...(tool.priorityOut !== undefined ? { priorityOut: tool.priorityOut } : {}),
+              ...(tool.portFilters && Object.keys(tool.portFilters).length > 0 ? { portFilters: { ...tool.portFilters } } : {}),
+              ...(tool.filterItems && tool.filterItems.length > 0 ? { filterItems: [...tool.filterItems] } : {}),
+            },
+            { allowForceReplace: true }
+          );
+          if (res.changed) {
+            commitDoc(res.doc);
+            if (def.kind === 'underground') {
+              const nextMode = ugMode === 'out' ? 'in' : 'out';
+              setActiveTool({
+                ...tool,
+                undergroundMode: nextMode,
+                pendingUndergroundInId: ugMode === 'in' ? res.addedBuildingIds?.[0] : undefined,
+              });
+            }
+          } else if (res.message) {
+            showToast(res.message, 'warn');
+          }
+        }
+      }
+    } else if (d.kind === 'box-demolish') {
+      const targetSel = d.liveSelection;
+      sceneRef.current?.setLiveBoxSelect(null);
+      updateBoxBadge(false);
+      if (d.moved && targetSel && (targetSel.moduleIds.length > 0 || targetSel.buildingIds.length > 0)) {
+        requestDeleteSelection(targetSel);
+      } else if (world) {
+        const { doc: curDoc, viewMode: vm, focusFloor: fl } = stateRef.current;
+        if (vm === 'building') {
+          const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), fl);
+          if (b) {
+            const res = deleteSelectionCmd(curDoc, { moduleIds: [], buildingIds: [b.id] });
+            if (res.changed) commitDoc(res.doc);
+          }
         } else {
-          setSelection(hitSel);
+          const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
+          if (m) requestDeleteSelection({ moduleIds: [m.id], buildingIds: [] });
+        }
+      }
+    } else if (d.kind === 'box-select') {
+      const { doc: curDoc, viewMode: vm, focusFloor: fl, selection: prevSel, hideAbove: ha, selectionLayerMode: slm, activeTool: curTool } =
+        stateRef.current;
+      sceneRef.current?.setLiveBoxSelect(null);
+      updateBoxBadge(false);
+      if (d.moved && d.startWorld && world) {
+        const finalSel =
+          d.liveSelection ??
+          boxSelectEntities(
+            curDoc,
+            {
+              minX: Math.min(d.startWorld.x, world.x),
+              minY: Math.min(d.startWorld.y, world.y),
+              maxX: Math.max(d.startWorld.x, world.x),
+              maxY: Math.max(d.startWorld.y, world.y),
+            },
+            { viewMode: vm, focusFloor: fl, hideAbove: ha, layerMode: slm }
+          );
+        setSelection(finalSel);
+        if (curTool.kind !== 'select' && (finalSel.moduleIds.length > 0 || finalSel.buildingIds.length > 0)) {
+          setActiveTool({ kind: 'select' });
         }
       } else if (world) {
         const cellX = Math.floor(world.x);
@@ -1365,7 +1565,6 @@ export const App: React.FC = () => {
           }
         }
       }
-      setBoxSelectRect(null);
     } else if (d.kind === 'belt-stroke' || d.kind === 'belt-plan') {
       const tool = stateRef.current.activeTool;
       if (tool.kind === 'place-building' && beltPreview.length > 0) {
@@ -1377,6 +1576,7 @@ export const App: React.FC = () => {
 
     dragRef.current.kind = 'none';
     dragRef.current.moved = false;
+    dragRef.current.liveSelection = null;
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -1972,6 +2172,7 @@ export const App: React.FC = () => {
         />
 
         <div className="cad-focal-vignette" aria-hidden="true" />
+        <div ref={boxBadgeRef} className="cad-box-badge" style={{ display: 'none' }} />
 
         <div className={`cad-hud-topright ${hasRightPanel ? 'shifted' : ''}`} aria-live="off">
           <div className="hud-row primary">
@@ -2035,7 +2236,7 @@ export const App: React.FC = () => {
 
         {activeTool.kind !== 'select' && (
           <div className="cad-tool-banner">
-            {activeTool.kind === 'demolish' && '拆除刷 · Esc 退出'}
+            {activeTool.kind === 'demolish' && '拆除刷 · Shift+拖 框选拆除 · Esc 退出'}
             {activeTool.kind === 'place-module' &&
               `${getShortLabel(activeTool.moduleType, getModuleDef(activeTool.moduleType)?.nameZh)}${
                 activeTool.label ? ` [${activeTool.label}]` : ''

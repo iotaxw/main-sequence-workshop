@@ -23,11 +23,13 @@ export function packCellKey(x: number, y: number): number {
 export interface ModuleSpatialIndex {
   modulesByFloor: Map<number, PlacedModule[]>;
   moduleGridByFloor: Map<number, Map<number, PlacedModule[]>>;
+  moduleById: Map<string, PlacedModule>;
 }
 
 export interface BuildingSpatialIndex {
   buildingsByFloor: Map<number, PlacedBuilding[]>;
   buildingCellByFloor: Map<number, Map<number, PlacedBuilding | PlacedBuilding[]>>;
+  buildingById: Map<string, PlacedBuilding>;
   undergrounds: PlacedBuilding[];
 }
 
@@ -46,8 +48,10 @@ export function getModuleSpatialIndex(modules: PlacedModule[]): ModuleSpatialInd
 
   const modulesByFloor = new Map<number, PlacedModule[]>();
   const moduleGridByFloor = new Map<number, Map<number, PlacedModule[]>>();
+  const moduleById = new Map<string, PlacedModule>();
   for (let i = 0; i < modules.length; i++) {
     const mod = modules[i];
+    moduleById.set(mod.id, mod);
     const def = getModuleDef(mod.type);
     const [wu, du, hu] = def ? getModuleSizeUnits(def, mod.rotation) : [1, 1, 1];
     for (let df = 0; df < hu; df++) {
@@ -75,7 +79,7 @@ export function getModuleSpatialIndex(modules: PlacedModule[]): ModuleSpatialInd
     }
   }
 
-  const index: ModuleSpatialIndex = { modulesByFloor, moduleGridByFloor };
+  const index: ModuleSpatialIndex = { modulesByFloor, moduleGridByFloor, moduleById };
   moduleIndexCache.set(modules, index);
   return index;
 }
@@ -90,10 +94,12 @@ export function getBuildingSpatialIndex(buildings: PlacedBuilding[]): BuildingSp
 
   const buildingsByFloor = new Map<number, PlacedBuilding[]>();
   const buildingCellByFloor = new Map<number, Map<number, PlacedBuilding | PlacedBuilding[]>>();
+  const buildingById = new Map<string, PlacedBuilding>();
   const undergrounds: PlacedBuilding[] = [];
 
   for (let i = 0; i < buildings.length; i++) {
     const b = buildings[i];
+    buildingById.set(b.id, b);
     const def = getBuildableDef(b.type);
     if (!def) continue;
     if (def.kind === 'underground') undergrounds.push(b);
@@ -126,7 +132,7 @@ export function getBuildingSpatialIndex(buildings: PlacedBuilding[]): BuildingSp
     }
   }
 
-  const index: BuildingSpatialIndex = { buildingsByFloor, buildingCellByFloor, undergrounds };
+  const index: BuildingSpatialIndex = { buildingsByFloor, buildingCellByFloor, buildingById, undergrounds };
   buildingIndexCache.set(buildings, index);
   return index;
 }
@@ -138,8 +144,10 @@ export function getDocSpatialIndex(doc: BlueprintDocument): DocSpatialIndex {
   return {
     modulesByFloor: m.modulesByFloor,
     moduleGridByFloor: m.moduleGridByFloor,
+    moduleById: m.moduleById,
     buildingsByFloor: b.buildingsByFloor,
     buildingCellByFloor: b.buildingCellByFloor,
+    buildingById: b.buildingById,
     undergrounds: b.undergrounds,
   };
 }

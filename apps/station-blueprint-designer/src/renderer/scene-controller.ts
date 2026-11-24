@@ -8,10 +8,12 @@ import {
   FLOOR_VISUAL_SPACING,
   getBuildingCenterM,
   getBuildingSizeCells,
+  getBuildingSpatialIndex,
   getDocSpatialIndex,
   getModuleBoundsM,
   getModuleCenterM,
   getModuleSizeUnits,
+  getModuleSpatialIndex,
   getModuleWorldConnectors,
   isCellBuildable,
   packCellKey,
@@ -44,6 +46,8 @@ import {
 } from './line-art';
 import { createRoundedGridOverlay } from './rounded-grid-shader';
 import { CAD_THEMES, type CadThemeId, type CadThemePalette } from './theme';
+
+export type BoxSelectMode = 'replace' | 'add' | 'sub' | 'demolish';
 
 export interface SceneRenderState {
   doc: BlueprintDocument;
@@ -681,6 +685,10 @@ export class CadSceneController {
   private keysDown = new Set<string>();
   private lastState: SceneRenderState | null = null;
   private liveCursorWorld: { x: number; y: number } | null = null;
+  private liveBoxRect: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+  private liveBoxMode: BoxSelectMode = 'replace';
+  private livePreviewSelection: SelectionState | null = null;
+  private lastLiveSelSig = '';
   private lastPreviewKey = '';
   private lastDockHintKey = '';
   private activePalette: CadThemePalette = CAD_THEMES['platinum-gold'];
@@ -844,6 +852,50 @@ export class CadSceneController {
     return `stamp:${tool.blueprint.id}:${tool.rotation}:${state.focusFloor}:${gx},${gy}`;
   }
 
+  private computeSelectionSig(sel: SelectionState, mode: BoxSelectMode, isLive: boolean): string {
+    const ml = sel.moduleIds.length;
+    const bl = sel.buildingIds.length;
+    const mHead = ml > 0 ? sel.moduleIds[0] : '';
+    const mTail = ml > 1 ? sel.moduleIds[ml - 1] : '';
+    const bHead = bl > 0 ? sel.buildingIds[0] : '';
+    const bTail = bl > 1 ? sel.buildingIds[bl - 1] : '';
+    return `${isLive ? mode : 'idle'}|${ml}:${mHead}:${mTail}|${bl}:${bHead}:${bTail}`;
+  }
+
+  /**
+   * Shapez 2 style real-time area selection & area demolish highlighter (ZERO React re-renders!).
+   * Continuously updates the 3D drag box + ground grid glow AND highlights every entity inside
+   * the box live as the user drags.
+   */
+  setLiveBoxSelect(
+    rect: { minX: number; minY: number; maxX: number; maxY: number } | null,
+    mode: BoxSelectMode = 'replace',
+    previewSelection: SelectionState | null = null
+  ): void {
+    this.liveBoxRect = rect;
+    this.liveBoxMode = mode;
+    this.livePreviewSelection = rect ? previewSelection : null;
+
+    const state = this.lastState;
+    if (!state) return;
+    const palette = CAD_THEMES[state.theme];
+    const effState: SceneRenderState = {
+      ...state,
+      cursorWorld: this.liveCursorWorld,
+      boxSelectRect: rect,
+    };
+
+    this.updateRoundedGrid(effState);
+    this.rebuildBoxSelect(effState, palette, mode);
+
+    const activeSel = this.livePreviewSelection ?? state.selection;
+    const nextSig = this.computeSelectionSig(activeSel, mode, Boolean(rect));
+    if (nextSig !== this.lastLiveSelSig) {
+      this.lastLiveSelSig = nextSig;
+      this.rebuildSelectionOverlay(effState, palette);
+    }
+  }
+
   /**
    * Direct high-frequency cursor update called from pointermove WITHOUT triggering React re-renders!
    * Updates GPU rounded-grid uniform continuously and only rebuilds ghost/dock hints when snapped grid cell changes.
@@ -852,7 +904,7 @@ export class CadSceneController {
     this.liveCursorWorld = world;
     const state = this.lastState;
     if (!state) return;
-    const effState: SceneRenderState = { ...state, cursorWorld: world };
+    const effState: SceneRenderState = { ...state, cursorWorld: world, boxSelectRect: this.liveBoxRect };
     this.updateRoundedGrid(effState);
 
     const palette = CAD_THEMES[state.theme];
@@ -872,7 +924,8 @@ export class CadSceneController {
   syncState(state: SceneRenderState): void {
     const prev = this.lastState;
     const effCursor = state.cursorWorld ?? this.liveCursorWorld;
-    const effState: SceneRenderState = effCursor !== state.cursorWorld ? { ...state, cursorWorld: effCursor } : state;
+    const effBox = state.boxSelectRect ?? this.liveBoxRect;
+    const effState: SceneRenderState = { ...state, cursorWorld: effCursor, boxSelectRect: effBox };
     this.lastState = effState;
 
     const palette = CAD_THEMES[effState.theme];
@@ -905,6 +958,8 @@ export class CadSceneController {
       prev.selection !== effState.selection ||
       prev.simulationIssues !== effState.simulationIssues;
     if (selectionChanged) {
+      const activeSel = this.livePreviewSelection ?? effState.selection;
+      this.lastLiveSelSig = this.computeSelectionSig(activeSel, this.liveBoxMode, Boolean(effBox));
       this.rebuildSelectionOverlay(effState, palette);
     }
 
@@ -923,7 +978,7 @@ export class CadSceneController {
     }
 
     if (!prev || prev.boxSelectRect !== effState.boxSelectRect || prev.selectionLayerMode !== effState.selectionLayerMode || prev.focusFloor !== effState.focusFloor) {
-      this.rebuildBoxSelect(effState, palette);
+      this.rebuildBoxSelect(effState, palette, this.liveBoxMode);
     }
   }
 
@@ -1405,73 +1460,112 @@ export class CadSceneController {
   }
 
   /**
-   * Ultra-fast selection highlight overlay (never rebuilds world batches!).
+   * Ultra-fast O(|selected|) Shapez 2 selection highlight overlay (never rebuilds world batches!).
+   * Renders BOTH crisp perimeter outlines AND merged luminous translucent top pads so every
+   * entity being selected (or targeted for Shift area-demolish) glows unmistakably in real time.
    */
   private rebuildSelectionOverlay(state: SceneRenderState, palette: CadThemePalette): void {
     this.clearGroup(this.selectionGroup);
-    const hasSelection = state.selection.moduleIds.length > 0 || state.selection.buildingIds.length > 0;
+    const activeSel = this.livePreviewSelection ?? state.selection;
+    const isDemolishPreview = Boolean(this.liveBoxRect && this.liveBoxMode === 'demolish');
+    const highlightColor = isDemolishPreview ? palette.invalidGhost : palette.selectOutline;
+    const hasSelection = activeSel.moduleIds.length > 0 || activeSel.buildingIds.length > 0;
     const simIssues = state.simulationIssues ?? [];
     if (!hasSelection && simIssues.length === 0) return;
 
-    const selectedMods = new Set(state.selection.moduleIds);
-    const selectedBlds = new Set(state.selection.buildingIds);
     const pts: number[] = [];
+    const fillTris: number[] = [];
 
-    for (const mod of state.doc.modules) {
-      if (!selectedMods.has(mod.id)) continue;
-      const def = getModuleDef(mod.type);
-      if (!def) continue;
-      const op = this.layerOpacityFor(mod.floor, state.focusFloor, state.hideAbove);
-      if (op <= 0.01) continue;
-      const [x0, z0, x1, z1] = getModuleBoundsM(mod, def);
-      const y = mod.floor * FLOOR_VISUAL_SPACING + 0.11;
-      const pad = 0.08;
-      pts.push(
-        x0 + pad, y, z0 + pad, x1 - pad, y, z0 + pad,
-        x1 - pad, y, z0 + pad, x1 - pad, y, z1 - pad,
-        x1 - pad, y, z1 - pad, x0 + pad, y, z1 - pad,
-        x0 + pad, y, z1 - pad, x0 + pad, y, z0 + pad
-      );
-      // Corner bracket ticks for crisp CAD selection emphasis
-      const cLen = 1.6;
-      pts.push(
-        x0 - 0.15, y, z0 - 0.15, x0 + cLen, y, z0 - 0.15,
-        x0 - 0.15, y, z0 - 0.15, x0 - 0.15, y, z0 + cLen,
-        x1 + 0.15, y, z0 - 0.15, x1 - cLen, y, z0 - 0.15,
-        x1 + 0.15, y, z0 - 0.15, x1 + 0.15, y, z0 + cLen,
-        x1 + 0.15, y, z1 + 0.15, x1 - cLen, y, z1 + 0.15,
-        x1 + 0.15, y, z1 + 0.15, x1 + 0.15, y, z1 - cLen,
-        x0 - 0.15, y, z1 + 0.15, x0 + cLen, y, z1 + 0.15,
-        x0 - 0.15, y, z1 + 0.15, x0 - 0.15, y, z1 - cLen
-      );
+    if (activeSel.moduleIds.length > 0) {
+      const modById = getModuleSpatialIndex(state.doc.modules).moduleById;
+      for (let i = 0; i < activeSel.moduleIds.length; i++) {
+        const mod = modById.get(activeSel.moduleIds[i]);
+        if (!mod) continue;
+        const def = getModuleDef(mod.type);
+        if (!def) continue;
+        const op = this.layerOpacityFor(mod.floor, state.focusFloor, state.hideAbove);
+        if (op <= 0.01) continue;
+        const [x0, z0, x1, z1] = getModuleBoundsM(mod, def);
+        const y = mod.floor * FLOOR_VISUAL_SPACING + 0.11;
+        const yf = y - 0.012;
+        const pad = 0.08;
+        const fx0 = x0 + pad;
+        const fz0 = z0 + pad;
+        const fx1 = x1 - pad;
+        const fz1 = z1 - pad;
+        fillTris.push(
+          fx0, yf, fz0, fx0, yf, fz1, fx1, yf, fz1,
+          fx0, yf, fz0, fx1, yf, fz1, fx1, yf, fz0
+        );
+        pts.push(
+          fx0, y, fz0, fx1, y, fz0,
+          fx1, y, fz0, fx1, y, fz1,
+          fx1, y, fz1, fx0, y, fz1,
+          fx0, y, fz1, fx0, y, fz0
+        );
+        // Corner bracket ticks for crisp CAD selection emphasis
+        const cLen = 1.6;
+        pts.push(
+          x0 - 0.15, y, z0 - 0.15, x0 + cLen, y, z0 - 0.15,
+          x0 - 0.15, y, z0 - 0.15, x0 - 0.15, y, z0 + cLen,
+          x1 + 0.15, y, z0 - 0.15, x1 - cLen, y, z0 - 0.15,
+          x1 + 0.15, y, z0 - 0.15, x1 + 0.15, y, z0 + cLen,
+          x1 + 0.15, y, z1 + 0.15, x1 - cLen, y, z1 + 0.15,
+          x1 + 0.15, y, z1 + 0.15, x1 + 0.15, y, z1 - cLen,
+          x0 - 0.15, y, z1 + 0.15, x0 + cLen, y, z1 + 0.15,
+          x0 - 0.15, y, z1 + 0.15, x0 - 0.15, y, z1 - cLen
+        );
+      }
     }
 
-    for (const b of state.doc.buildings) {
-      if (!selectedBlds.has(b.id)) continue;
-      const def = getBuildableDef(b.type);
-      if (!def) continue;
-      const op = this.layerOpacityFor(b.floor, state.focusFloor, state.hideAbove);
-      if (op <= 0.01) continue;
-      const [w, d] = getBuildingSizeCells(def, b.rotation);
-      const y = b.floor * FLOOR_VISUAL_SPACING + 0.12;
-      const x0 = b.x + 0.03;
-      const z0 = b.y + 0.03;
-      const x1 = b.x + w - 0.03;
-      const z1 = b.y + d - 0.03;
-      pts.push(
-        x0, y, z0, x1, y, z0,
-        x1, y, z0, x1, y, z1,
-        x1, y, z1, x0, y, z1,
-        x0, y, z1, x0, y, z0
-      );
+    if (activeSel.buildingIds.length > 0) {
+      const bldById = getBuildingSpatialIndex(state.doc.buildings).buildingById;
+      for (let i = 0; i < activeSel.buildingIds.length; i++) {
+        const b = bldById.get(activeSel.buildingIds[i]);
+        if (!b) continue;
+        const def = getBuildableDef(b.type);
+        if (!def) continue;
+        const op = this.layerOpacityFor(b.floor, state.focusFloor, state.hideAbove);
+        if (op <= 0.01) continue;
+        const [w, d] = getBuildingSizeCells(def, b.rotation);
+        const y = b.floor * FLOOR_VISUAL_SPACING + 0.125;
+        const yf = y - 0.012;
+        const x0 = b.x + 0.04;
+        const z0 = b.y + 0.04;
+        const x1 = b.x + w - 0.04;
+        const z1 = b.y + d - 0.04;
+        fillTris.push(
+          x0, yf, z0, x0, yf, z1, x1, yf, z1,
+          x0, yf, z0, x1, yf, z1, x1, yf, z0
+        );
+        pts.push(
+          x0, y, z0, x1, y, z0,
+          x1, y, z0, x1, y, z1,
+          x1, y, z1, x0, y, z1,
+          x0, y, z1, x0, y, z0
+        );
+      }
+    }
+
+    if (fillTris.length >= 9) {
+      const fillGeo = new THREE.BufferGeometry();
+      fillGeo.setAttribute('position', new THREE.Float32BufferAttribute(fillTris, 3));
+      const fillMat = new THREE.MeshBasicMaterial({
+        color: highlightColor,
+        transparent: true,
+        opacity: isDemolishPreview ? 0.24 : palette.isLight ? 0.18 : 0.15,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      this.selectionGroup.add(new THREE.Mesh(fillGeo, fillMat));
     }
 
     if (pts.length >= 6) {
       this.selectionGroup.add(
         createCrispLineSegments(pts, {
-          color: palette.selectOutline,
+          color: highlightColor,
           opacity: 1.0,
-          widthPx: 1.75,
+          widthPx: isDemolishPreview ? 1.9 : 1.75,
         })
       );
     }
@@ -2129,7 +2223,11 @@ export class CadSceneController {
     }
   }
 
-  private rebuildBoxSelect(state: SceneRenderState, palette: CadThemePalette): void {
+  private rebuildBoxSelect(
+    state: SceneRenderState,
+    palette: CadThemePalette,
+    mode: BoxSelectMode = 'replace'
+  ): void {
     this.clearGroup(this.boxSelectGroup);
     if (!state.boxSelectRect) return;
     const { minX, minY, maxX, maxY } = state.boxSelectRect;
@@ -2152,18 +2250,26 @@ export class CadSceneController {
     const y1 = highFloor * FLOOR_VISUAL_SPACING + (highFloor === lowFloor ? 0.6 : 1.6);
     const h = Math.max(0.55, y1 - y0);
 
+    const boxColor =
+      mode === 'demolish'
+        ? palette.invalidGhost
+        : mode === 'sub'
+          ? palette.simWarnColor
+          : palette.selectOutline;
+    const fillOpacity = mode === 'demolish' ? 0.11 : 0.07;
+
     const geo = new THREE.BoxGeometry(w, h, d);
     const fill = new THREE.Mesh(
       geo,
-      new THREE.MeshBasicMaterial({ color: palette.selectOutline, transparent: true, opacity: 0.06, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: boxColor, transparent: true, opacity: fillOpacity, depthWrite: false })
     );
     fill.position.set(cx, (y0 + y1) / 2, cy);
     this.boxSelectGroup.add(fill);
 
     const edges = createCrispLineSegments(edgesToPositions(new THREE.EdgesGeometry(geo)), {
-      color: palette.selectOutline,
-      opacity: 0.84,
-      widthPx: 1.25,
+      color: boxColor,
+      opacity: mode === 'demolish' ? 0.96 : 0.88,
+      widthPx: mode === 'demolish' ? 1.55 : 1.35,
     });
     edges.position.copy(fill.position);
     this.boxSelectGroup.add(edges);

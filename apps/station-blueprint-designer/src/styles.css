@@ -1887,6 +1887,35 @@ body,
   right: 318px;
 }
 
+.cad-box-badge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 65;
+  pointer-events: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border-focus);
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.36);
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.cad-box-badge[data-mode='demolish'] {
+  border-color: var(--line-disabled);
+  color: var(--text-danger);
+}
+
+.cad-box-badge[data-mode='sub'] {
+  border-color: var(--line-warn);
+  color: var(--text-warn);
+}
+
 .hud-row {
   display: flex;
   align-items: center;
