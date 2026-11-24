@@ -391,24 +391,73 @@ pub fn encode_elevator_or_teleporter_label(label: Option<&str>) -> Vec<u8> {
     w.buf
 }
 
-pub fn decode_dock_name(bytes: &[u8]) -> Result<Option<String>> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DockFilterEntry {
+    pub item_native: String,
+    pub b_loading: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DockConfig {
+    pub display_name: String,
+    pub filters: Vec<DockFilterEntry>,
+}
+
+/// Verified from Dock::SaveConfig (0x1442d6670) & SerializeDockFilters (0x1443137f0):
+/// u16 version(1) + FString DisplayName + i32 FilterCount + N * (FString ItemName + u32 bLoading).
+pub fn decode_dock_config(bytes: &[u8]) -> Result<DockConfig> {
     if bytes.is_empty() {
-        return Ok(None);
+        return Ok(DockConfig {
+            display_name: String::new(),
+            filters: Vec::new(),
+        });
     }
     let mut r = ByteReader::new(bytes);
     let _ver = r.read_u16()?;
-    let name = r.read_fstring()?;
-    if name.is_empty() {
+    let display_name = r.read_fstring()?;
+    let count = r.read_i32()?;
+    if count < 0 {
+        bail!("negative Dock Filters count {count}");
+    }
+    let mut filters = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let item_native = r.read_fstring()?;
+        let b_loading = r.read_u32()? != 0;
+        filters.push(DockFilterEntry {
+            item_native,
+            b_loading,
+        });
+    }
+    Ok(DockConfig {
+        display_name,
+        filters,
+    })
+}
+
+pub fn encode_dock_config(cfg: &DockConfig) -> Vec<u8> {
+    let mut w = ByteWriter::new();
+    w.write_u16(1);
+    w.write_fstring(&cfg.display_name);
+    w.write_i32(cfg.filters.len() as i32);
+    for f in &cfg.filters {
+        w.write_fstring(&f.item_native);
+        w.write_u32(if f.b_loading { 1 } else { 0 });
+    }
+    w.buf
+}
+
+pub fn decode_dock_name(bytes: &[u8]) -> Result<Option<String>> {
+    let cfg = decode_dock_config(bytes)?;
+    if cfg.display_name.is_empty() {
         Ok(None)
     } else {
-        Ok(Some(name))
+        Ok(Some(cfg.display_name))
     }
 }
 
 pub fn encode_dock_config_simple(name: Option<&str>) -> Vec<u8> {
-    let mut w = ByteWriter::new();
-    w.write_u16(1);
-    w.write_fstring(name.unwrap_or(""));
-    w.write_i32(0); // empty DockFilters
-    w.buf
+    encode_dock_config(&DockConfig {
+        display_name: name.unwrap_or("").to_owned(),
+        filters: Vec::new(),
+    })
 }

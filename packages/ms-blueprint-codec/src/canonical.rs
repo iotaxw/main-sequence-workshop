@@ -40,6 +40,15 @@ pub struct ModuleNativeMeta {
     pub default_machines: Vec<NativeDefaultMachine>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DockPortConfig {
+    #[serde(rename = "portIndex")]
+    pub port_index: i32,
+    #[serde(rename = "itemId")]
+    pub item_id: String,
+    pub mode: String, // "load" | "unload"
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlacedModule {
     pub id: String,
@@ -51,6 +60,10 @@ pub struct PlacedModule {
     pub rotation: u8,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    #[serde(default, rename = "recipeId", skip_serializing_if = "Option::is_none")]
+    pub recipe_id: Option<String>,
+    #[serde(default, rename = "dockPorts", skip_serializing_if = "Option::is_none")]
+    pub dock_ports: Option<Vec<DockPortConfig>>,
     #[serde(default, rename = "paletteId", skip_serializing_if = "Option::is_none")]
     pub palette_id: Option<i32>,
     #[serde(default, rename = "miningItem", skip_serializing_if = "Option::is_none")]

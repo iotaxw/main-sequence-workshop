@@ -1211,8 +1211,8 @@ describe('Shared Rust/WASM native .sav <-> Canonical Blueprint JSON codec', () =
     expect(imported.doc.modules.length).toBe(starter.modules.length);
     expect(imported.doc.buildings.length).toBe(starter.buildings.length);
 
-    // Exhaustive 100% module + buildable coverage matrix through browser WASM!
-    const allModulesDoc = createEmptyBlueprint('全量27模块36建筑WASM确定性核验');
+    // Exhaustive 100% stateful module + buildable 2-hop coverage matrix through real browser WASM!
+    const allModulesDoc = createEmptyBlueprint('全量27模块36建筑带属性双跳WASM核验');
     CATALOG.stationModules.forEach((mDef, idx) => {
       const rot = (idx % 4) as 0 | 1 | 2 | 3;
       allModulesDoc.modules.push({
@@ -1222,17 +1222,60 @@ describe('Shared Rust/WASM native .sav <-> Canonical Blueprint JSON codec', () =
         gy: 0,
         floor: mDef.id === 'BPO_StationArmour_01B' ? -1 : 0,
         rotation: rot,
+        ...(idx % 3 === 1 ? { paletteId: 1 } : {}),
+        ...(mDef.id === 'BPO_ElevatorBlock_03' || mDef.id === 'BPO_ElevatorBlock_02A' ? { label: `电梯${idx}` } : {}),
+        ...(mDef.id.startsWith('BPO_MiningDroneBay') ? { miningItem: idx % 2 === 0 ? 'ITEM_WaterIce' : 'ITEM_TitaniumOre' } : {}),
+        ...(mDef.id.startsWith('BPO_Dock') || mDef.id.startsWith('BPO_ShipyardCore') ? { dockName: `泊位${idx}` } : {}),
+        ...(mDef.id === 'BPO_Dock'
+          ? {
+              dockPorts: [
+                { portIndex: 0, itemId: 'ITEM_TitaniumPlates', mode: 'unload' as const },
+                { portIndex: 1, itemId: 'ITEM_ReinforcedPlates', mode: 'load' as const },
+              ],
+            }
+          : {}),
+        ...(mDef.id === 'BPO_Dock_2'
+          ? {
+              dockPorts: [
+                { portIndex: 0, itemId: 'ITEM_StrangeMatterCrystal', mode: 'unload' as const },
+                { portIndex: 4, itemId: 'ITEM_BackpackMk3', mode: 'load' as const },
+                { portIndex: 7, itemId: 'ITEM_AlphaProtein', mode: 'unload' as const },
+              ],
+            }
+          : {}),
+        ...(mDef.id === 'BPO_DeepSpaceObservatory' ? { recipeId: 'REC_StrangeWarpFuel' } : {}),
       });
     });
     CATALOG.buildables.forEach((bDef, idx) => {
       const rot = (idx % 4) as 0 | 1 | 2 | 3;
-      const x = idx * 12;
+      const x = idx * 14;
       if (bDef.kind === 'underground') {
         const dx = rot === 0 ? 1 : rot === 2 ? -1 : 0;
         const dy = rot === 1 ? 1 : rot === 3 ? -1 : 0;
+        const span = bDef.maxLength ?? 8;
         allModulesDoc.buildings.push(
-          { id: `u_${idx}_in`, type: bDef.id, x, y: 0, floor: 0, rotation: rot, undergroundMode: 'in', undergroundPartnerId: `u_${idx}_out` },
-          { id: `u_${idx}_out`, type: bDef.id, x: x + dx * 4, y: dy * 4, floor: 0, rotation: rot, undergroundMode: 'out', undergroundPartnerId: `u_${idx}_in` }
+          {
+            id: `u_${idx}_in`,
+            type: bDef.id,
+            x,
+            y: 0,
+            floor: 0,
+            rotation: rot,
+            undergroundMode: 'in',
+            undergroundPartnerId: `u_${idx}_out`,
+            paletteId: 1,
+          },
+          {
+            id: `u_${idx}_out`,
+            type: bDef.id,
+            x: x + dx * span,
+            y: dy * span,
+            floor: 0,
+            rotation: rot,
+            undergroundMode: 'out',
+            undergroundPartnerId: `u_${idx}_in`,
+            paletteId: 1,
+          }
         );
       } else {
         allModulesDoc.buildings.push({
@@ -1242,28 +1285,119 @@ describe('Shared Rust/WASM native .sav <-> Canonical Blueprint JSON codec', () =
           y: 0,
           floor: 0,
           rotation: rot,
-          ...(bDef.kind === 'crafter' ? { recipeId: 'REC_ReinforcedPlates', disabledPorts: [1] } : {}),
-          ...(bDef.kind === 'splitter' ? { priorityOut: 1, disabledPorts: [2], portFilters: { 3: 'ITEM_ReinforcedPlates' } } : {}),
-          ...(bDef.kind === 'balancer' ? { priorityIn: 0, priorityOut: 2, portFilters: { 2: 'ITEM_WaterIce' } } : {}),
-          ...(bDef.kind === 'container' ? { disabledPorts: [0], filterItems: ['ITEM_TitaniumPlates'] } : {}),
-          ...(bDef.kind === 'teleporter' ? { label: '跃迁点A' } : {}),
+          ...(idx % 2 === 1 ? { paletteId: 1 } : {}),
+          ...(bDef.kind === 'crafter' ? { recipeId: 'REC_ReinforcedPlates', disabledPorts: [1, 3] } : {}),
+          ...(bDef.kind === 'splitter'
+            ? { priorityOut: 1, disabledPorts: [2], portFilters: { 1: 'ITEM_TitaniumPlates', 3: 'ITEM_ReinforcedPlates' } }
+            : {}),
+          ...(bDef.kind === 'balancer'
+            ? { priorityIn: 1, priorityOut: 2, portFilters: { 2: 'ITEM_WaterIce', 3: 'ITEM_AlphaProtein' } }
+            : {}),
+          ...(bDef.kind === 'container'
+            ? {
+                disabledPorts: [0, 3],
+                filterItems: ['ITEM_TitaniumPlates', 'ITEM_BackpackMk2'],
+                nativeMeta: {
+                  b_creative: true,
+                  creative_item: 'ITEM_StrangeMatterCrystal',
+                  b_creative_consume: true,
+                  logistic_filters: [
+                    { itemId: 'ITEM_TitaniumPlates', amount: 300, action: 1 },
+                    { itemId: 'ITEM_BackpackMk2', amount: 50, action: 2 },
+                  ],
+                },
+              }
+            : {}),
+          ...(bDef.kind === 'teleporter' ? { label: '跃迁点A-中文' } : {}),
         });
       }
     });
-    const covSav = await exportNativeSav(allModulesDoc, 'station');
-    expect(covSav.report.warnings).toEqual([]);
-    const covBack = await importNativeSav(covSav.bytes);
-    expect(covBack.report.warnings).toEqual([]);
-    expect(covBack.doc.modules.length).toBe(CATALOG.stationModules.length);
-    expect(covBack.doc.buildings.length).toBe(allModulesDoc.buildings.length);
+
+    // Hop 1: Canonical -> .sav -> Canonical (real browser WASM + TS deserializeBlueprint)
+    const covSav1 = await exportNativeSav(allModulesDoc, 'station');
+    expect(covSav1.report.warnings).toEqual([]);
+    const covBack1 = await importNativeSav(covSav1.bytes);
+    expect(covBack1.report.warnings).toEqual([]);
+    expect(covBack1.doc.modules.length).toBe(CATALOG.stationModules.length);
+    expect(covBack1.doc.buildings.length).toBe(allModulesDoc.buildings.length);
+
     for (let i = 0; i < allModulesDoc.modules.length; i++) {
       const a = allModulesDoc.modules[i];
-      const b = covBack.doc.modules[i];
+      const b = covBack1.doc.modules[i];
       expect([b.type, b.gx, b.gy, b.floor, b.rotation]).toEqual([a.type, a.gx, a.gy, a.floor, a.rotation]);
+      expect(b.paletteId).toBe(a.paletteId);
+      expect(b.label).toBe(a.label);
+      expect(b.miningItem).toBe(a.miningItem);
+      expect(b.dockName).toBe(a.dockName);
+      expect(b.dockPorts).toEqual(a.dockPorts);
+      expect(b.recipeId).toBe(a.recipeId);
     }
-    const backRef = covBack.doc.buildings.find((b) => b.type === 'DAT_Refinery');
-    expect(backRef?.recipeId).toBe('REC_ReinforcedPlates');
-    expect(backRef?.disabledPorts).toEqual([1]);
+
+    const backByPos = new Map(covBack1.doc.buildings.map((b) => [`${b.type}:${b.x},${b.y},${b.floor},${b.rotation}`, b]));
+    for (const orig of allModulesDoc.buildings) {
+      const rt = backByPos.get(`${orig.type}:${orig.x},${orig.y},${orig.floor},${orig.rotation}`);
+      expect(rt).toBeDefined();
+      expect(rt?.paletteId).toBe(orig.paletteId);
+      expect(rt?.recipeId).toBe(orig.recipeId);
+      expect(rt?.disabledPorts).toEqual(orig.disabledPorts);
+      expect(rt?.priorityIn).toBe(orig.priorityIn);
+      expect(rt?.priorityOut).toBe(orig.priorityOut);
+      expect(rt?.portFilters).toEqual(orig.portFilters);
+      expect(rt?.filterItems).toEqual(orig.filterItems);
+      expect(rt?.label).toBe(orig.label);
+      expect(rt?.undergroundMode).toBe(orig.undergroundMode);
+      if (orig.undergroundMode === 'in') {
+        expect(rt?.undergroundPartnerId).toBeTruthy();
+      }
+    }
+
+    // Hop 2: Canonical1 -> .sav2 -> Canonical2 must be 100% fixed-point identical!
+    const covSav2 = await exportNativeSav(covBack1.doc, 'station');
+    expect(covSav2.report.warnings).toEqual([]);
+    const covBack2 = await importNativeSav(covSav2.bytes);
+    expect(covBack2.report.warnings).toEqual([]);
+    expect(covBack2.doc.modules).toEqual(covBack1.doc.modules);
+    expect(covBack2.doc.buildings).toEqual(covBack1.doc.buildings);
+
+    // Edit-after-import stability through real WASM (mutating dockPorts / recipeId / filterItems / clearing label)
+    const editedDoc = {
+      ...covBack1.doc,
+      modules: covBack1.doc.modules.map((m) => {
+        if (m.type === 'BPO_Dock_2') {
+          return {
+            ...m,
+            dockName: '改名工业港',
+            dockPorts: [{ portIndex: 2, itemId: 'ITEM_WaterIce', mode: 'load' as const }],
+          };
+        }
+        if (m.type === 'BPO_DeepSpaceObservatory') {
+          return { ...m, recipeId: 'REC_ObservedStellarSurveyData' };
+        }
+        if (m.type === 'BPO_ElevatorBlock_02A') {
+          const copy = { ...m };
+          delete copy.label;
+          return copy;
+        }
+        return m;
+      }),
+      buildings: covBack1.doc.buildings.map((b) =>
+        b.type === 'DAT_Container' ? { ...b, filterItems: ['ITEM_TitaniumPlates'] } : b
+      ),
+    };
+    const editedSav = await exportNativeSav(editedDoc, 'station');
+    expect(editedSav.report.warnings).toEqual([]);
+    const editedBack = await importNativeSav(editedSav.bytes);
+    expect(editedBack.report.warnings).toEqual([]);
+    const edDock2 = editedBack.doc.modules.find((m) => m.type === 'BPO_Dock_2');
+    expect(edDock2?.dockName).toBe('改名工业港');
+    expect(edDock2?.dockPorts).toEqual([{ portIndex: 2, itemId: 'ITEM_WaterIce', mode: 'load' }]);
+    expect(editedBack.doc.modules.find((m) => m.type === 'BPO_DeepSpaceObservatory')?.recipeId).toBe(
+      'REC_ObservedStellarSurveyData'
+    );
+    expect(editedBack.doc.modules.find((m) => m.type === 'BPO_ElevatorBlock_02A')?.label).toBeUndefined();
+    expect(editedBack.doc.buildings.find((b) => b.type === 'DAT_Container')?.filterItems).toEqual([
+      'ITEM_TitaniumPlates',
+    ]);
 
     if (HAS_PRIVATE_PRESETS) {
       const b1Fuel = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('氢氘燃料直连舱'))!.doc;
@@ -1274,12 +1408,14 @@ describe('Shared Rust/WASM native .sav <-> Canonical Blueprint JSON codec', () =
       expect(simulateBlueprint(fuelBack.doc).errorCount).toBe(0);
     }
 
-    // Verify STATION_PRESET mode (for future in-game Mod paste) also round-trips cleanly!
-    const presetSav = await exportNativeSav(starter, 'preset');
-    expect(presetSav.report.connector_count).toBe(0);
-    const presetBack = await importNativeSav(presetSav.bytes);
-    expect(presetBack.doc.modules.length).toBe(starter.modules.length);
-    expect(presetBack.doc.buildings.length).toBe(starter.buildings.length);
+    // Verify STATION_PRESET mode (for future in-game Mod paste) also 2-hop round-trips cleanly!
+    const presetSav1 = await exportNativeSav(allModulesDoc, 'preset');
+    expect(presetSav1.report.connector_count).toBe(0);
+    const presetBack1 = await importNativeSav(presetSav1.bytes);
+    const presetSav2 = await exportNativeSav(presetBack1.doc, 'preset');
+    const presetBack2 = await importNativeSav(presetSav2.bytes);
+    expect(presetBack2.doc.modules).toEqual(presetBack1.doc.modules);
+    expect(presetBack2.doc.buildings).toEqual(presetBack1.doc.buildings);
   });
 });
 

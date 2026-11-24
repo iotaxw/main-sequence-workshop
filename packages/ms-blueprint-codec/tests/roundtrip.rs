@@ -42,6 +42,20 @@ fn binary_configs_match_observed_build_26639889_bytes() {
     assert!(!cdec.b_creative);
     assert_eq!(cdec.port_states.len(), 16);
     assert_eq!(encode_container_config(&cdec, |s| s.to_owned()), cnt_bytes);
+
+    // Observed BPO_StationBlockDock_C from real Build 26639889 DesignSaveGame:
+    // UTF-16 "空间站对接口" + 2 empty FDockFilter slots (FString "" + u32 bLoading=0)
+    let dock_bytes: Vec<u8> = vec![
+        1, 0, 249, 255, 255, 255, 122, 122, 244, 149, 217, 122, 249, 91, 165, 99, 227, 83, 0, 0,
+        2, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let ddec = decode_dock_config(&dock_bytes).unwrap();
+    assert_eq!(ddec.display_name, "空间站对接口");
+    assert_eq!(ddec.filters.len(), 2);
+    assert!(ddec.filters.iter().all(|f| f.item_native.is_empty() && !f.b_loading));
+    assert_eq!(encode_dock_config(&ddec), dock_bytes);
 }
 
 #[test]
@@ -72,6 +86,8 @@ fn full_station_and_preset_roundtrip_preserves_all_semantics() {
                 floor: 0,
                 rotation: 0,
                 label: None,
+                recipe_id: None,
+                dock_ports: None,
                 palette_id: None,
                 mining_item: None,
                 dock_name: None,
@@ -85,6 +101,8 @@ fn full_station_and_preset_roundtrip_preserves_all_semantics() {
                 floor: 0,
                 rotation: 0,
                 label: Some("主电梯".to_owned()),
+                recipe_id: None,
+                dock_ports: None,
                 palette_id: None,
                 mining_item: None,
                 dock_name: None,
@@ -98,6 +116,8 @@ fn full_station_and_preset_roundtrip_preserves_all_semantics() {
                 floor: -1,
                 rotation: 0,
                 label: None,
+                recipe_id: None,
+                dock_ports: None,
                 palette_id: None,
                 mining_item: None,
                 dock_name: None,
@@ -111,6 +131,8 @@ fn full_station_and_preset_roundtrip_preserves_all_semantics() {
                 floor: 0,
                 rotation: 2,
                 label: None,
+                recipe_id: None,
+                dock_ports: None,
                 palette_id: Some(1),
                 mining_item: Some("ITEM_WaterIce".to_owned()),
                 dock_name: None,
@@ -124,9 +146,63 @@ fn full_station_and_preset_roundtrip_preserves_all_semantics() {
                 floor: 0,
                 rotation: 2,
                 label: None,
+                recipe_id: None,
+                dock_ports: Some(vec![
+                    DockPortConfig {
+                        port_index: 0,
+                        item_id: "ITEM_TitaniumPlates".to_owned(),
+                        mode: "unload".to_owned(),
+                    },
+                    DockPortConfig {
+                        port_index: 1,
+                        item_id: "ITEM_ReinforcedPlates".to_owned(),
+                        mode: "load".to_owned(),
+                    },
+                ]),
                 palette_id: None,
                 mining_item: None,
                 dock_name: Some("货运停泊口".to_owned()),
+                native_meta: None,
+            },
+            PlacedModule {
+                id: "m6".to_owned(),
+                module_type: "BPO_Dock_2".to_owned(),
+                gx: -4,
+                gy: 0,
+                floor: 0,
+                rotation: 2,
+                label: None,
+                recipe_id: None,
+                dock_ports: Some(vec![
+                    DockPortConfig {
+                        port_index: 0,
+                        item_id: "ITEM_StrangeMatterCrystal".to_owned(),
+                        mode: "unload".to_owned(),
+                    },
+                    DockPortConfig {
+                        port_index: 7,
+                        item_id: "ITEM_AlphaProtein".to_owned(),
+                        mode: "load".to_owned(),
+                    },
+                ]),
+                palette_id: Some(2),
+                mining_item: None,
+                dock_name: Some("工业港口A".to_owned()),
+                native_meta: None,
+            },
+            PlacedModule {
+                id: "m7".to_owned(),
+                module_type: "BPO_DeepSpaceObservatory".to_owned(),
+                gx: 2,
+                gy: 0,
+                floor: 0,
+                rotation: 0,
+                label: None,
+                recipe_id: Some("REC_StrangeWarpFuel".to_owned()),
+                dock_ports: None,
+                palette_id: Some(1),
+                mining_item: None,
+                dock_name: None,
                 native_meta: None,
             },
         ],
@@ -298,19 +374,32 @@ fn full_station_and_preset_roundtrip_preserves_all_semantics() {
     let (rt, imp_rep) = sav_bytes_to_canonical(&sav_bytes).unwrap();
     assert!(imp_rep.warnings.is_empty(), "unexpected import warnings: {:?}", imp_rep.warnings);
     assert_eq!(rt.name, "测试空间站往返");
-    assert_eq!(rt.modules.len(), 5);
+    assert_eq!(rt.modules.len(), 7);
     assert_eq!(rt.buildings.len(), 8);
 
     // Verify Armour_01B floor round-trip
     let armour = rt.modules.iter().find(|m| m.module_type == "BPO_StationArmour_01B").unwrap();
     assert_eq!((armour.gx, armour.gy, armour.floor), (0, 0, -1));
 
-    // Verify MiningDroneBay & Dock & Elevator config round-trip
+    // Verify MiningDroneBay & Dock & Dock_2 & DeepSpaceObservatory & Elevator config round-trip
     let mine = rt.modules.iter().find(|m| m.module_type == "BPO_MiningDroneBayBlock_2").unwrap();
     assert_eq!(mine.mining_item.as_deref(), Some("ITEM_WaterIce"));
     assert_eq!(mine.palette_id, Some(1));
     let dock = rt.modules.iter().find(|m| m.module_type == "BPO_Dock").unwrap();
     assert_eq!(dock.dock_name.as_deref(), Some("货运停泊口"));
+    assert_eq!(dock.dock_ports.as_ref().map(|v| v.len()), Some(2));
+    assert_eq!(dock.dock_ports.as_ref().unwrap()[0].mode, "unload");
+    assert_eq!(dock.dock_ports.as_ref().unwrap()[1].mode, "load");
+    assert_eq!(dock.dock_ports.as_ref().unwrap()[1].item_id, "ITEM_ReinforcedPlates");
+    let dock2 = rt.modules.iter().find(|m| m.module_type == "BPO_Dock_2").unwrap();
+    assert_eq!(dock2.dock_name.as_deref(), Some("工业港口A"));
+    assert_eq!(dock2.palette_id, Some(2));
+    assert_eq!(dock2.dock_ports.as_ref().map(|v| v.len()), Some(2));
+    assert_eq!(dock2.dock_ports.as_ref().unwrap()[1].port_index, 7);
+    assert_eq!(dock2.dock_ports.as_ref().unwrap()[1].item_id, "ITEM_AlphaProtein");
+    let obs = rt.modules.iter().find(|m| m.module_type == "BPO_DeepSpaceObservatory").unwrap();
+    assert_eq!(obs.recipe_id.as_deref(), Some("REC_StrangeWarpFuel"));
+    assert_eq!(obs.palette_id, Some(1));
     let elev = rt.modules.iter().find(|m| m.module_type == "BPO_ElevatorBlock_03").unwrap();
     assert_eq!(elev.label.as_deref(), Some("主电梯"));
 
@@ -359,6 +448,199 @@ fn full_station_and_preset_roundtrip_preserves_all_semantics() {
     let (preset_bytes, p_rep) = canonical_to_sav_bytes(&doc, NativeExportMode::StationPreset).unwrap();
     assert_eq!(p_rep.connector_count, 0);
     let (prt, _) = sav_bytes_to_canonical(&preset_bytes).unwrap();
-    assert_eq!(prt.modules.len(), 5);
+    assert_eq!(prt.modules.len(), 7);
     assert_eq!(prt.buildings.len(), 8);
+}
+
+#[test]
+fn stateful_edits_and_clears_after_sav_import_never_leak_stale_native_meta() {
+    // Start with a populated blueprint, import it (so every module & building carries nativeMeta),
+    // then mutate & clear EVERY stateful attribute and verify re-export -> re-import reflects every edit!
+    let doc0 = BlueprintDocument {
+        format: CANONICAL_FORMAT.to_owned(),
+        format_version: CANONICAL_FORMAT_VERSION,
+        id: "bp_edit_after_import".to_owned(),
+        name: "导入后再编辑属性稳定性测试".to_owned(),
+        description: None,
+        game_data: GameDataMeta {
+            build_id: GAME_BUILD_ID.to_owned(),
+            catalog_version: CATALOG_VERSION,
+        },
+        modules: vec![
+            PlacedModule {
+                id: "m_dock2".to_owned(),
+                module_type: "BPO_Dock_2".to_owned(),
+                gx: 0,
+                gy: 0,
+                floor: 0,
+                rotation: 0,
+                label: None,
+                recipe_id: None,
+                dock_ports: Some(vec![
+                    DockPortConfig { port_index: 0, item_id: "ITEM_WaterIce".to_owned(), mode: "unload".to_owned() },
+                    DockPortConfig { port_index: 7, item_id: "ITEM_HullPlates".to_owned(), mode: "load".to_owned() },
+                ]),
+                palette_id: Some(1),
+                mining_item: None,
+                dock_name: Some("旧港口".to_owned()),
+                native_meta: None,
+            },
+            PlacedModule {
+                id: "m_obs".to_owned(),
+                module_type: "BPO_DeepSpaceObservatory".to_owned(),
+                gx: 4,
+                gy: 0,
+                floor: 0,
+                rotation: 1,
+                label: None,
+                recipe_id: Some("REC_StrangeWarpFuel".to_owned()),
+                dock_ports: None,
+                palette_id: None,
+                mining_item: None,
+                dock_name: None,
+                native_meta: None,
+            },
+            PlacedModule {
+                id: "m_elev2".to_owned(),
+                module_type: "BPO_ElevatorBlock_02A".to_owned(),
+                gx: 8,
+                gy: 0,
+                floor: 0,
+                rotation: 2,
+                label: Some("旧双格电梯".to_owned()),
+                recipe_id: None,
+                dock_ports: None,
+                palette_id: None,
+                mining_item: None,
+                dock_name: None,
+                native_meta: None,
+            },
+            PlacedModule {
+                id: "m_mine".to_owned(),
+                module_type: "BPO_MiningDroneBayBlock".to_owned(),
+                gx: 12,
+                gy: 0,
+                floor: 0,
+                rotation: 3,
+                label: None,
+                recipe_id: None,
+                dock_ports: None,
+                palette_id: None,
+                mining_item: Some("ITEM_WaterIce".to_owned()),
+                dock_name: None,
+                native_meta: None,
+            },
+        ],
+        buildings: vec![
+            PlacedBuilding {
+                id: "b_cnt".to_owned(),
+                building_type: "DAT_Container".to_owned(),
+                x: 10,
+                y: 10,
+                floor: 0,
+                rotation: 0,
+                recipe_id: None,
+                label: None,
+                disabled_ports: Some(vec![0, 2]),
+                underground_mode: None,
+                underground_partner_id: None,
+                priority_in: None,
+                priority_out: None,
+                port_filters: None,
+                filter_items: Some(vec!["ITEM_WaterIce".to_owned(), "ITEM_HullPlates".to_owned()]),
+                palette_id: Some(1),
+                native_meta: Some(BuildingNativeMeta {
+                    b_creative: Some(true),
+                    creative_item: Some("ITEM_StrangeMatterCrystal".to_owned()),
+                    b_creative_consume: Some(true),
+                    logistic_filters: vec![
+                        LogisticFilterEntry { item_id: "ITEM_WaterIce".to_owned(), amount: 500, action: 1 },
+                        LogisticFilterEntry { item_id: "ITEM_HullPlates".to_owned(), amount: 250, action: 2 },
+                    ],
+                    ..Default::default()
+                }),
+            },
+        ],
+        native_meta: None,
+        extra: Map::new(),
+    };
+
+    // Hop 1: export & import so nativeMeta is populated
+    let (sav1, rep1) = canonical_to_sav_bytes(&doc0, NativeExportMode::Station).unwrap();
+    assert!(rep1.warnings.is_empty());
+    let (mut doc1, imp1) = sav_bytes_to_canonical(&sav1).unwrap();
+    assert!(imp1.warnings.is_empty());
+
+    // Verify BPO_ElevatorBlock_02A did NOT corrupt BPO_ElevatorFiller_C raw_config!
+    let elev2 = doc1.modules.iter().find(|m| m.module_type == "BPO_ElevatorBlock_02A").unwrap();
+    assert_eq!(elev2.label.as_deref(), Some("旧双格电梯"));
+    for dm in &elev2.native_meta.as_ref().unwrap().default_machines {
+        if dm.class_path.contains("ElevatorFiller") {
+            assert!(dm.raw_config.is_empty(), "ElevatorFiller must keep empty config, got {:?}", dm.raw_config);
+        }
+    }
+
+    // Verify Container creative & logistic_filters amount/action survived Hop 1!
+    let cnt1 = doc1.buildings.iter().find(|b| b.building_type == "DAT_Container").unwrap();
+    let cnt1_nm = cnt1.native_meta.as_ref().unwrap();
+    assert_eq!(cnt1_nm.b_creative, Some(true));
+    assert_eq!(cnt1_nm.creative_item.as_deref(), Some("ITEM_StrangeMatterCrystal"));
+    assert_eq!(cnt1_nm.b_creative_consume, Some(true));
+    assert_eq!(cnt1_nm.logistic_filters.len(), 2);
+    assert_eq!(cnt1_nm.logistic_filters[0].amount, 500);
+    assert_eq!(cnt1_nm.logistic_filters[0].action, 1);
+
+    // Now MUTATE & CLEAR attributes directly on doc1 (simulating user editing an imported .sav in designer!)
+    for m in &mut doc1.modules {
+        match m.module_type.as_str() {
+            "BPO_Dock_2" => {
+                m.dock_name = Some("新工业主港".to_owned());
+                m.dock_ports = Some(vec![
+                    DockPortConfig { port_index: 3, item_id: "ITEM_ReinforcedPlates".to_owned(), mode: "load".to_owned() },
+                ]);
+            }
+            "BPO_DeepSpaceObservatory" => {
+                m.recipe_id = Some("REC_ObservedStellarSurveyData".to_owned());
+            }
+            "BPO_ElevatorBlock_02A" => {
+                m.label = None; // Clear label!
+            }
+            "BPO_MiningDroneBayBlock" => {
+                m.mining_item = None; // Clear mining item!
+            }
+            _ => {}
+        }
+    }
+    for b in &mut doc1.buildings {
+        if b.building_type == "DAT_Container" {
+            // Keep ITEM_WaterIce (should preserve amount=500, action=1), drop HullPlates, add TitaniumPlates!
+            b.filter_items = Some(vec!["ITEM_WaterIce".to_owned(), "ITEM_TitaniumPlates".to_owned()]);
+        }
+    }
+
+    // Hop 2: re-export & re-import
+    let (sav2, rep2) = canonical_to_sav_bytes(&doc1, NativeExportMode::Station).unwrap();
+    assert!(rep2.warnings.is_empty());
+    let (doc2, imp2) = sav_bytes_to_canonical(&sav2).unwrap();
+    assert!(imp2.warnings.is_empty());
+
+    let d2 = doc2.modules.iter().find(|m| m.module_type == "BPO_Dock_2").unwrap();
+    assert_eq!(d2.dock_name.as_deref(), Some("新工业主港"));
+    assert_eq!(
+        d2.dock_ports,
+        Some(vec![DockPortConfig { port_index: 3, item_id: "ITEM_ReinforcedPlates".to_owned(), mode: "load".to_owned() }])
+    );
+    let o2 = doc2.modules.iter().find(|m| m.module_type == "BPO_DeepSpaceObservatory").unwrap();
+    assert_eq!(o2.recipe_id.as_deref(), Some("REC_ObservedStellarSurveyData"));
+    let e2 = doc2.modules.iter().find(|m| m.module_type == "BPO_ElevatorBlock_02A").unwrap();
+    assert_eq!(e2.label, None, "clearing elevator label must clear native config");
+    let mn2 = doc2.modules.iter().find(|m| m.module_type == "BPO_MiningDroneBayBlock").unwrap();
+    assert_eq!(mn2.mining_item, None, "clearing miningItem must clear native config");
+
+    let c2 = doc2.buildings.iter().find(|b| b.building_type == "DAT_Container").unwrap();
+    assert_eq!(c2.filter_items, Some(vec!["ITEM_WaterIce".to_owned(), "ITEM_TitaniumPlates".to_owned()]));
+    let c2_lf = &c2.native_meta.as_ref().unwrap().logistic_filters;
+    assert_eq!(c2_lf.len(), 2);
+    assert_eq!((c2_lf[0].item_id.as_str(), c2_lf[0].amount, c2_lf[0].action), ("ITEM_WaterIce", 500, 1));
+    assert_eq!((c2_lf[1].item_id.as_str(), c2_lf[1].amount, c2_lf[1].action), ("ITEM_TitaniumPlates", 0, 0));
 }

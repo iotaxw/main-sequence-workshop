@@ -148,9 +148,11 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
         let block_id = blk.get("BlockID_0").and_then(Value::as_i64).map(|x| x as i32);
         let palette_id = blk.get("PaletteID_0").and_then(Value::as_i64).map(|x| x as i32);
 
-        // Extract DefaultMachines & promote useful gameplay config (miningItem / dockName / elevator label)
+        // Extract DefaultMachines & promote useful gameplay config (miningItem / dockName / dockPorts / recipeId / elevator label)
         let mut mining_item = None;
         let mut dock_name = None;
+        let mut dock_ports: Option<Vec<DockPortConfig>> = None;
+        let mut recipe_id = None;
         let mut label = None;
         let mut default_machines = Vec::new();
 
@@ -175,12 +177,39 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
                         }
                     }
                 } else if dm_cls.contains("Dock") {
-                    if let Ok(Some(dn)) = decode_dock_name(&raw_cfg) {
-                        dock_name = Some(dn);
+                    if let Ok(cfg) = decode_dock_config(&raw_cfg) {
+                        if !cfg.display_name.is_empty() {
+                            dock_name = Some(cfg.display_name);
+                        }
+                        let mut ports = Vec::new();
+                        for (slot, f) in cfg.filters.iter().enumerate() {
+                            if !f.item_native.is_empty() {
+                                ports.push(DockPortConfig {
+                                    port_index: slot as i32,
+                                    item_id: item_native_to_canonical(&f.item_native),
+                                    mode: if f.b_loading {
+                                        "load".to_owned()
+                                    } else {
+                                        "unload".to_owned()
+                                    },
+                                });
+                            }
+                        }
+                        if !ports.is_empty() {
+                            dock_ports = Some(ports);
+                        }
                     }
-                } else if dm_cls.contains("Elevator") {
-                    if let Ok(Some(el)) = decode_elevator_or_teleporter_label(&raw_cfg) {
-                        label = Some(el);
+                } else if dm_cls.contains("Elevator") && !dm_cls.contains("ElevatorFiller") {
+                    if label.is_none() {
+                        if let Ok(Some(el)) = decode_elevator_or_teleporter_label(&raw_cfg) {
+                            label = Some(el);
+                        }
+                    }
+                } else if dm_cls.contains("DeepSpaceObservatory") {
+                    if let Ok(cfg) = decode_assembler_config(&raw_cfg) {
+                        if !cfg.recipe_native.is_empty() {
+                            recipe_id = Some(recipe_native_to_canonical(&cfg.recipe_native));
+                        }
                     }
                 }
 
@@ -210,6 +239,8 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
             floor,
             rotation: rot,
             label,
+            recipe_id,
+            dock_ports,
             palette_id: palette_id.filter(|&p| p != 0),
             mining_item,
             dock_name,
@@ -512,6 +543,71 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
     Ok((doc, report))
 }
 
+fn encode_default_machine_config(m: &PlacedModule, class_path: &str, fallback_bytes: &[u8]) -> Vec<u8> {
+    if class_path.contains("MiningDroneBay") {
+        let item_nat = m
+            .mining_item
+            .as_deref()
+            .map(item_canonical_to_native)
+            .unwrap_or_default();
+        return encode_mining_drone_bay_item(&item_nat);
+    }
+    if class_path.contains("Dock") {
+        let mut slot_count = dock_filter_slot_count(class_path);
+        if let Ok(prev) = decode_dock_config(fallback_bytes) {
+            slot_count = slot_count.max(prev.filters.len());
+        }
+        if let Some(ports) = &m.dock_ports {
+            for p in ports {
+                if p.port_index >= 0 {
+                    slot_count = slot_count.max((p.port_index + 1) as usize);
+                }
+            }
+        }
+        let mut filters = vec![
+            DockFilterEntry {
+                item_native: String::new(),
+                b_loading: false,
+            };
+            slot_count
+        ];
+        if let Some(ports) = &m.dock_ports {
+            for p in ports {
+                if p.port_index >= 0 && (p.port_index as usize) < filters.len() {
+                    filters[p.port_index as usize] = DockFilterEntry {
+                        item_native: item_canonical_to_native(&p.item_id),
+                        b_loading: p.mode == "load",
+                    };
+                }
+            }
+        }
+        return encode_dock_config(&DockConfig {
+            display_name: m.dock_name.clone().unwrap_or_default(),
+            filters,
+        });
+    }
+    if class_path.contains("Elevator") && !class_path.contains("ElevatorFiller") {
+        return encode_elevator_or_teleporter_label(m.label.as_deref());
+    }
+    if class_path.contains("DeepSpaceObservatory") {
+        let port_states = decode_assembler_config(fallback_bytes)
+            .ok()
+            .map(|c| c.port_states)
+            .filter(|ps| !ps.is_empty())
+            .unwrap_or_else(|| vec![1u8, 1u8]);
+        let recipe_native = m
+            .recipe_id
+            .as_deref()
+            .map(recipe_canonical_to_native)
+            .unwrap_or_default();
+        return encode_assembler_config(&AssemblerConfig {
+            recipe_native,
+            port_states,
+        });
+    }
+    fallback_bytes.to_vec()
+}
+
 pub fn canonical_to_sav_bytes(
     doc: &BlueprintDocument,
     mode: NativeExportMode,
@@ -561,16 +657,7 @@ pub fn canonical_to_sav_bytes(
             for dm in preserved_dms {
                 let (rx, ry) = rotate_xy(dm.rel_x, dm.rel_y, rot);
                 let dm_id = alloc_id(dm.machine_id);
-                let mut cfg_bytes = dm.raw_config.clone();
-                if dm.class_path.contains("MiningDroneBay") {
-                    if let Some(item) = &m.mining_item {
-                        cfg_bytes = encode_mining_drone_bay_item(&item_canonical_to_native(item));
-                    }
-                } else if dm.class_path.contains("Elevator") {
-                    if let Some(lbl) = &m.label {
-                        cfg_bytes = encode_elevator_or_teleporter_label(Some(lbl));
-                    }
-                }
+                let cfg_bytes = encode_default_machine_config(m, &dm.class_path, &dm.raw_config);
                 dms_json.push(json!({
                     "Class_0": dm.class_path,
                     "Transform_0": {
@@ -587,27 +674,7 @@ pub fn canonical_to_sav_bytes(
             for tpl in default_machines_for_module(&m.module_type) {
                 let (rx, ry) = rotate_xy(tpl.rel_x, tpl.rel_y, rot);
                 let dm_id = alloc_id(None);
-                let cfg_bytes = if tpl.class_path.contains("MiningDroneBay") {
-                    if let Some(item) = &m.mining_item {
-                        encode_mining_drone_bay_item(&item_canonical_to_native(item))
-                    } else {
-                        tpl.default_config.to_vec()
-                    }
-                } else if tpl.class_path.contains("Dock") {
-                    if let Some(dn) = &m.dock_name {
-                        encode_dock_config_simple(Some(dn))
-                    } else {
-                        tpl.default_config.to_vec()
-                    }
-                } else if tpl.class_path.contains("Elevator") {
-                    if let Some(lbl) = &m.label {
-                        encode_elevator_or_teleporter_label(Some(lbl))
-                    } else {
-                        tpl.default_config.to_vec()
-                    }
-                } else {
-                    tpl.default_config.to_vec()
-                };
+                let cfg_bytes = encode_default_machine_config(m, tpl.class_path, tpl.default_config);
 
                 dms_json.push(json!({
                     "Class_0": tpl.class_path,
@@ -784,15 +851,27 @@ pub fn canonical_to_sav_bytes(
                         }
                     }
                     let nm = b.native_meta.as_ref();
-                    let logistic_filters = if let Some(lf) = nm.map(|n| &n.logistic_filters).filter(|v| !v.is_empty()) {
-                        lf.clone()
-                    } else if let Some(items) = &b.filter_items {
+                    let meta_by_item: HashMap<&str, &LogisticFilterEntry> = nm
+                        .map(|n| {
+                            n.logistic_filters
+                                .iter()
+                                .map(|lf| (lf.item_id.as_str(), lf))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let logistic_filters = if let Some(items) = &b.filter_items {
                         items
                             .iter()
-                            .map(|it| LogisticFilterEntry {
-                                item_id: it.clone(),
-                                amount: 0,
-                                action: 0,
+                            .map(|it| {
+                                if let Some(prev) = meta_by_item.get(it.as_str()) {
+                                    (*prev).clone()
+                                } else {
+                                    LogisticFilterEntry {
+                                        item_id: it.clone(),
+                                        amount: 0,
+                                        action: 0,
+                                    }
+                                }
                             })
                             .collect()
                     } else {

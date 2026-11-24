@@ -54,18 +54,45 @@ fn exhaustive_100_percent_module_buildable_recipe_item_coverage() {
                 gy,
                 floor,
                 rotation: rot,
-                label: if mtype == "BPO_ElevatorBlock_03" {
+                label: if mtype == "BPO_ElevatorBlock_03" || mtype == "BPO_ElevatorBlock_02A" {
                     Some(format!("电梯R{rot}"))
+                } else {
+                    None
+                },
+                recipe_id: if mtype == "BPO_DeepSpaceObservatory" {
+                    Some(if rot % 2 == 0 {
+                        "REC_StrangeWarpFuel".to_owned()
+                    } else {
+                        "REC_ObservedStellarSurveyData".to_owned()
+                    })
+                } else {
+                    None
+                },
+                dock_ports: if mtype == "BPO_Dock" {
+                    Some(vec![
+                        DockPortConfig { port_index: 0, item_id: "ITEM_TitaniumPlates".to_owned(), mode: "unload".to_owned() },
+                        DockPortConfig { port_index: 1, item_id: "ITEM_ReinforcedPlates".to_owned(), mode: "load".to_owned() },
+                    ])
+                } else if mtype == "BPO_Dock_2" {
+                    Some(vec![
+                        DockPortConfig { port_index: 0, item_id: "ITEM_StrangeMatterCrystal".to_owned(), mode: "unload".to_owned() },
+                        DockPortConfig { port_index: 3, item_id: "ITEM_BackpackMk3".to_owned(), mode: "load".to_owned() },
+                        DockPortConfig { port_index: 7, item_id: "ITEM_AlphaProtein".to_owned(), mode: "unload".to_owned() },
+                    ])
                 } else {
                     None
                 },
                 palette_id: if rot == 1 { Some(1) } else { None },
                 mining_item: if mtype.starts_with("BPO_MiningDroneBay") {
-                    Some("ITEM_WaterIce".to_owned())
+                    Some(if rot % 2 == 0 {
+                        "ITEM_WaterIce".to_owned()
+                    } else {
+                        "ITEM_TitaniumOre".to_owned()
+                    })
                 } else {
                     None
                 },
-                dock_name: if mtype == "BPO_Dock" || mtype == "BPO_ShipyardCore" {
+                dock_name: if mtype.starts_with("BPO_Dock") || mtype.starts_with("BPO_ShipyardCore") {
                     Some(format!("泊位{rot}"))
                 } else {
                     None
@@ -97,7 +124,12 @@ fn exhaustive_100_percent_module_buildable_recipe_item_coverage() {
                     2 => (-1, 0),
                     _ => (0, -1),
                 };
-                let dist = 2 + (rot as i32); // lengths 3, 4, 5, 6
+                let dist = match btype.as_str() {
+                    "DAT_UndergroundBelt" => 5 + (rot as i32),    // up to maxLength 8
+                    "DAT_UndergroundBelt_2" => 7 + (rot as i32),  // up to maxLength 10
+                    "DAT_UndergroundBelt_3" => 9 + (rot as i32),  // up to maxLength 12
+                    _ => 2 + (rot as i32),
+                };
                 let id_in = format!("cov_b_{bi}_{rot}_in");
                 let id_out = format!("cov_b_{bi}_{rot}_out");
                 buildings.push(PlacedBuilding {
@@ -116,7 +148,7 @@ fn exhaustive_100_percent_module_buildable_recipe_item_coverage() {
                     priority_out: None,
                     port_filters: None,
                     filter_items: None,
-                    palette_id: None,
+                    palette_id: if rot == 2 { Some(1) } else { None },
                     native_meta: None,
                 });
                 buildings.push(PlacedBuilding {
@@ -135,7 +167,7 @@ fn exhaustive_100_percent_module_buildable_recipe_item_coverage() {
                     priority_out: None,
                     port_filters: None,
                     filter_items: None,
-                    palette_id: None,
+                    palette_id: if rot == 2 { Some(1) } else { None },
                     native_meta: None,
                 });
                 continue;
@@ -165,11 +197,12 @@ fn exhaustive_100_percent_module_buildable_recipe_item_coverage() {
                     MachineConfigKind::Splitter => {
                         pf.insert("1".to_owned(), "ITEM_ReinforcedPlates".to_owned());
                         pf.insert("3".to_owned(), "ITEM_BackpackMk2".to_owned());
-                        (None, Some(vec![2]), None, Some(1), Some(pf), None, None)
+                        (None, Some(vec![2]), None, Some(1 + (rot as i32 % 3)), Some(pf), None, None)
                     }
                     MachineConfigKind::Balancer => {
                         pf.insert("2".to_owned(), "ITEM_WaterIce".to_owned());
-                        (None, Some(vec![3]), Some(0), Some(2), Some(pf), None, None)
+                        pf.insert("3".to_owned(), "ITEM_AlphaProtein".to_owned());
+                        (None, None, Some((rot % 2) as i32), Some(2 + (rot % 2) as i32), Some(pf), None, None)
                     }
                     MachineConfigKind::Teleporter => (
                         None,
@@ -231,13 +264,15 @@ fn exhaustive_100_percent_module_buildable_recipe_item_coverage() {
         assert_eq!(doc1.modules.len(), doc.modules.len());
         assert_eq!(doc1.buildings.len(), doc.buildings.len());
 
-        // Verify EVERY module preserved exact type, gx, gy, floor, rotation, paletteId, miningItem, dockName, label!
+        // Verify EVERY module preserved exact type, gx, gy, floor, rotation, paletteId, miningItem, dockName, dockPorts, recipeId, label!
         for (orig, rt) in doc.modules.iter().zip(doc1.modules.iter()) {
             assert_eq!(rt.module_type, orig.module_type);
             assert_eq!((rt.gx, rt.gy, rt.floor, rt.rotation), (orig.gx, orig.gy, orig.floor, orig.rotation), "module transform mismatch for {}", orig.module_type);
             assert_eq!(rt.palette_id, orig.palette_id);
             assert_eq!(rt.mining_item, orig.mining_item);
             assert_eq!(rt.dock_name, orig.dock_name);
+            assert_eq!(rt.dock_ports, orig.dock_ports, "dock_ports mismatch for {}", orig.module_type);
+            assert_eq!(rt.recipe_id, orig.recipe_id, "recipe_id mismatch for {}", orig.module_type);
             assert_eq!(rt.label, orig.label);
             // DefaultMachines synthesized whenever module has template!
             let expected_dm_len = default_machines_for_module(&orig.module_type).len();
@@ -247,9 +282,17 @@ fn exhaustive_100_percent_module_buildable_recipe_item_coverage() {
                 "DefaultMachines count mismatch for {}",
                 orig.module_type
             );
+            // Ensure ElevatorFiller never gets corrupted with Elevator label bytes!
+            if let Some(nm) = &rt.native_meta {
+                for dm in &nm.default_machines {
+                    if dm.class_path.contains("ElevatorFiller") {
+                        assert!(dm.raw_config.is_empty(), "ElevatorFiller must stay empty on {}", orig.module_type);
+                    }
+                }
+            }
         }
 
-        // Verify EVERY building preserved exact type, x, y, floor, rotation, recipe, ports, filters, priorities, label, underground pairing!
+        // Verify EVERY building preserved exact type, x, y, floor, rotation, paletteId, recipe, ports, filters, priorities, label, underground pairing!
         let rt_by_pos: HashMap<(String, i32, i32, i32, u8), &PlacedBuilding> = doc1
             .buildings
             .iter()
@@ -258,6 +301,7 @@ fn exhaustive_100_percent_module_buildable_recipe_item_coverage() {
         for orig in &doc.buildings {
             let key = (orig.building_type.clone(), orig.x, orig.y, orig.floor, orig.rotation);
             let rt = rt_by_pos.get(&key).unwrap_or_else(|| panic!("missing building after round-trip: {key:?}"));
+            assert_eq!(rt.palette_id, orig.palette_id, "palette_id mismatch for {}", orig.building_type);
             assert_eq!(rt.recipe_id, orig.recipe_id, "recipe mismatch for {}", orig.building_type);
             assert_eq!(rt.disabled_ports, orig.disabled_ports, "disabled_ports mismatch for {}", orig.building_type);
             assert_eq!(rt.priority_in, orig.priority_in, "priority_in mismatch for {}", orig.building_type);

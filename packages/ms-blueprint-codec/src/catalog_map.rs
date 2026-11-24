@@ -335,7 +335,37 @@ pub fn item_canonical_to_native(canonical: &str) -> String {
 
 const EMPTY_ELEVATOR_CONFIG: &[u8] = &[1, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0];
 const EMPTY_MINING_CONFIG: &[u8] = &[1, 0, 0, 0, 0, 0];
-const EMPTY_DOCK_CONFIG: &[u8] = &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const EMPTY_SHIPYARD_DOCK_CONFIG: &[u8] = &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+// StationBlockDock CDO has 2 empty FDockFilter slots (each: i32(0) empty FString + u32(0) bLoading)
+const EMPTY_STATION_DOCK_CONFIG: &[u8] = &[
+    1, 0, 0, 0, 0, 0, 2, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+];
+// IndustrialDock CDO has 8 empty FDockFilter slots
+const EMPTY_INDUSTRIAL_DOCK_CONFIG: &[u8] = &[
+    1, 0, 0, 0, 0, 0, 8, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+];
+// DeepSpaceObservatoryMachine inherits AssemblerObject with 2 ports ([1, 1])
+const EMPTY_OBSERVATORY_CONFIG: &[u8] = &[1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 1];
+
+pub fn dock_filter_slot_count(class_path: &str) -> usize {
+    if class_path.contains("IndustrialDock") {
+        8
+    } else if class_path.contains("StationBlockDock") {
+        2
+    } else {
+        0
+    }
+}
 
 pub fn default_machines_for_module(module_id: &str) -> &'static [DefaultMachineTemplate] {
     match module_id {
@@ -437,7 +467,7 @@ pub fn default_machines_for_module(module_id: &str) -> &'static [DefaultMachineT
             rel_y: 0,
             rel_height: 0,
             rel_rotation: 2,
-            default_config: EMPTY_DOCK_CONFIG,
+            default_config: EMPTY_STATION_DOCK_CONFIG,
         }],
         "BPO_Dock_2" => &[DefaultMachineTemplate {
             class_path: "/Game/Blueprints/Machines/Docks/BPO_IndustrialDock.BPO_IndustrialDock_C",
@@ -445,7 +475,7 @@ pub fn default_machines_for_module(module_id: &str) -> &'static [DefaultMachineT
             rel_y: 0,
             rel_height: 0,
             rel_rotation: 2,
-            default_config: EMPTY_DOCK_CONFIG,
+            default_config: EMPTY_INDUSTRIAL_DOCK_CONFIG,
         }],
         "BPO_MiningDroneBayBlock" => &[DefaultMachineTemplate {
             class_path: "/Game/Blueprints/Machines/BPO_MiningDroneBay.BPO_MiningDroneBay_C",
@@ -493,7 +523,7 @@ pub fn default_machines_for_module(module_id: &str) -> &'static [DefaultMachineT
             rel_y: 0,
             rel_height: 0,
             rel_rotation: 0,
-            default_config: &[],
+            default_config: EMPTY_OBSERVATORY_CONFIG,
         }],
         "BPO_ShipyardCore" => &[DefaultMachineTemplate {
             class_path: "/Game/Blueprints/Machines/Docks/BPO_ShipyardBlockDock.BPO_ShipyardBlockDock_C",
@@ -501,7 +531,7 @@ pub fn default_machines_for_module(module_id: &str) -> &'static [DefaultMachineT
             rel_y: 0,
             rel_height: 0,
             rel_rotation: 2,
-            default_config: EMPTY_DOCK_CONFIG,
+            default_config: EMPTY_SHIPYARD_DOCK_CONFIG,
         }],
         "BPO_ShipyardCore_02" => &[DefaultMachineTemplate {
             class_path: "/Game/Blueprints/Machines/Docks/BPO_ShipyardBlockDock_02.BPO_ShipyardBlockDock_02_C",
@@ -509,7 +539,7 @@ pub fn default_machines_for_module(module_id: &str) -> &'static [DefaultMachineT
             rel_y: 0,
             rel_height: 0,
             rel_rotation: 2,
-            default_config: EMPTY_DOCK_CONFIG,
+            default_config: EMPTY_SHIPYARD_DOCK_CONFIG,
         }],
         _ => &[],
     }
