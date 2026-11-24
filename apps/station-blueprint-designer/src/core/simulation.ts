@@ -1560,59 +1560,117 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   }
   const bfsOrder = topoOrder;
 
-  // Backward DP (reverse BFS) to compute exact steady-state downstream demand per node & itemId
+  // Exact backward demand propagation via dirty worklist (O(V + E), converges across arbitrary-length
+  // belt chains & cyclic-source -> long-DAG topologies without fixed-pass truncation).
   const nodeDemand = new Map<string, Map<string, number>>();
-  const revOrder = [...bfsOrder].reverse();
-  for (let pass = 0; pass < 5; pass++) {
-    for (const b of revOrder) {
-      const def = defById.get(b.id);
-      if (!def) continue;
+  const demandChanged = (prev: Map<string, number> | undefined, next: Map<string, number>): boolean => {
+    if (!prev) return next.size > 0;
+    if (prev.size !== next.size) return true;
+    for (const [k, v] of next.entries()) {
+      const pv = prev.get(k);
+      if (pv === undefined || Math.abs(v - pv) > 1e-5) return true;
+    }
+    return false;
+  };
+  const computeRelayDemand = (b: PlacedBuilding, def: BuildableDef): Map<string, number> => {
+    const dm = new Map<string, number>();
+    const outs = outEdges.get(b.id) ?? [];
+    if (boundaryExits.has(b.id)) {
+      dm.set('*', getTierSpeed(def.tier));
+    }
+    for (const oe of outs) {
+      const childDm = nodeDemand.get(oe.toId);
+      if (!childDm || childDm.size === 0) continue;
+      const childDef = defById.get(oe.toId);
+      const portAllowed =
+        childDef && (childDef.kind === 'crafter' || childDef.kind === 'research')
+          ? crafterAssignedPorts.get(oe.toId)?.get(oe.toPortIndex ?? -1)
+          : undefined;
+      // Per-item demand upper bound across `oe`: unrelated items / wildcard sinks on sibling branches
+      // must NEVER dilute this item's demand cap; total physical belt capacity is enforced during forward flow!
+      for (const [it, r] of childDm.entries()) {
+        if (oe.filterItem && it !== '*' && it !== oe.filterItem) continue;
+        if (portAllowed && portAllowed.size > 0 && it !== '*' && !portAllowed.has(it)) continue;
+        const capped = Math.min(oe.capacity, r);
+        if (capped > 1e-9) {
+          dm.set(it, (dm.get(it) ?? 0) + capped);
+        }
+      }
+    }
+    return dm;
+  };
+
+  const fixedDemandNodes = new Set<string>();
+  const demandQueue: string[] = [];
+  const inDemandQueue = new Set<string>();
+  const enqueuePreds = (id: string) => {
+    for (const ie of inEdges.get(id) ?? []) {
+      if (!fixedDemandNodes.has(ie.fromId) && !inDemandQueue.has(ie.fromId)) {
+        inDemandQueue.add(ie.fromId);
+        demandQueue.push(ie.fromId);
+      }
+    }
+  };
+
+  // Seed all terminal demand sinks (crafters, research labs, sink containers, boundary exits)
+  for (const b of simNodes) {
+    const def = defById.get(b.id);
+    if (!def) continue;
+    if (def.kind === 'crafter') {
+      fixedDemandNodes.add(b.id);
       const dm = new Map<string, number>();
-      if (def.kind === 'crafter') {
-        const req = crafterDemandByInput.get(b.id);
-        if (req) {
-          for (const [it, r] of req.entries()) dm.set(it, r);
-        }
-      } else if (def.kind === 'research') {
-        const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
-        if (inCap > 1e-9) dm.set('*', inCap);
-      } else if (def.kind === 'container' && (outEdges.get(b.id) ?? []).length === 0) {
-        const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
-        if (inCap > 1e-9) {
-          if (b.filterItems && b.filterItems.length > 0) {
-            for (const it of b.filterItems) dm.set(it, inCap);
-          } else {
-            dm.set('*', inCap);
-          }
-        }
-      } else {
-        const outs = outEdges.get(b.id) ?? [];
-        if (boundaryExits.has(b.id)) {
-          dm.set('*', getTierSpeed(def.tier));
-        }
-        for (const oe of outs) {
-          const childDm = nodeDemand.get(oe.toId);
-          if (!childDm) continue;
-          const childDef = defById.get(oe.toId);
-          const portAllowed =
-            childDef && (childDef.kind === 'crafter' || childDef.kind === 'research')
-              ? crafterAssignedPorts.get(oe.toId)?.get(oe.toPortIndex ?? -1)
-              : undefined;
-          let childSum = 0;
-          for (const [it, r] of childDm.entries()) {
-            if (oe.filterItem && it !== '*' && it !== oe.filterItem) continue;
-            if (portAllowed && portAllowed.size > 0 && it !== '*' && !portAllowed.has(it)) continue;
-            childSum += r;
-          }
-          const scale = childSum > oe.capacity ? oe.capacity / childSum : 1;
-          for (const [it, r] of childDm.entries()) {
-            if (oe.filterItem && it !== '*' && it !== oe.filterItem) continue;
-            if (portAllowed && portAllowed.size > 0 && it !== '*' && !portAllowed.has(it)) continue;
-            dm.set(it, (dm.get(it) ?? 0) + r * scale);
-          }
+      const req = crafterDemandByInput.get(b.id);
+      if (req) {
+        for (const [it, r] of req.entries()) dm.set(it, r);
+      }
+      nodeDemand.set(b.id, dm);
+      if (dm.size > 0) enqueuePreds(b.id);
+    } else if (def.kind === 'research') {
+      fixedDemandNodes.add(b.id);
+      const dm = new Map<string, number>();
+      const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
+      if (inCap > 1e-9) dm.set('*', inCap);
+      nodeDemand.set(b.id, dm);
+      if (dm.size > 0) enqueuePreds(b.id);
+    } else if (def.kind === 'container' && (outEdges.get(b.id) ?? []).length === 0) {
+      fixedDemandNodes.add(b.id);
+      const dm = new Map<string, number>();
+      const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
+      if (inCap > 1e-9) {
+        if (b.filterItems && b.filterItems.length > 0) {
+          for (const it of b.filterItems) dm.set(it, inCap);
+        } else {
+          dm.set('*', inCap);
         }
       }
       nodeDemand.set(b.id, dm);
+      if (dm.size > 0) enqueuePreds(b.id);
+    } else if (boundaryExits.has(b.id)) {
+      const dm = computeRelayDemand(b, def);
+      nodeDemand.set(b.id, dm);
+      if (dm.size > 0) enqueuePreds(b.id);
+    } else {
+      nodeDemand.set(b.id, new Map());
+    }
+  }
+
+  // Propagate backward until fixed-point (cap cyclic feedback re-enqueues per node for guaranteed O(V + E))
+  const demandVisits = new Map<string, number>();
+  let dqHead = 0;
+  while (dqHead < demandQueue.length) {
+    const id = demandQueue[dqHead++];
+    inDemandQueue.delete(id);
+    if (fixedDemandNodes.has(id)) continue;
+    const b = buildingById.get(id);
+    const def = defById.get(id);
+    if (!b || !def) continue;
+    const nextDm = computeRelayDemand(b, def);
+    const prevDm = nodeDemand.get(id);
+    if (demandChanged(prevDm, nextDm)) {
+      nodeDemand.set(id, nextDm);
+      const v = (demandVisits.get(id) ?? 0) + 1;
+      demandVisits.set(id, v);
+      if (v < 16) enqueuePreds(id);
     }
   }
 
