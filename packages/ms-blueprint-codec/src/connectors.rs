@@ -97,6 +97,8 @@ pub fn synthesize_connectors(modules: &[PlacedModule]) -> Vec<Value> {
         let class_path = match (ctype.as_str(), is_top) {
             ("Vertical1x1", false) => "/Game/Blueprints/BuildingBlocks/BPO_Connector_08B.BPO_Connector_08B_C",
             ("Vertical1x1", true) => "/Game/Blueprints/BuildingBlocks/BPO_Connector_08T.BPO_Connector_08T_C",
+            ("Vertical2x2", false) => "/Game/Blueprints/BuildingBlocks/BPO_Connector_07B.BPO_Connector_07B_C",
+            ("Vertical2x2", true) => "/Game/Blueprints/BuildingBlocks/BPO_Connector_07T.BPO_Connector_07T_C",
             _ => continue,
         };
         if emitted.insert((class_path.to_owned(), cx, cy, ch, 0)) {

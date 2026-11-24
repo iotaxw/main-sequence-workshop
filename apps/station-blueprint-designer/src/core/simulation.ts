@@ -29,7 +29,10 @@ export type SimulationIssueCode =
   | 'belt-overload'
   | 'machine-missing-input'
   | 'machine-wrong-item'
-  | 'machine-blocked-output';
+  | 'machine-blocked-output'
+  | 'elevator-stack-gap'
+  | 'elevator-rotation-mismatch'
+  | 'elevator-mixed-shaft';
 
 export interface SimulationIssue {
   id: string;
@@ -188,40 +191,59 @@ interface InEdge {
 
 interface ElevatorPortInfo {
   stackId: string;
+  /** Real-game ItemColumns shaft key: world (portX,portY) for 2x2 (4-fold symmetric), local portIndex for 1x1 */
+  colKey: string;
+  portIndex: number;
   portX: number;
   portY: number;
   adjX: number;
   adjY: number;
   /** Direction items exit FROM this elevator port INTO buildable floor cell (adjX, adjY) */
   outDir: Rotation;
+  /** Module registration index in doc.modules (matches StationManager->Elevators tick priority @ 0x1442aca80) */
+  modOrder: number;
+}
+
+interface ElevatorStackAnomaly {
+  severity: SimulationIssueSeverity;
+  code: 'elevator-stack-gap' | 'elevator-rotation-mismatch';
+  message: string;
+  floor: number;
+  x: number;
+  y: number;
 }
 
 /**
- * Build 26639889 binary-verified ElevatorObject stack rule (MainSequence-Win64-Shipping.exe @ 0x1442e1d68):
- * Stacked elevator blocks merge into one shared ElevatorStack ONLY when module type AND XY coordinates match
- * AND their floors are vertically contiguous (next.floor === prev.floor + prev.sizeUnits[2], zero air gaps!).
- * Each port carries its exact outward face direction (`outDir`) into its adjacent buildable cell `(adjX, adjY)`,
- * supporting both straight-out and perpendicular side-turning exit belts cleanly without wall-bleed.
+ * Build 26639889 binary-verified ElevatorObject stack rule (MainSequence-Win64-Shipping.exe @ 0x1442e1c70 / 0x1442df590):
+ * - Stacked elevator blocks merge into one shared ElevatorStack ONLY when module type AND XY coordinates match
+ *   AND their floors are vertically contiguous (next.floor === prev.floor + prev.sizeUnits[2], zero air gaps!).
+ * - Any vertical air gap or mixed 1x1/2x2 stacking breaks FindAndLinkStack (`OffsetAbove=+16 / OffsetBelow=-16`)
+ *   and is reported as an `elevator-stack-gap` error.
+ * - For BPO_ElevatorBlock_03 (1x1), PushItem/Update index `ElevatorStack[0]->ItemColumns[portIndex]` by local port
+ *   index (ignoring GridRotation), so mismatched rotations twist shafts across floors (`elevator-rotation-mismatch`).
+ * - Each port carries its exact outward face direction (`outDir`) into its adjacent buildable cell `(adjX, adjY)`.
  */
 function collectElevatorPortStacks(doc: BlueprintDocument): {
   byPortCell: Map<string, ElevatorPortInfo>;
   byAdjCell: Map<string, ElevatorPortInfo[]>;
+  stackAnomalies: ElevatorStackAnomaly[];
 } {
   const byPortCell = new Map<string, ElevatorPortInfo>();
   const byAdjCell = new Map<string, ElevatorPortInfo[]>();
-  const byTypeXY = new Map<
+  const stackAnomalies: ElevatorStackAnomaly[] = [];
+  const byXY = new Map<
     string,
-    Array<{ mod: BlueprintDocument['modules'][number]; def: NonNullable<ReturnType<typeof getModuleDef>> }>
+    Array<{ mod: BlueprintDocument['modules'][number]; def: NonNullable<ReturnType<typeof getModuleDef>>; modOrder: number }>
   >();
 
-  for (const mod of doc.modules) {
+  for (let modOrder = 0; modOrder < doc.modules.length; modOrder++) {
+    const mod = doc.modules[modOrder];
     const def = getModuleDef(mod.type);
     if (!def || !def.floors.some((f) => f.elevatorPorts && f.elevatorPorts.length > 0)) continue;
-    // Key includes mod.type so 1x1 (center shaft) and 2x2 (±9m perimeter shafts) NEVER cross-merge!
-    const key = `${mod.type}:${mod.gx},${mod.gy}`;
-    const arr = byTypeXY.get(key);
-    if (arr) arr.push({ mod, def });
-    else byTypeXY.set(key, [{ mod, def }]);
+    const key = `${mod.gx},${mod.gy}`;
+    const arr = byXY.get(key);
+    if (arr) arr.push({ mod, def, modOrder });
+    else byXY.set(key, [{ mod, def, modOrder }]);
   }
 
   const inferLocalOutDir = (modType: string, lx: number, ly: number): Rotation => {
@@ -237,21 +259,57 @@ function collectElevatorPortStacks(doc: BlueprintDocument): {
     return ly < 0 ? 3 : 1;
   };
 
-  for (const [typeXyKey, list] of byTypeXY.entries()) {
+  for (const [xyKey, list] of byXY.entries()) {
     list.sort((a, b) => a.mod.floor - b.mod.floor);
     let stackSeq = 0;
     let prevTopFloor = Number.NaN;
-    for (const { mod, def } of list) {
-      if (Number.isNaN(prevTopFloor) || mod.floor !== prevTopFloor) {
+    let prevType = '';
+    let baseRot: Rotation | null = null;
+    for (const { mod, def, modOrder } of list) {
+      const [cx, cy] = getModuleCenterM(mod, def);
+      const isNewStack = Number.isNaN(prevTopFloor) || mod.floor !== prevTopFloor || mod.type !== prevType;
+      if (isNewStack) {
+        if (!Number.isNaN(prevTopFloor)) {
+          if (mod.type !== prevType) {
+            stackAnomalies.push({
+              severity: 'error',
+              code: 'elevator-stack-gap',
+              message: `电梯柱 (${mod.gx},${mod.gy}) 在 L${mod.floor} 混叠了不同规格电梯（${prevType} 与 ${mod.type}），实机无法相通`,
+              floor: mod.floor,
+              x: Math.floor(cx),
+              y: Math.floor(cy),
+            });
+          } else if (mod.floor > prevTopFloor) {
+            stackAnomalies.push({
+              severity: 'error',
+              code: 'elevator-stack-gap',
+              message: `电梯柱 (${mod.gx},${mod.gy}) 在 L${prevTopFloor}..L${mod.floor - 1} 存在楼层断档（电梯必须逐层连续堆叠才能相通）`,
+              floor: mod.floor,
+              x: Math.floor(cx),
+              y: Math.floor(cy),
+            });
+          }
+        }
         stackSeq++;
+        baseRot = mod.rotation;
+      } else if (mod.type === 'BPO_ElevatorBlock_03' && baseRot !== null && mod.rotation !== baseRot) {
+        stackAnomalies.push({
+          severity: 'warn',
+          code: 'elevator-rotation-mismatch',
+          message: `1×1 电梯 (${mod.gx},${mod.gy}) 在 L${mod.floor} 朝向与底层不一致（rot=${mod.rotation} ≠ ${baseRot}），实机 ItemColumns 按局部端口索引对应会导致竖井错位`,
+          floor: mod.floor,
+          x: Math.floor(cx),
+          y: Math.floor(cy),
+        });
       }
       prevTopFloor = mod.floor + def.sizeUnits[2];
-      const stackId = `${typeXyKey}#${stackSeq}`;
-      const [cx, cy] = getModuleCenterM(mod, def);
+      prevType = mod.type;
+      const stackId = `${mod.type}:${xyKey}#${stackSeq}`;
       for (const fl of def.floors) {
         if (!fl.elevatorPorts) continue;
         const portFloor = mod.floor + fl.floorOffset;
-        for (const ep of fl.elevatorPorts) {
+        for (let portIndex = 0; portIndex < fl.elevatorPorts.length; portIndex++) {
+          const ep = fl.elevatorPorts[portIndex];
           // Convert integer cell-corner coords (1x1 catalog) to cell centers before rotating
           const localCenterX = Number.isInteger(ep.x) ? ep.x + 0.5 : ep.x;
           const localCenterY = Number.isInteger(ep.y) ? ep.y + 0.5 : ep.y;
@@ -263,7 +321,8 @@ function collectElevatorPortStacks(doc: BlueprintDocument): {
           const [odx, ody] = rotationToDelta(outDir);
           const adjX = portX + odx;
           const adjY = portY + ody;
-          const info: ElevatorPortInfo = { stackId, portX, portY, adjX, adjY, outDir };
+          const colKey = mod.type === 'BPO_ElevatorBlock_03' ? `${stackId}:p${portIndex}` : `${stackId}:${portX},${portY}`;
+          const info: ElevatorPortInfo = { stackId, colKey, portIndex, portX, portY, adjX, adjY, outDir, modOrder };
           byPortCell.set(cellKey(portFloor, portX, portY), info);
           const adjKey = cellKey(portFloor, adjX, adjY);
           const adjArr = byAdjCell.get(adjKey);
@@ -273,7 +332,7 @@ function collectElevatorPortStacks(doc: BlueprintDocument): {
       }
     }
   }
-  return { byPortCell, byAdjCell };
+  return { byPortCell, byAdjCell, stackAnomalies };
 }
 
 interface DockPortSpec {
@@ -406,7 +465,10 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   const defById = new Map<string, BuildableDef>();
   const buildingById = new Map<string, PlacedBuilding>();
   const cellMap = new Map<string, PlacedBuilding>();
-  const { byPortCell: elevatorPorts, byAdjCell: elevatorAdjPorts } = collectElevatorPortStacks(doc);
+  const { byPortCell: elevatorPorts, byAdjCell: elevatorAdjPorts, stackAnomalies } = collectElevatorPortStacks(doc);
+  for (const sa of stackAnomalies) {
+    pushIssue(sa.severity, sa.code, sa.message, sa.floor, sa.x, sa.y);
+  }
   const { byPortCell: dockPorts, byAdjCell: dockAdjPorts } = collectDockPorts(doc);
   const dockEntryItem = new Map<string, string>();
 
@@ -634,6 +696,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   interface ElevTap {
     bid: string;
     floor: number;
+    modOrder: number;
     speed: number;
     portIndex?: number;
     toPortIndex?: number;
@@ -667,7 +730,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       if (matchedElevIn.length > 0) {
         entrySourceKind.set(b.id, 'elevator');
         for (const ep of matchedElevIn) {
-          pushElev(elevOutByCol, `${ep.stackId}:${ep.portX},${ep.portY}`, { bid: b.id, floor: b.floor, speed });
+          pushElev(elevOutByCol, ep.colKey, { bid: b.id, floor: b.floor, modOrder: ep.modOrder, speed });
         }
       } else if (matchedDockIn) {
         entrySourceKind.set(b.id, 'dock');
@@ -702,7 +765,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       } else if (frontElevMatch) {
         exitSinkKind.set(b.id, 'elevator');
         boundaryExits.add(b.id);
-        pushElev(elevInByCol, `${frontElevMatch.stackId}:${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
+        pushElev(elevInByCol, frontElevMatch.colKey, { bid: b.id, floor: b.floor, modOrder: frontElevMatch.modOrder, speed });
       } else if (frontDockMatch) {
         exitSinkKind.set(b.id, 'dock');
         boundaryExits.add(b.id);
@@ -787,7 +850,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         if (matchedElevIn.length > 0) {
           entrySourceKind.set(b.id, 'elevator');
           for (const ep of matchedElevIn) {
-            pushElev(elevOutByCol, `${ep.stackId}:${ep.portX},${ep.portY}`, { bid: b.id, floor: b.floor, speed });
+            pushElev(elevOutByCol, ep.colKey, { bid: b.id, floor: b.floor, modOrder: ep.modOrder, speed });
           }
         } else if (matchedDockIn) {
           entrySourceKind.set(b.id, 'dock');
@@ -819,7 +882,7 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         } else if (frontElevMatch) {
           exitSinkKind.set(b.id, 'elevator');
           boundaryExits.add(b.id);
-          pushElev(elevInByCol, `${frontElevMatch.stackId}:${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
+          pushElev(elevInByCol, frontElevMatch.colKey, { bid: b.id, floor: b.floor, modOrder: frontElevMatch.modOrder, speed });
         } else if (frontDockMatch) {
           exitSinkKind.set(b.id, 'dock');
           boundaryExits.add(b.id);
@@ -849,9 +912,10 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       if (splAdjElev.length > 0) {
         entrySourceKind.set(b.id, 'elevator');
         for (const ep of splAdjElev) {
-          pushElev(elevOutByCol, `${ep.stackId}:${ep.portX},${ep.portY}`, {
+          pushElev(elevOutByCol, ep.colKey, {
             bid: b.id,
             floor: b.floor,
+            modOrder: ep.modOrder,
             speed,
             toPortIndex: 0,
           });
@@ -894,9 +958,10 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         if (splElev && pDir === oppositeRot(splElev.outDir)) {
           exitSinkKind.set(b.id, 'elevator');
           boundaryExits.add(b.id);
-          pushElev(elevInByCol, `${splElev.stackId}:${tx},${ty}`, {
+          pushElev(elevInByCol, splElev.colKey, {
             bid: b.id,
             floor: b.floor,
+            modOrder: splElev.modOrder,
             speed,
             portIndex: pIdx,
             filterItem,
@@ -936,9 +1001,10 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           if (balAdjElev.length > 0) {
             entrySourceKind.set(b.id, 'elevator');
             for (const ep of balAdjElev) {
-              pushElev(elevOutByCol, `${ep.stackId}:${ep.portX},${ep.portY}`, {
+              pushElev(elevOutByCol, ep.colKey, {
                 bid: b.id,
                 floor: b.floor,
+                modOrder: ep.modOrder,
                 speed,
                 toPortIndex: wp.port.index,
               });
@@ -976,9 +1042,10 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         if (balElev && b.rotation === oppositeRot(balElev.outDir)) {
           exitSinkKind.set(b.id, 'elevator');
           boundaryExits.add(b.id);
-          pushElev(elevInByCol, `${balElev.stackId}:${tx},${ty}`, {
+          pushElev(elevInByCol, balElev.colKey, {
             bid: b.id,
             floor: b.floor,
+            modOrder: balElev.modOrder,
             speed,
             portIndex: wp.port.index,
             filterItem,
@@ -1052,13 +1119,17 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   }
 
-  // 2B. Link stacked cross-floor elevator shafts at matching (stackId, wx, wy) coordinates (Build 26639889 ElevatorObject::ItemColumns)
+  // 2B. Link stacked cross-floor elevator shafts at matching colKey (Build 26639889 ElevatorObject::ItemColumns)
   //     Only vertically contiguous stacked elevator blocks share a stackId; air gaps break the vertical link!
+  //     Real-game StationManager->Elevators (@ 0x1442aca80) ticks in module registration order: earlier-registered
+  //     output floors drain ItemColumns[i] with 100% priority before overflow passes to later floors.
+  const elevPriorityOutNodes = new Set<string>();
   for (const [colKey, ins] of elevInByCol.entries()) {
-    const outs = elevOutByCol.get(colKey);
-    if (!outs || outs.length === 0) continue;
+    const rawOuts = elevOutByCol.get(colKey);
+    if (!rawOuts || rawOuts.length === 0) continue;
+    const outs = [...rawOuts].sort((a, z) => a.modOrder - z.modOrder || a.floor - z.floor);
     for (const inRec of ins) {
-      let linkedAny = false;
+      let linkedCount = 0;
       for (const outRec of outs) {
         if (outRec.floor === inRec.floor) continue;
         addEdge(
@@ -1070,11 +1141,12 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           inRec.filterItem
         );
         entrySourceKind.delete(outRec.bid);
-        linkedAny = true;
+        linkedCount++;
       }
-      if (linkedAny) {
+      if (linkedCount > 0) {
         boundaryExits.delete(inRec.bid);
         exitSinkKind.delete(inRec.bid);
+        if (linkedCount > 1) elevPriorityOutNodes.add(inRec.bid);
       }
     }
   }
@@ -1903,33 +1975,51 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
         } else {
           // Cross-floor elevator belt feeding multiple destination floors on the same vertical shaft column:
-          // distribute by downstream demand water-filling within belt speed limit!
+          // Real-game StationManager (@ 0x1442aca80) + ElevatorObject::Update (@ 0x1442dff80) drains ItemColumns[i]
+          // in module registration order (earlier floor takes up to its demand first; surplus overflows to later floors).
           const beltCap = getTierSpeed(def.tier);
           const total = sumFlow(inFlow);
           const capScale = total > beltCap ? beltCap / total : 1;
           const outMaps = new Map<OutEdge, FlowMap>();
           for (const oe of outs) outMaps.set(oe, new Map());
-          for (const [itemId, rawRate] of inFlow.entries()) {
-            let rem = rawRate * capScale;
-            if (rem <= 1e-9) continue;
-            let active = outs.slice();
-            for (let wf = 0; wf < 8 && rem > 1e-9 && active.length > 0; wf++) {
-              const share = rem / active.length;
-              const nextActive: OutEdge[] = [];
-              let sentAny = false;
-              for (const oe of active) {
+          if (elevPriorityOutNodes.has(b.id)) {
+            for (const [itemId, rawRate] of inFlow.entries()) {
+              let rem = rawRate * capScale;
+              if (rem <= 1e-9) continue;
+              for (const oe of outs) {
+                if (rem <= 1e-9) break;
                 const om = outMaps.get(oe)!;
                 const effCap = getEdgeEffectiveCap(oe, itemId);
                 const free = Math.max(0, Math.min(oe.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
                 if (free <= 1e-9) continue;
-                const give = Math.min(share, free);
+                const give = Math.min(rem, free);
                 addFlow(om, itemId, give);
                 rem -= give;
-                sentAny = true;
-                if (free - give > 1e-9) nextActive.push(oe);
               }
-              if (!sentAny) break;
-              active = nextActive;
+            }
+          } else {
+            for (const [itemId, rawRate] of inFlow.entries()) {
+              let rem = rawRate * capScale;
+              if (rem <= 1e-9) continue;
+              let active = outs.slice();
+              for (let wf = 0; wf < 8 && rem > 1e-9 && active.length > 0; wf++) {
+                const share = rem / active.length;
+                const nextActive: OutEdge[] = [];
+                let sentAny = false;
+                for (const oe of active) {
+                  const om = outMaps.get(oe)!;
+                  const effCap = getEdgeEffectiveCap(oe, itemId);
+                  const free = Math.max(0, Math.min(oe.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
+                  if (free <= 1e-9) continue;
+                  const give = Math.min(share, free);
+                  addFlow(om, itemId, give);
+                  rem -= give;
+                  sentAny = true;
+                  if (free - give > 1e-9) nextActive.push(oe);
+                }
+                if (!sentAny) break;
+                active = nextActive;
+              }
             }
           }
           for (const oe of outs) {
@@ -2208,6 +2298,34 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     const arrival = sumFlow(getNodeInFlow(b.id));
     if (arrival > oe.capacity + 1e-3) {
       chokedArrivalByNode.set(oe.toId, Math.max(chokedArrivalByNode.get(oe.toId) ?? 0, arrival));
+    }
+  }
+
+  // Detect multi-item contamination on any shared vertical elevator shaft column (Build 26639889 PushItem @ 0x1442e1fd0
+  // rejects any item != bottom->ItemColumns[portIdx].Item, permanently jamming mixed shafts!)
+  for (const [, ins] of elevInByCol.entries()) {
+    const colItems = new Set<string>();
+    for (const inRec of ins) {
+      const fm = getNodeInFlow(inRec.bid);
+      for (const [it, r] of fm.entries()) {
+        if (r > 1e-4) colItems.add(it);
+      }
+    }
+    if (colItems.size > 1) {
+      const names = Array.from(colItems).map(getItemNameZh).join(' + ');
+      for (const inRec of ins) {
+        const eb = buildingById.get(inRec.bid);
+        if (!eb) continue;
+        pushIssue(
+          'error',
+          'elevator-mixed-shaft',
+          `电梯井混料堵死 (${eb.x},${eb.y})：同井柱同时输入多种物品（${names}），实机 ItemColumns 仅允许单一物品`,
+          eb.floor,
+          eb.x,
+          eb.y,
+          eb.id
+        );
+      }
     }
   }
 

@@ -1789,4 +1789,131 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
     expect(repCont.errorCount).toBe(0);
     expect(repCont.cellFlows['2:6,10']?.totalRate).toBeCloseTo(1.0, 2);
   });
+
+  it('enforces Build 26639889 floor-by-floor elevator stacking, 1x1 rotation mismatch, registration-order output priority, and mixed-shaft detection', () => {
+    // 1) Air gap in 2x2 elevator stack (L0 + L4 missing L2) -> MUST emit elevator-stack-gap error & block L0->L4 transfer!
+    let gapped = createEmptyBlueprint();
+    gapped = placeModuleCmd(gapped, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    gapped = placeModuleCmd(gapped, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 4, rotation: 0 }).doc;
+    gapped = placeModuleCmd(gapped, { type: 'BPO_Station_03', gx: -2, gy: 0, floor: 0, rotation: 0 }).doc;
+    gapped = placeModuleCmd(gapped, { type: 'BPO_Station_03', gx: -2, gy: 0, floor: 4, rotation: 0 }).doc;
+    gapped = placeBuildingCmd(gapped, {
+      type: 'DAT_RelicSynthesizer',
+      x: -13,
+      y: 6,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_Protomatter',
+      disabledPorts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    }).doc;
+    for (let x = -4; x <= 6; x++) {
+      gapped = placeBuildingCmd(gapped, { type: 'DAT_ConveyorBelt3', x, y: 10, floor: 0, rotation: 0 }).doc;
+    }
+    gapped = placeBuildingCmd(gapped, { type: 'DAT_ConveyorBelt3', x: 6, y: 10, floor: 4, rotation: 2 }).doc;
+    gapped = placeBuildingCmd(gapped, { type: 'DAT_Container', x: 4, y: 9, floor: 4, rotation: 0 }).doc;
+    const repGapped = simulateBlueprint(gapped);
+    expect(repGapped.issues.some((i) => i.code === 'elevator-stack-gap' && i.severity === 'error')).toBe(true);
+    expect(repGapped.cellFlows['4:6,10']?.totalRate ?? 0).toBe(0);
+
+    // 2) Bridging L2 restores contiguous L0<->L2<->L4 stack: L0:IN -> L2:--- -> L4:OUT delivers full 1.0/s with 0 errors!
+    const bridged = placeModuleCmd(gapped, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 2, rotation: 0 }).doc;
+    const repBridged = simulateBlueprint(bridged);
+    expect(repBridged.errorCount).toBe(0);
+    expect(repBridged.cellFlows['4:6,10']?.totalRate).toBeCloseTo(1.0, 2);
+
+    // 3) Multi-floor output registration-order priority (0x1442aca80 + 0x1442dff80):
+    //    L2 pushes 1.0/s Protomatter; L0 (registered first) feeds 1 Enricher consuming 1.0/s -> L0 takes 1.0/s, L4 gets 0/s;
+    //    with 2 synthesizers (2.0/s) on L2 -> L0 takes 1.0/s first, exact 1.0/s surplus overflows to L4!
+    let prioDoc = createEmptyBlueprint();
+    prioDoc = placeModuleCmd(prioDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    prioDoc = placeModuleCmd(prioDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 2, rotation: 0 }).doc;
+    prioDoc = placeModuleCmd(prioDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 4, rotation: 0 }).doc;
+    prioDoc = placeModuleCmd(prioDoc, { type: 'BPO_Station_03', gx: -2, gy: 0, floor: 0, rotation: 0 }).doc;
+    prioDoc = placeModuleCmd(prioDoc, { type: 'BPO_Station_03', gx: -2, gy: 0, floor: 2, rotation: 0 }).doc;
+    // L2: 2x Protomatter (2.0/s total) merged into elevator port (6,10) -> (7,10)
+    prioDoc = placeBuildingCmd(prioDoc, {
+      type: 'DAT_RelicSynthesizer',
+      x: -13,
+      y: 6,
+      floor: 2,
+      rotation: 0,
+      recipeId: 'REC_Protomatter',
+      disabledPorts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    }).doc;
+    prioDoc = placeBuildingCmd(prioDoc, {
+      type: 'DAT_RelicSynthesizer',
+      x: -13,
+      y: 16,
+      floor: 2,
+      rotation: 0,
+      recipeId: 'REC_Protomatter',
+      disabledPorts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    }).doc;
+    for (let x = -4; x <= 6; x++) {
+      prioDoc = placeBuildingCmd(prioDoc, { type: 'DAT_ConveyorBelt3', x, y: 10, floor: 2, rotation: 0 }).doc;
+    }
+    for (let y = 20; y >= 11; y--) {
+      prioDoc = placeBuildingCmd(prioDoc, { type: 'DAT_ConveyorBelt3', x: -4, y, floor: 2, rotation: 3 }).doc;
+    }
+    // L0 (registered before L4): 1x SilicaSynthesis consumes exactly 0.5/s Protomatter (1 / 2s)
+    prioDoc = placeBuildingCmd(prioDoc, { type: 'DAT_ConveyorBelt3', x: 6, y: 10, floor: 0, rotation: 2 }).doc;
+    for (let x = 5; x >= -3; x--) {
+      prioDoc = placeBuildingCmd(prioDoc, { type: 'DAT_ConveyorBelt3', x, y: 10, floor: 0, rotation: 2 }).doc;
+    }
+    prioDoc = placeBuildingCmd(prioDoc, {
+      type: 'DAT_EnrichmentChamber',
+      x: -12,
+      y: 6,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_SilicaSynthesis',
+      disabledPorts: [1, 2, 3, 4, 5, 7, 8, 9, 10, 11],
+    }).doc;
+    prioDoc = placeBuildingCmd(prioDoc, { type: 'DAT_ConveyorBelt3', x: -13, y: 10, floor: 0, rotation: 2 }).doc;
+    prioDoc = placeBuildingCmd(prioDoc, { type: 'DAT_Container', x: -15, y: 9, floor: 0, rotation: 0 }).doc;
+    // L4 (registered after L0): terminal showcase box receives ONLY the exact 1.5/s overflow (2.0 - 0.5)!
+    prioDoc = placeBuildingCmd(prioDoc, { type: 'DAT_ConveyorBelt3', x: 6, y: 10, floor: 4, rotation: 2 }).doc;
+    prioDoc = placeBuildingCmd(prioDoc, { type: 'DAT_Container', x: 4, y: 9, floor: 4, rotation: 0 }).doc;
+    const repPrio = simulateBlueprint(prioDoc);
+    expect(repPrio.errorCount).toBe(0);
+    expect(repPrio.cellFlows['0:6,10']?.totalRate).toBeCloseTo(0.5, 2);
+    expect(repPrio.cellFlows['4:6,10']?.totalRate).toBeCloseTo(1.5, 2);
+
+    // 4) 1x1 elevator rotation mismatch emits warning
+    let rot1x1 = createEmptyBlueprint();
+    rot1x1 = placeModuleCmd(rot1x1, { type: 'BPO_ElevatorBlock_03', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    rot1x1 = placeModuleCmd(rot1x1, { type: 'BPO_ElevatorBlock_03', gx: 0, gy: 0, floor: 1, rotation: 1 }).doc;
+    const repRot1x1 = simulateBlueprint(rot1x1);
+    expect(repRot1x1.issues.some((i) => i.code === 'elevator-rotation-mismatch' && i.severity === 'warn')).toBe(true);
+
+    // 5) Mixed-item elevator shaft (two floors pushing different items into same shaft) emits elevator-mixed-shaft error!
+    let mixDoc = createEmptyBlueprint();
+    mixDoc = placeModuleCmd(mixDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    mixDoc = placeModuleCmd(mixDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 2, rotation: 0 }).doc;
+    mixDoc = placeModuleCmd(mixDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 4, rotation: 0 }).doc;
+    mixDoc = placeBuildingCmd(mixDoc, {
+      type: 'DAT_Container',
+      x: 3,
+      y: 9,
+      floor: 0,
+      rotation: 0,
+      filterItems: ['ITEM_TitaniumPlates'],
+    }).doc;
+    mixDoc = placeBuildingCmd(mixDoc, { type: 'DAT_ConveyorBelt3', x: 5, y: 10, floor: 0, rotation: 0 }).doc;
+    mixDoc = placeBuildingCmd(mixDoc, { type: 'DAT_ConveyorBelt3', x: 6, y: 10, floor: 0, rotation: 0 }).doc;
+    mixDoc = placeBuildingCmd(mixDoc, {
+      type: 'DAT_Container',
+      x: 3,
+      y: 9,
+      floor: 2,
+      rotation: 0,
+      filterItems: ['ITEM_NickelPlates'],
+    }).doc;
+    mixDoc = placeBuildingCmd(mixDoc, { type: 'DAT_ConveyorBelt3', x: 5, y: 10, floor: 2, rotation: 0 }).doc;
+    mixDoc = placeBuildingCmd(mixDoc, { type: 'DAT_ConveyorBelt3', x: 6, y: 10, floor: 2, rotation: 0 }).doc;
+    mixDoc = placeBuildingCmd(mixDoc, { type: 'DAT_ConveyorBelt3', x: 6, y: 10, floor: 4, rotation: 2 }).doc;
+    mixDoc = placeBuildingCmd(mixDoc, { type: 'DAT_Container', x: 4, y: 9, floor: 4, rotation: 0 }).doc;
+    const repMix = simulateBlueprint(mixDoc);
+    expect(repMix.issues.some((i) => i.code === 'elevator-mixed-shaft' && i.severity === 'error')).toBe(true);
+  });
 });
