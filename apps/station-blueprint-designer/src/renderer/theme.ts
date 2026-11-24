@@ -13,6 +13,7 @@ export type CadThemeId = 'platinum-gold' | 'stealth-cad';
 export interface CadThemePalette {
   id: CadThemeId;
   nameZh: string;
+  nameEn: string;
   isLight: boolean;
   // Scene backdrop & surfaces
   bg: number;
@@ -76,6 +77,7 @@ export const CAD_THEMES: Record<CadThemeId, CadThemePalette> = {
   'platinum-gold': {
     id: 'platinum-gold',
     nameZh: '白金香槟',
+    nameEn: 'Obsidian Gold',
     isLight: false,
     bg: 0x06080c,
     slabFill: 0x0b0f17,
@@ -131,6 +133,7 @@ export const CAD_THEMES: Record<CadThemeId, CadThemePalette> = {
   'stealth-cad': {
     id: 'stealth-cad',
     nameZh: '工程白图',
+    nameEn: 'Drafting Light',
     isLight: true,
     bg: 0xf1f3f6,
     slabFill: 0xe4e8ee,

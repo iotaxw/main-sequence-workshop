@@ -11,7 +11,15 @@ import {
   toggleBeltStrokeTunnel,
   type BeltStrokeTunnel,
 } from './belt-router';
-import { CATALOG, getBuildableDef, getModuleDef, getRecipeDef, getRecipesForCrafter } from './catalog';
+import {
+  CATALOG,
+  getBuildableDef,
+  getItemName,
+  getModuleDef,
+  getRecipeDef,
+  getRecipeName,
+  getRecipesForCrafter,
+} from './catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './codec';
 import {
   boxSelectEntities,
@@ -29,10 +37,14 @@ import {
   stampBlueprintCmd,
   undoHistory,
   updateBuildingConfigCmd,
+  updateModuleConfigCmd,
 } from './commands';
 import {
   computeUndergroundLinks,
+  getModuleFloorShift,
+  getModuleOriginOffsetM,
   getModuleWorldConnectors,
+  getModuleWorldDockPorts,
   isCellBuildable,
   validateBuildingPlacement,
   validateModulePlacement,
@@ -1916,5 +1928,113 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
     mixDoc = placeBuildingCmd(mixDoc, { type: 'DAT_Container', x: 4, y: 9, floor: 4, rotation: 0 }).doc;
     const repMix = simulateBlueprint(mixDoc);
     expect(repMix.issues.some((i) => i.code === 'elevator-mixed-shaft' && i.severity === 'error')).toBe(true);
+  });
+
+  it('derives class-level pivot/floor shifts from blockBoundsM, preserves Y-descending dock ports & mirror remapping, and exposes EN labels', () => {
+    // 1. Class-level geometry invariants across all 27 catalog modules (zero hardcoded IDs)
+    const asymMods = CATALOG.stationModules.filter((m) => {
+      const [ox, oy] = getModuleOriginOffsetM(m);
+      return ox !== 0 || oy !== 0;
+    });
+    expect(asymMods.map((m) => m.id).sort()).toEqual(['BPO_Dock_2', 'BPO_ShipyardCore_02']);
+    for (const m of asymMods) {
+      expect(getModuleOriginOffsetM(m)).toEqual([8, 0]);
+    }
+    const ceilingMods = CATALOG.stationModules.filter((m) => getModuleFloorShift(m) > 0);
+    expect(ceilingMods.map((m) => m.id)).toEqual(['BPO_StationArmour_01B']);
+    expect(getModuleFloorShift(ceilingMods[0])).toBe(1);
+
+    // 2. Dock port Y-descending ordering + geometric mirror remapping (i -> N-1-i) + updateModuleConfigCmd
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_Dock_2', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    const dockId = doc.modules[0].id;
+    doc = updateModuleConfigCmd(doc, dockId, {
+      dockName: '主工业港',
+      dockPorts: [
+        { portIndex: 0, itemId: 'ITEM_TitaniumPlates', mode: 'unload' },
+        { portIndex: 7, itemId: 'ITEM_AlphaProtein', mode: 'load' },
+      ],
+    }).doc;
+    const dockDef = getModuleDef('BPO_Dock_2')!;
+    const portsRot0 = getModuleWorldDockPorts(doc.modules[0], dockDef);
+    expect(portsRot0.length).toBe(8);
+    // At rot=0, Filters[0..7] run Y-descending (port 0 has strictly larger world Y than port 7)
+    expect(portsRot0[0].portY).toBeGreaterThan(portsRot0[7].portY);
+    expect(portsRot0[0].itemId).toBe('ITEM_TitaniumPlates');
+    expect(portsRot0[7].itemId).toBe('ITEM_AlphaProtein');
+
+    const mirrored = mirrorBlueprintX(doc);
+    expect(mirrored.modules[0].rotation).toBe(2);
+    expect(mirrored.modules[0].dockPorts).toEqual([
+      { portIndex: 0, itemId: 'ITEM_AlphaProtein', mode: 'load' },
+      { portIndex: 7, itemId: 'ITEM_TitaniumPlates', mode: 'unload' },
+    ]);
+
+    // 3. Bilingual EN catalog & short labels
+    expect(getItemName('ITEM_StrangeMatterCrystal', 'en')).toBe('Strange Matter Crystal');
+    expect(getItemName('ITEM_TitaniumPlates', 'zh')).toBe('钛板');
+    const coilRec = getRecipeDef('REC_MageticCoils')!;
+    expect(getRecipeName(coilRec, 'en')).toBe('Magnetic Coils');
+    expect(getShortLabel('DAT_ConveyorBelt3', undefined, 'en')).toBe('Belt III');
+    expect(getShortLabel('BPO_Dock_2', undefined, 'en')).toBe('Dock II');
+  });
+
+  it('conserves mass via non-bottleneck crafter backpressure and water-fills multi-output buffer containers', () => {
+    // Build two Assemblers making REC_HullPlates (needs TitaniumPlates + NickelPlates):
+    // - Assembler A gets 0.5/s TitaniumPlates (throttled!) + shared NickelPlates splitter
+    // - Assembler B gets full TitaniumPlates + other half of the SAME NickelPlates splitter
+    // Without non-bottleneck backpressure, A would incinerate surplus NickelPlates instead of letting it overflow to B!
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    // Buffer container fed by 2.0/s TitaniumPlates -> 2 outputs: one to an idle/low-demand box, one to a hungry machine
+    // Simpler direct mass-conservation check: 1 Mk.1 belt (1.0/s) of TitaniumPlates into a container with 2 outputs:
+    // Output 1 -> Refinery making nothing? Even better: 2 Refineries where one has blocked output (eff=0) and one is live!
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_Container',
+      x: 2,
+      y: 6,
+      floor: 0,
+      rotation: 0,
+      filterItems: ['ITEM_TitaniumOre'],
+    }).doc;
+    // Output belt A (top): feeds Refinery A (no output belt -> outputEff = 0 -> backpressured!)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 4, y: 6, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 5, y: 6, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_Refinery',
+      x: 6,
+      y: 5,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_TitaniumPlates',
+      disabledPorts: [0, 1, 2, 3],
+    }).doc;
+    // Re-enable west input port (index 3? check port on west edge: let's keep all ports enabled and simply omit output belt!)
+    doc.buildings[doc.buildings.length - 1].disabledPorts = undefined;
+    // Output belt B (bottom): feeds Refinery B (with output belt -> needs 1.0/s TitaniumOre!)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 4, y: 7, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 5, y: 7, floor: 0, rotation: 1 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 5, y: 8, floor: 0, rotation: 1 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 5, y: 9, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_Refinery',
+      x: 6,
+      y: 8,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_TitaniumPlates',
+    }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 9, y: 9, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_Container', x: 10, y: 8, floor: 0, rotation: 0 }).doc;
+
+    const rep = simulateBlueprint(doc);
+    // Refinery A is output-blocked (eff=0), so non-bottleneck backpressure reduces its input absorption to 0,
+    // and container water-filling delivers 100% of TitaniumOre demand to Refinery B (REC_TitaniumPlates: 2 ore -> 1 plate / 3s)!
+    const tpStat = rep.recipeStats.find((r) => r.recipeId === 'REC_TitaniumPlates');
+    expect(tpStat).toBeDefined();
+    expect(tpStat!.actualOutputRates[0].ratePerSec).toBeCloseTo(1 / 3, 2);
+    // Net input matches actual consumption (2/3 ore/s for Refinery B only, NOT 4/3 ore/s incinerating 2/3 into blocked Refinery A!)
+    const oreIn = rep.netInputs.find((i) => i.itemId === 'ITEM_TitaniumOre');
+    expect(oreIn?.ratePerSec).toBeCloseTo(2 / 3, 2);
   });
 });

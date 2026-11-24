@@ -4,10 +4,10 @@ import type { ViewMode } from '../core/types';
 
 export const YAW_SNAP_ANGLES = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]; // 0°, 90°, 180°, 270°
 export const PITCH_SNAP_PRESETS = [
-  { id: 'top', label: '正俯 89°', rad: (89 * Math.PI) / 180 },
-  { id: 'work', label: '工作 64°', rad: (64 * Math.PI) / 180 },
-  { id: 'iso', label: '轴测 42°', rad: (42 * Math.PI) / 180 },
-  { id: 'low', label: '低角 22°', rad: (22 * Math.PI) / 180 },
+  { id: 'top', label: '正俯 89°', labelEn: 'Top 89°', rad: (89 * Math.PI) / 180 },
+  { id: 'work', label: '工作 64°', labelEn: 'Work 64°', rad: (64 * Math.PI) / 180 },
+  { id: 'iso', label: '轴测 42°', labelEn: 'Iso 42°', rad: (42 * Math.PI) / 180 },
+  { id: 'low', label: '低角 22°', labelEn: 'Low 22°', rad: (22 * Math.PI) / 180 },
 ] as const;
 
 export const MIN_DISTANCE = 9;

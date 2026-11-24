@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { getBuildableDef, getModuleDef } from '../core/catalog';
 import { getBuildingSizeCells, getModuleBoundsM, getModuleSizeUnits, STATION_UNIT_M } from '../core/geometry';
+import { useI18n } from '../core/i18n';
 import type { BlueprintDocument } from '../core/types';
 import type { CadThemeId } from '../renderer/theme';
 
@@ -277,6 +278,7 @@ export function renderBlueprintThumbnailDataUrl(doc: BlueprintDocument, theme: C
 }
 
 export const BlueprintThumbnail: React.FC<BlueprintThumbnailProps> = ({ doc, cacheKey, theme, loading }) => {
+  const { t } = useI18n();
   const dataUrl = useMemo(() => {
     if (!doc || typeof document === 'undefined') return null;
     const fullKey = `${theme}::${cacheKey}`;
@@ -298,7 +300,7 @@ export const BlueprintThumbnail: React.FC<BlueprintThumbnailProps> = ({ doc, cac
         <line x1="52" y1="36" x2="68" y2="36" stroke="currentColor" strokeWidth="1.2" />
         <line x1="60" y1="28" x2="60" y2="44" stroke="currentColor" strokeWidth="1.2" />
       </svg>
-      <span>{loading ? '加载缩略图...' : '云端预览待载入'}</span>
+      <span>{loading ? t('加载中...', 'Loading...') : t('待载入', 'Pending')}</span>
     </div>
   );
 };

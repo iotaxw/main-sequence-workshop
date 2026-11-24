@@ -258,6 +258,92 @@ export function getModuleOriginOffsetM(def: StationModuleDef): [number, number] 
   return [ox, oy];
 }
 
+/**
+ * Class-level ceiling-hung floor shift derived purely from `blockBoundsM` (zero hardcoded module IDs).
+ * Matches Rust codec `module_native_pivot_offset` (`z_shift = +2` in 4m units = +1 floor = +8m):
+ * modules whose bounding box sits strictly at/below Z=0 (`maxZ <= 0.05 && minZ < -0.5`, e.g. BPO_StationArmour_01B)
+ * mount their native actor origin at the ceiling of their canonical floor (`floor + 1`).
+ */
+export function getModuleFloorShift(def: StationModuleDef): number {
+  const b = def.blockBoundsM;
+  if (!b) return 0;
+  return b.maxZ <= 0.05 && b.minZ < -0.5 ? 1 : 0;
+}
+
+export interface DockPortLocalDef {
+  portIndex: number;
+  localX: number; // meters relative to module geometric center at rot=0
+  localY: number;
+  localOutDir: Rotation; // outward flow direction into adjacent floor cell at rot=0
+}
+
+export interface WorldDockPort {
+  moduleId: string;
+  portIndex: number;
+  portX: number;
+  portY: number;
+  adjX: number;
+  adjY: number;
+  outDir: Rotation;
+  itemId?: string;
+  mode?: 'unload' | 'load';
+}
+
+const INDUSTRIAL_DOCK_LOCAL_Y = [5.5, 4.5, 3.5, 2.5, -2.5, -3.5, -4.5, -5.5] as const;
+const STANDARD_DOCK_LOCAL_Y = [0.5, -0.5] as const;
+
+/**
+ * Build 26639889 binary-verified local dock port layout for freighter docks.
+ * Both BPO_Dock_2 (BPO_IndustrialDock::Filters[8]) and BPO_Dock (BPO_StationBlockDock::Filters[2])
+ * mount DefaultMachines[0] at GridRotation = 2 (180° flip), so Filters[0..N-1] run Y-descending
+ * in module-local coordinates.
+ */
+export function getModuleDockPortDefs(def: StationModuleDef): DockPortLocalDef[] {
+  if (def.id === 'BPO_Dock_2') {
+    return INDUSTRIAL_DOCK_LOCAL_Y.map((ly, i) => ({
+      portIndex: i,
+      localX: -8.5,
+      localY: ly,
+      localOutDir: 2 as Rotation,
+    }));
+  }
+  if (def.id === 'BPO_Dock') {
+    return STANDARD_DOCK_LOCAL_Y.map((ly, i) => ({
+      portIndex: i,
+      localX: -7.5,
+      localY: ly,
+      localOutDir: 2 as Rotation,
+    }));
+  }
+  return [];
+}
+
+/** Transform a placed dock module's ports into exact 1m world cell & adjacent floor cell coordinates. */
+export function getModuleWorldDockPorts(mod: PlacedModule, def: StationModuleDef): WorldDockPort[] {
+  const localDefs = getModuleDockPortDefs(def);
+  if (localDefs.length === 0) return [];
+  const [cx, cy] = getModuleCenterM(mod, def);
+  return localDefs.map((ld) => {
+    const outDir = normalizeRotation(ld.localOutDir + mod.rotation);
+    const [odx, ody] = rotationToDelta(outDir);
+    const [rx, ry] = rotateVec2(ld.localX, ld.localY, mod.rotation);
+    const portX = Math.floor(cx + rx);
+    const portY = Math.floor(cy + ry);
+    const cfg = mod.dockPorts?.find((p) => p.portIndex === ld.portIndex);
+    return {
+      moduleId: mod.id,
+      portIndex: ld.portIndex,
+      portX,
+      portY,
+      adjX: portX + odx,
+      adjY: portY + ody,
+      outDir,
+      itemId: cfg?.itemId,
+      mode: cfg?.mode,
+    };
+  });
+}
+
 /** Transform module connectors into world coordinates */
 export function getModuleWorldConnectors(mod: PlacedModule, def: StationModuleDef): WorldConnector[] {
   const [cx, cy] = getModuleCenterM(mod, def);

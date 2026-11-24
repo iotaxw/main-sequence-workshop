@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../core/i18n';
 
 interface GameInteropMenuProps {
   driverMode: 'fs-local' | 'virtual-idb' | 'github-private';
@@ -21,6 +22,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
   onMountLocalFolder,
   onOpenGitHubConnect,
 }) => {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -44,7 +46,11 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
   }, [open]);
 
   const sourceLabel =
-    driverMode === 'fs-local' ? '本地目录' : driverMode === 'github-private' ? '私有云库' : '内置库';
+    driverMode === 'fs-local'
+      ? t('本地目录', 'Local Folder')
+      : driverMode === 'github-private'
+        ? t('私有云库', 'Private Cloud')
+        : t('内置库', 'Built-in');
 
   return (
     <div className="interop-anchor" ref={wrapRef}>
@@ -52,9 +58,9 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
         type="button"
         className={`cad-btn accent ${open ? 'active' : ''}`}
         onClick={() => setOpen((v) => !v)}
-        title="导入 / 导出 .sav 与 .json"
+        title={t('导入 / 导出 .sav 与 .json', 'Import / Export .sav & .json')}
       >
-        互转 ▾
+        {t('互转 ▾', 'I/O ▾')}
       </button>
 
       <input
@@ -73,19 +79,19 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
       {open && (
         <div className="interop-popover compact">
           <div className="interop-section">
-            <div className="interop-section-title">导入</div>
+            <div className="interop-section-title">{t('导入', 'Import')}</div>
             <button
               type="button"
               className="interop-action-btn row"
               onClick={() => inputRef.current?.click()}
             >
-              <span className="interop-action-main">导入蓝图文件</span>
+              <span className="interop-action-main">{t('导入蓝图', 'Import File')}</span>
               <span className="interop-tag">.sav / .json</span>
             </button>
           </div>
 
           <div className="interop-section">
-            <div className="interop-section-title">导出</div>
+            <div className="interop-section-title">{t('导出', 'Export')}</div>
             <button
               type="button"
               className="interop-action-btn row primary"
@@ -94,7 +100,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
                 onExportNativeSav('station');
               }}
             >
-              <span className="interop-action-main">原版整站设计图</span>
+              <span className="interop-action-main">{t('游戏整站', 'Station Save')}</span>
               <span className="interop-tag">.sav</span>
             </button>
             <button
@@ -105,7 +111,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
                 onExportNativeSav('preset');
               }}
             >
-              <span className="interop-action-main">Mod 局部预设</span>
+              <span className="interop-action-main">{t('局部预设', 'Section Preset')}</span>
               <span className="interop-tag">.preset.sav</span>
             </button>
             <button
@@ -116,13 +122,13 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
                 onExportCanonicalJson();
               }}
             >
-              <span className="interop-action-main">规范蓝图</span>
+              <span className="interop-action-main">{t('蓝图 JSON', 'Blueprint JSON')}</span>
               <span className="interop-tag">.json</span>
             </button>
           </div>
 
           <div className="interop-section">
-            <div className="interop-section-title">蓝图源</div>
+            <div className="interop-section-title">{t('蓝图源', 'Source')}</div>
             <div className="interop-sync-status" title={rootLabel}>
               <span
                 className={`status-dot ${
@@ -141,7 +147,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
                     onMountLocalFolder();
                   }}
                 >
-                  {driverMode === 'fs-local' ? '切换目录' : '本地目录'}
+                  {driverMode === 'fs-local' ? t('切换目录', 'Change Dir') : t('本地目录', 'Local Dir')}
                 </button>
               )}
               <button
@@ -152,7 +158,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
                   onOpenGitHubConnect();
                 }}
               >
-                {driverMode === 'github-private' ? '云库设置' : '私有云库'}
+                {driverMode === 'github-private' ? t('云库设置', 'Cloud Settings') : t('私有云库', 'Private Cloud')}
               </button>
             </div>
           </div>

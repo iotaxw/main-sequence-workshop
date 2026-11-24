@@ -26,6 +26,7 @@ import {
   STATION_UNIT_M,
   getBuildingSizeCells,
   getModuleCenterM,
+  getModuleFloorShift,
   getModuleOriginOffsetM,
   getModuleSizeUnits,
   getModuleWorldConnectors,
@@ -278,7 +279,7 @@ export function getModuleEngineBlockBoundsM(mod: PlacedModule, def: StationModul
       maxZ: (mod.floor + hu) * FLOOR_HEIGHT_M,
     };
   }
-  const zShiftFloors = b.maxZ <= 0.05 && b.minZ < -0.5 ? 1 : 0;
+  const zShiftFloors = getModuleFloorShift(def);
   const pz = (mod.floor + zShiftFloors) * FLOOR_HEIGHT_M;
   const [x1, y1] = rotateVec2(b.minX, b.minY, mod.rotation);
   const [x2, y2] = rotateVec2(b.maxX, b.maxY, mod.rotation);

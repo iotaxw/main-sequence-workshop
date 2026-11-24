@@ -1,4 +1,5 @@
 import rawCatalog from '../data/catalog-26639889.json';
+import type { Lang } from './i18n';
 import type { BuildableDef, GameCatalog, RecipeDef, StationModuleDef } from './types';
 
 export const CATALOG: GameCatalog = rawCatalog as GameCatalog;
@@ -11,6 +12,25 @@ for (const m of CATALOG.stationModules) {
 const buildableMap = new Map<string, BuildableDef>();
 for (const b of CATALOG.buildables) {
   buildableMap.set(b.id, b);
+}
+
+export function humanizeGameId(rawId: string): string {
+  const bDef = buildableMap.get(rawId);
+  if (bDef) return bDef.nameEn;
+  const mDef = moduleMap.get(rawId);
+  if (mDef) return mDef.nameEn;
+  const base = rawId
+    .replace(/^(REC_|ITEM_|DAT_|BPO_)/, '')
+    .replace(/^MageticCoils$/, 'MagneticCoils')
+    .replace(/Alt(\d*)$/, (_m, n) => (n ? ` Alt ${n}` : ' Alt'))
+    .replace(/_0?(\d+)$/, ' Mk.$1')
+    .replace(/Mk(\d+)$/, ' Mk.$1')
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return base || rawId;
 }
 
 const recipeMap = new Map<string, RecipeDef>();
@@ -29,14 +49,31 @@ for (const r of CATALOG.recipes) {
 export interface CatalogItemEntry {
   id: string;
   nameZh: string;
+  nameEn: string;
 }
 
 export const CATALOG_ITEMS: CatalogItemEntry[] = Array.from(itemNameMap.entries())
-  .map(([id, nameZh]) => ({ id, nameZh }))
+  .map(([id, nameZh]) => ({ id, nameZh, nameEn: humanizeGameId(id) }))
   .sort((a, b) => a.nameZh.localeCompare(b.nameZh, 'zh-Hans'));
 
 export function getItemNameZh(itemId: string): string {
   return itemNameMap.get(itemId) ?? getBuildableDef(itemId)?.nameZh ?? itemId;
+}
+
+export function getItemName(itemId: string, lang: Lang): string {
+  return lang === 'en' ? humanizeGameId(itemId) : getItemNameZh(itemId);
+}
+
+export function getRecipeName(recipe: RecipeDef, lang: Lang): string {
+  return lang === 'en' ? humanizeGameId(recipe.id) : recipe.nameZh;
+}
+
+export function getModuleName(def: StationModuleDef, lang: Lang): string {
+  return lang === 'en' ? def.nameEn : def.nameZh;
+}
+
+export function getBuildableName(def: BuildableDef, lang: Lang): string {
+  return lang === 'en' ? def.nameEn : def.nameZh;
 }
 
 export function getModuleDef(id: string): StationModuleDef | undefined {

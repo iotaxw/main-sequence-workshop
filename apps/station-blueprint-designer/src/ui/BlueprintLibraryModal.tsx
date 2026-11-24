@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../core/i18n';
 import type { BlueprintLibraryDriver } from '../core/library';
 import type { BlueprintDocument, LibraryFileEntry, LibraryFolderEntry, LibraryNode } from '../core/types';
 import type { CadThemeId } from '../renderer/theme';
@@ -78,6 +79,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
   onDeleteEntry,
   onMoveFile,
 }) => {
+  const { isEn, t } = useI18n();
   const [selectedFolder, setSelectedFolder] = useState<string>('');
   const [search, setSearch] = useState('');
   const [dragPath, setDragPath] = useState<string | null>(null);
@@ -87,7 +89,6 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const driverRef = useRef(driver);
 
-  // Reset per-driver doc cache when switching library drivers
   useEffect(() => {
     if (driverRef.current !== driver) {
       driverRef.current = driver;
@@ -97,7 +98,6 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
     }
   }, [driver]);
 
-  // Focus search bar lightly when opening modal
   useEffect(() => {
     if (open) {
       const id = window.setTimeout(() => searchInputRef.current?.focus(), 40);
@@ -119,7 +119,6 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
     );
   }, [tree, selectedFolder, search]);
 
-  // Lazily hydrate BlueprintDocuments for visible thumbnail cards (concurrency = 3)
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -198,7 +197,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
               <button
                 type="button"
                 className="lib-mini-btn"
-                title="新建子目录"
+                title={t('新建子目录', 'New Subfolder')}
                 onClick={() => onCreateFolder(folder.path)}
               >
                 +
@@ -206,7 +205,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
               <button
                 type="button"
                 className="lib-mini-btn danger"
-                title="删除目录"
+                title={t('删除目录', 'Delete Folder')}
                 onClick={() => {
                   onDeleteEntry(folder.path, true);
                   if (selectedFolder === folder.path || selectedFolder.startsWith(`${folder.path}/`)) {
@@ -229,7 +228,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
         <div className="panel-header bpm-header">
           <div className="panel-title-wrap">
             <span className="panel-tag">BLUEPRINTS</span>
-            <span className="panel-title">蓝图库</span>
+            <span className="panel-title">{t('蓝图库', 'Library')}</span>
             <span className="bpm-source-pill" title={driver.rootLabel}>
               <span
                 className={`status-dot ${
@@ -246,21 +245,19 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                 type="button"
                 className={`cad-btn ${driver.mode === 'fs-local' ? 'accent' : ''}`}
                 onClick={onMountLocalFolder}
-                title="挂载本机蓝图文件夹"
               >
-                {driver.mode === 'fs-local' ? '换本地目录' : '本地目录'}
+                {driver.mode === 'fs-local' ? t('换目录', 'Switch Dir') : t('本地目录', 'Local Dir')}
               </button>
             )}
             <button
               type="button"
               className={`cad-btn ${driver.mode === 'github-private' ? 'accent' : ''}`}
               onClick={onOpenGitHubConnect}
-              title="连接个人 GitHub 私有蓝图仓库"
             >
-              {driver.mode === 'github-private' ? '私有云 ✓' : '私有云库'}
+              {driver.mode === 'github-private' ? t('私有云 ✓', 'Cloud ✓') : t('私有云库', 'Private Cloud')}
             </button>
-            <button type="button" className="cad-btn" onClick={onRefresh} title="刷新蓝图目录">
-              刷新
+            <button type="button" className="cad-btn" onClick={onRefresh}>
+              {t('刷新', 'Refresh')}
             </button>
             <span className="bpm-divider" />
             <button
@@ -271,13 +268,13 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                 onClose();
               }}
             >
-              + 新建
+              {t('+ 新建', '+ New')}
             </button>
             <button type="button" className="cad-btn" onClick={() => onCreateFolder(selectedFolder)}>
-              + 目录
+              {t('+ 目录', '+ Folder')}
             </button>
-            <label className="cad-btn file-label" title="导入规范 .json 或游戏原版 .sav">
-              导入 .json/.sav
+            <label className="cad-btn file-label" title={t('导入 .json 或 .sav', 'Import .json or .sav')}>
+              {t('导入', 'Import')}
               <input
                 type="file"
                 accept=".json,.sav,application/json"
@@ -292,7 +289,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                 }}
               />
             </label>
-            <button type="button" className="icon-btn" onClick={onClose} title="关闭 (Esc)">
+            <button type="button" className="icon-btn" onClick={onClose} title={t('关闭 (Esc)', 'Close (Esc)')}>
               ×
             </button>
           </div>
@@ -315,7 +312,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                 setDragPath(null);
               }}
             >
-              <span className="bpm-folder-name">全部蓝图</span>
+              <span className="bpm-folder-name">{t('全部蓝图', 'All Blueprints')}</span>
               <span className="bpm-folder-count">{totalCount}</span>
             </div>
             <div className="bpm-folder-scroll">{renderFolderTree(collectFolders(tree), 0)}</div>
@@ -327,18 +324,19 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                 ref={searchInputRef}
                 type="text"
                 className="cad-input bpm-search"
-                placeholder="搜索蓝图..."
+                placeholder={t('搜索蓝图...', 'Search blueprints...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
               <span className="bpm-meta-hint">
-                {selectedFolder ? `/${selectedFolder}` : '全部'} · {visibleFiles.length} 份
+                {selectedFolder ? `/${selectedFolder}` : t('全部', 'All')} ·{' '}
+                {isEn ? `${visibleFiles.length} items` : `${visibleFiles.length} 份`}
               </span>
             </div>
 
             <div className="bpm-grid">
               {visibleFiles.length === 0 ? (
-                <div className="bpm-empty">暂无蓝图</div>
+                <div className="bpm-empty">{t('暂无蓝图', 'No blueprints')}</div>
               ) : (
                 visibleFiles.map((file) => {
                   const cacheKey = `${file.path}@${file.contentHash ?? file.updatedAt}`;
@@ -366,7 +364,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                         onOpenFromLibrary(file);
                         onClose();
                       }}
-                      title={`${file.path}\n单击：抓取为幽灵蓝图盖章 | 双击：打开为画布编辑`}
+                      title={`${file.path}\n${t('单击盖章 · 双击打开', 'Click: Stamp · Dbl-click: Open')}`}
                     >
                       <div className="bpm-card-thumb">
                         <BlueprintThumbnail
@@ -377,25 +375,25 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                         />
                         {(isEditing || isStamping) && (
                           <span className={`bpm-card-badge ${isStamping ? 'stamping' : 'editing'}`}>
-                            {isStamping ? '盖章中' : '当前画布'}
+                            {isStamping ? t('盖章中', 'Stamping') : t('当前画布', 'Active')}
                           </span>
                         )}
                         <div className="bpm-card-actions" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             className="bpm-card-btn"
-                            title="打开为当前画布编辑"
+                            title={t('打开编辑', 'Open in canvas')}
                             onClick={() => {
                               onOpenFromLibrary(file);
                               onClose();
                             }}
                           >
-                            打开
+                            {t('打开', 'Open')}
                           </button>
                           <button
                             type="button"
                             className="bpm-card-btn"
-                            title="导出游戏原生 .sav"
+                            title={t('导出 .sav', 'Export .sav')}
                             onClick={() => onExportSavFromLibrary(file)}
                           >
                             .sav
@@ -403,7 +401,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                           <button
                             type="button"
                             className="bpm-card-btn"
-                            title="导出规范 JSON"
+                            title={t('导出 JSON', 'Export JSON')}
                             onClick={() => onExportFromLibrary(file)}
                           >
                             JSON
@@ -411,7 +409,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                           <button
                             type="button"
                             className="bpm-card-btn danger"
-                            title="删除蓝图"
+                            title={t('删除', 'Delete')}
                             onClick={() => onDeleteEntry(file.path, false)}
                           >
                             ×
@@ -421,7 +419,11 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                       <div className="bpm-card-footer">
                         <div className="bpm-card-title">{file.blueprintName || file.name}</div>
                         <div className="bpm-card-sub">
-                          {modCount > 0 || bldCount > 0 ? `${modCount}模 · ${bldCount}建` : '点击载入'}
+                          {modCount > 0 || bldCount > 0
+                            ? isEn
+                              ? `${modCount}M · ${bldCount}B`
+                              : `${modCount}模 · ${bldCount}建`
+                            : t('载入', 'Load')}
                         </div>
                       </div>
                     </div>

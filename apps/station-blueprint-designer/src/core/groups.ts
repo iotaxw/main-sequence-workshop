@@ -1,9 +1,11 @@
+import type { Lang } from './i18n';
 import type { ViewMode } from './types';
 
 export interface PaletteGroupDef {
   id: string;
   slot: number; // 1..9
   name: string;
+  nameEn: string;
   members: string[];
 }
 
@@ -12,36 +14,42 @@ export const BUILDING_GROUPS: PaletteGroupDef[] = [
     id: 'belts',
     slot: 1,
     name: '传送带',
+    nameEn: 'Belts',
     members: ['DAT_ConveyorBelt', 'DAT_ConveyorBelt2', 'DAT_ConveyorBelt3'],
   },
   {
     id: 'undergrounds',
     slot: 2,
     name: '下层带',
+    nameEn: 'Underground',
     members: ['DAT_UndergroundBelt', 'DAT_UndergroundBelt_2', 'DAT_UndergroundBelt_3'],
   },
   {
     id: 'splitters',
     slot: 3,
     name: '分流器',
+    nameEn: 'Splitters',
     members: ['DAT_Splitter', 'DAT_Splitter_2', 'DAT_Splitter_3'],
   },
   {
     id: 'balancers',
     slot: 4,
     name: '平衡器',
+    nameEn: 'Balancers',
     members: ['DAT_BeltBalancer_01', 'DAT_BeltBalancer_02', 'DAT_BeltBalancer_03'],
   },
   {
     id: 'containers',
     slot: 5,
     name: '容器',
+    nameEn: 'Storage',
     members: ['DAT_Container', 'DAT_Container_2'],
   },
   {
     id: 'production',
     slot: 6,
     name: '生产制造',
+    nameEn: 'Production',
     members: [
       'DAT_Refinery',
       'DAT_Assembler',
@@ -56,6 +64,7 @@ export const BUILDING_GROUPS: PaletteGroupDef[] = [
     id: 'research',
     slot: 7,
     name: '实验室',
+    nameEn: 'Research',
     members: [
       'DAT_MatSciLab',
       'DAT_CompSciLab',
@@ -70,6 +79,7 @@ export const BUILDING_GROUPS: PaletteGroupDef[] = [
     id: 'facilities',
     slot: 8,
     name: '功能设施',
+    nameEn: 'Facilities',
     members: [
       'DAT_WorkbenchMachine',
       'DAT_ReactorMachine',
@@ -81,6 +91,7 @@ export const BUILDING_GROUPS: PaletteGroupDef[] = [
     id: 'decor',
     slot: 9,
     name: '装饰',
+    nameEn: 'Decor',
     members: [
       'DAT_SignWall',
       'DAT_Chair',
@@ -95,6 +106,7 @@ export const STATION_GROUPS: PaletteGroupDef[] = [
     id: 'st-factory',
     slot: 1,
     name: '工厂模块',
+    nameEn: 'Factory',
     members: [
       'BPO_Station_01',
       'BPO_Station_2x1',
@@ -107,19 +119,16 @@ export const STATION_GROUPS: PaletteGroupDef[] = [
     id: 'st-function',
     slot: 2,
     name: '功能模块',
+    nameEn: 'Utility',
     members: [
-      // 指挥与对接（低→高）
       'BPO_CommandModule',
       'BPO_Dock',
       'BPO_Dock_2',
-      // 采矿（低→高）
       'BPO_MiningDroneBayBlock',
       'BPO_MiningDroneBayBlock_2',
-      // 光伏能源（低→高）
       'BPO_SolarPanelBlock',
       'BPO_SolarPanelBlock_02',
       'BPO_SolarPanelBlock_03',
-      // 探测扫描
       'BPO_ScannerModule',
     ],
   },
@@ -127,14 +136,12 @@ export const STATION_GROUPS: PaletteGroupDef[] = [
     id: 'st-other',
     slot: 3,
     name: '其它模块',
+    nameEn: 'Special',
     members: [
-      // 船坞（低→高）
       'BPO_ShipyardCore',
       'BPO_ShipyardSide',
       'BPO_ShipyardCore_02',
-      // 深空设施
       'BPO_DeepSpaceObservatory',
-      // 防御与装甲（低→高，含镜像斜甲）
       'BPO_StationArmour_01',
       'BPO_StationArmour_01B',
       'BPO_StationTurretBlock_01',
@@ -144,11 +151,10 @@ export const STATION_GROUPS: PaletteGroupDef[] = [
     id: 'st-connect',
     slot: 4,
     name: '连接模块',
+    nameEn: 'Connect',
     members: [
-      // 电梯在前（1×1 → 2×2）
       'BPO_ElevatorBlock_03',
       'BPO_ElevatorBlock_02A',
-      // 走廊与转角适配在后（低→高）
       'BPO_StationCorridor_01',
       'BPO_StationCorner_01',
       'BPO_StationAdapter_01',
@@ -228,8 +234,81 @@ const SHORT_LABELS: Record<string, string> = {
   BPO_StationArmour_01B: '装甲·底',
 };
 
-export function getShortLabel(id: string, fallback?: string): string {
+const SHORT_LABELS_EN: Record<string, string> = {
+  DAT_ConveyorBelt: 'Belt I',
+  DAT_ConveyorBelt2: 'Belt II',
+  DAT_ConveyorBelt3: 'Belt III',
+  DAT_UndergroundBelt: 'UG I',
+  DAT_UndergroundBelt_2: 'UG II',
+  DAT_UndergroundBelt_3: 'UG III',
+  DAT_Splitter: 'Split I',
+  DAT_Splitter_2: 'Split II',
+  DAT_Splitter_3: 'Split III',
+  DAT_BeltBalancer_01: 'Bal I',
+  DAT_BeltBalancer_02: 'Bal II',
+  DAT_BeltBalancer_03: 'Bal III',
+  DAT_Container: 'Box I',
+  DAT_Container_2: 'Box II',
+  DAT_Refinery: 'Refinery',
+  DAT_Assembler: 'Asm I',
+  DAT_EnrichmentChamber: 'Enrich',
+  DAT_AdvancedAssembler: 'Asm II',
+  DAT_WorkbenchMachine: 'Bench',
+  DAT_Supercomputer: 'SuperC',
+  DAT_GrowthChamber: 'Growth',
+  DAT_RelicSynthesizer: 'Relic',
+  DAT_Armoury: 'Armoury',
+  DAT_Teleporter: 'Teleport',
+  DAT_MatSciLab: 'Lab I',
+  DAT_CompSciLab: 'Lab II',
+  DAT_ElectroSciLab: 'Lab III',
+  DAT_QuantumSciLab: 'Lab IV',
+  DAT_AstroSciLab: 'Lab V',
+  DAT_XenoSciLab: 'Lab VI',
+  DAT_RelicAnalyzer: 'Analyze',
+  DAT_ReactorMachine: 'Reactor',
+  DAT_SignWall: 'Sign',
+  DAT_Chair: 'Chair',
+  DAT_CoffeeTable: 'Table',
+  DAT_Plant_01: 'Plant',
+  BPO_Station_01: '1×1',
+  BPO_Station_2x1: '2×1',
+  BPO_Station_02A: '2×2 A',
+  BPO_Station_02: '2×2 B',
+  BPO_Station_03: '2×2 C',
+  BPO_StationAdapter_01: 'Adapter',
+  BPO_StationCorridor_01: 'Corr 1',
+  BPO_StationCorridor_02: 'Corr 2',
+  BPO_StationCorner_01: 'Corner',
+  BPO_ElevatorBlock_03: 'Elev 1',
+  BPO_ElevatorBlock_02A: 'Elev 2',
+  BPO_CommandModule: 'Cmd',
+  BPO_Dock: 'Dock I',
+  BPO_Dock_2: 'Dock II',
+  BPO_ScannerModule: 'Scan',
+  BPO_SolarPanelBlock: 'Solar I',
+  BPO_SolarPanelBlock_02: 'Solar II',
+  BPO_SolarPanelBlock_03: 'Solar III',
+  BPO_MiningDroneBayBlock: 'Mine I',
+  BPO_MiningDroneBayBlock_2: 'Mine II',
+  BPO_ShipyardCore: 'Yard I',
+  BPO_ShipyardCore_02: 'Yard II',
+  BPO_ShipyardSide: 'Yard S',
+  BPO_DeepSpaceObservatory: 'Obs',
+  BPO_StationTurretBlock_01: 'Turret',
+  BPO_StationArmour_01: 'Arm Top',
+  BPO_StationArmour_01B: 'Arm Bot',
+};
+
+export function getShortLabel(id: string, fallback?: string, lang: Lang = 'zh'): string {
+  if (lang === 'en') {
+    return SHORT_LABELS_EN[id] ?? fallback ?? id;
+  }
   return SHORT_LABELS[id] ?? fallback ?? id;
+}
+
+export function getGroupName(group: PaletteGroupDef, lang: Lang): string {
+  return lang === 'en' ? group.nameEn : group.name;
 }
 
 export function getGroupsForView(viewMode: ViewMode): PaletteGroupDef[] {

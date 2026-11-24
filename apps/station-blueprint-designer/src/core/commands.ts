@@ -7,6 +7,7 @@ import {
   getBuildingSpatialIndex,
   getDocSpatialIndex,
   getModuleBoundsM,
+  getModuleDockPortDefs,
   getModuleSizeUnits,
   getModuleSpatialIndex,
   isCellBuildable,
@@ -472,21 +473,59 @@ export function updateBuildingConfigCmd(
   return { doc: changed ? { ...doc, buildings: nextBuildings } : doc, changed };
 }
 
-export function updateModuleLabelCmd(
+export interface ModuleConfigPatch {
+  label?: string | null;
+  dockName?: string | null;
+  dockPorts?: Array<{ portIndex: number; itemId: string; mode: 'unload' | 'load' }> | null;
+  miningItem?: string | null;
+  recipeId?: string | null;
+}
+
+export function updateModuleConfigCmd(
   doc: BlueprintDocument,
   moduleId: string,
-  label: string
+  patch: ModuleConfigPatch
 ): CommandResult {
   let changed = false;
   const nextModules = doc.modules.map((m) => {
     if (m.id !== moduleId) return m;
     changed = true;
     const next: PlacedModule = { ...m };
-    if (!label.trim()) delete next.label;
-    else next.label = label.trim();
+    if (patch.label !== undefined) {
+      if (patch.label === null || !patch.label.trim()) delete next.label;
+      else next.label = patch.label.trim();
+    }
+    if (patch.dockName !== undefined) {
+      if (patch.dockName === null || !patch.dockName.trim()) delete next.dockName;
+      else next.dockName = patch.dockName.trim();
+    }
+    if (patch.dockPorts !== undefined) {
+      const cleaned = (patch.dockPorts ?? [])
+        .filter((p) => Number.isInteger(p.portIndex) && p.portIndex >= 0 && p.itemId.trim().length > 0)
+        .map((p) => ({ portIndex: p.portIndex, itemId: p.itemId.trim(), mode: p.mode }))
+        .sort((a, b) => a.portIndex - b.portIndex);
+      if (cleaned.length === 0) delete next.dockPorts;
+      else next.dockPorts = cleaned;
+    }
+    if (patch.miningItem !== undefined) {
+      if (patch.miningItem === null || !patch.miningItem.trim()) delete next.miningItem;
+      else next.miningItem = patch.miningItem.trim();
+    }
+    if (patch.recipeId !== undefined) {
+      if (patch.recipeId === null || !patch.recipeId.trim()) delete next.recipeId;
+      else next.recipeId = patch.recipeId.trim();
+    }
     return next;
   });
   return { doc: changed ? { ...doc, modules: nextModules } : doc, changed };
+}
+
+export function updateModuleLabelCmd(
+  doc: BlueprintDocument,
+  moduleId: string,
+  label: string
+): CommandResult {
+  return updateModuleConfigCmd(doc, moduleId, { label });
 }
 
 /** Rotate selected items in place (single building or station module) */
@@ -669,6 +708,7 @@ export function extractSelectionAsBlueprint(
         gx: m.gx - minGx,
         gy: m.gy - minGy,
         floor: m.floor - minFloor,
+        ...(m.dockPorts ? { dockPorts: m.dockPorts.map((p) => ({ ...p })) } : {}),
       })),
       buildings: selectedBuildings.map((b) => {
         const copy: PlacedBuilding = {
@@ -788,10 +828,31 @@ export function mirrorBlueprintX(bp: BlueprintDocument): BlueprintDocument {
   const modules: PlacedModule[] = bp.modules.map((m) => {
     const def = getModuleDef(m.type);
     const [wu] = def ? getModuleSizeUnits(def, m.rotation) : [1];
+    const nextRot = flipRotX(m.rotation);
+    let remappedDockPorts = m.dockPorts?.map((p) => ({ ...p }));
+    if (def && remappedDockPorts && remappedDockPorts.length > 0) {
+      const portDefs = getModuleDockPortDefs(def);
+      if (portDefs.length > 0) {
+        const invNextRot = normalizeRotation(4 - nextRot);
+        remappedDockPorts = remappedDockPorts
+          .map((p) => {
+            const src = portDefs.find((pd) => pd.portIndex === p.portIndex);
+            if (!src) return p;
+            const [wx, wy] = rotateVec2(src.localX, src.localY, m.rotation);
+            const [lx, ly] = rotateVec2(-wx, wy, invNextRot);
+            const hit = portDefs.find(
+              (pd) => Math.abs(pd.localX - lx) < 0.01 && Math.abs(pd.localY - ly) < 0.01
+            );
+            return hit ? { ...p, portIndex: hit.portIndex } : p;
+          })
+          .sort((a, b) => a.portIndex - b.portIndex);
+      }
+    }
     return {
       ...m,
       gx: wUnits - (m.gx + wu),
-      rotation: flipRotX(m.rotation),
+      rotation: nextRot,
+      ...(remappedDockPorts ? { dockPorts: remappedDockPorts } : {}),
     };
   });
 
@@ -841,6 +902,7 @@ export function computeStampCandidates(
     gx: m.gx + shiftGx,
     gy: m.gy + shiftGy,
     floor: m.floor + anchor.floor,
+    ...(m.dockPorts ? { dockPorts: m.dockPorts.map((p) => ({ ...p })) } : {}),
   }));
 
   const bldIdMap = new Map<string, string>();

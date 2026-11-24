@@ -6,6 +6,7 @@ import {
   getBuildingSizeCells,
   getBuildingWorldPorts,
   getModuleCenterM,
+  getModuleFloorShift,
   isPortToggleable,
   rotationToDelta,
   STATION_UNIT_M,
@@ -1335,8 +1336,8 @@ export function buildStationModuleArt(
   switch (def.id) {
     case 'BPO_StationArmour_01':
     case 'BPO_StationArmour_01B': {
-      // True-to-game 16x16m upper roof armour cap (01) vs vertically-flipped lower belly armour cap (01B)
-      const isBottomMirror = def.id === 'BPO_StationArmour_01B';
+      // True-to-game 16x16m upper roof armour cap (01) vs ceiling-hung belly armour cap (01B, derived via blockBoundsM)
+      const isBottomMirror = getModuleFloorShift(def) > 0;
       roofHeight = addStationArmourCap(
         extrudeGroup,
         hw,

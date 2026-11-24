@@ -2,19 +2,25 @@ import React, { useMemo, useState } from 'react';
 import {
   CATALOG_ITEMS,
   getBuildableDef,
-  getItemNameZh,
+  getBuildableName,
+  getItemName,
   getModuleDef,
+  getModuleName,
   getRecipeDef,
+  getRecipeName,
   getRecipesForCrafter,
 } from '../core/catalog';
+import type { ModuleConfigPatch } from '../core/commands';
 import {
   findBuildingsInsideModule,
   getBuildingSizeCells,
+  getModuleWorldDockPorts,
   getToggleablePorts,
   isPortToggleable,
   rotateSide,
   rotateVec2,
 } from '../core/geometry';
+import { formatFloorTag, type Lang, useI18n } from '../core/i18n';
 import type { BlueprintDocument, MachinePortDef, PlacedBuilding, PlacedModule, SelectionState } from '../core/types';
 
 export interface BuildingConfigPatch {
@@ -32,7 +38,7 @@ interface InspectorPanelProps {
   doc: BlueprintDocument;
   selection: SelectionState;
   onUpdateBuilding: (ids: string[], patch: BuildingConfigPatch) => void;
-  onUpdateModuleLabel: (id: string, label: string) => void;
+  onUpdateModuleConfig: (id: string, patch: ModuleConfigPatch) => void;
   onCopySelection: () => void;
   onCutSelection: () => void;
   onSaveSelectionAsBlueprint: () => void;
@@ -41,36 +47,48 @@ interface InspectorPanelProps {
   onClearSelection: () => void;
 }
 
-const SIDE_ZH: Record<'N' | 'E' | 'S' | 'W', string> = {
-  N: '北',
-  E: '东',
-  S: '南',
-  W: '西',
-};
+const SIDE_ZH: Record<'N' | 'E' | 'S' | 'W', string> = { N: '北', E: '东', S: '南', W: '西' };
 
 function getPortDisplayLabel(
   kind: string,
   port: MachinePortDef,
-  rotation: 0 | 1 | 2 | 3
+  rotation: 0 | 1 | 2 | 3,
+  lang: Lang
 ): string {
   const worldSide = rotateSide(port.side, rotation);
+  const sideLabel = lang === 'en' ? worldSide : SIDE_ZH[worldSide];
   if (kind === 'splitter') {
     const rel =
-      port.side === 'W' ? '输入' : port.side === 'E' ? '直出' : port.side === 'N' ? '左出' : '右出';
-    return `${rel}(${SIDE_ZH[worldSide]})`;
+      lang === 'en'
+        ? port.side === 'W'
+          ? 'In'
+          : port.side === 'E'
+            ? 'Fwd'
+            : port.side === 'N'
+              ? 'L'
+              : 'R'
+        : port.side === 'W'
+          ? '输入'
+          : port.side === 'E'
+            ? '直出'
+            : port.side === 'N'
+              ? '左出'
+              : '右出';
+    return `${rel}(${sideLabel})`;
   }
   if (kind === 'balancer') {
-    const lane = port.hy < 0 ? '左道' : '右道';
-    const role = port.role === 'in' ? '入' : '出';
-    return `${lane}${role}(${SIDE_ZH[worldSide]})`;
+    const lane = lang === 'en' ? (port.hy < 0 ? 'L' : 'R') : port.hy < 0 ? '左道' : '右道';
+    const role = lang === 'en' ? (port.role === 'in' ? 'In' : 'Out') : port.role === 'in' ? '入' : '出';
+    return `${lane}${role}(${sideLabel})`;
   }
-  return `#${port.index + 1}(${SIDE_ZH[worldSide]})`;
+  return `#${port.index + 1}(${sideLabel})`;
 }
 
 const PortDiagram: React.FC<{
   building: PlacedBuilding;
+  lang: Lang;
   onTogglePort?: (portIndex: number) => void;
-}> = ({ building, onTogglePort }) => {
+}> = ({ building, lang, onTogglePort }) => {
   const def = getBuildableDef(building.type);
   if (!def || (!def.configurablePorts && def.kind !== 'balancer')) return null;
 
@@ -112,7 +130,7 @@ const PortDiagram: React.FC<{
           const oy = side === 'N' ? thick * 0.28 : side === 'S' ? -thick * 0.28 : 0;
           const cx = rx + ox;
           const cy = ry + oy;
-          const portLabel = getPortDisplayLabel(def.kind, port, building.rotation);
+          const portLabel = getPortDisplayLabel(def.kind, port, building.rotation, lang);
           const strokeCol = !enabled
             ? 'var(--line-disabled)'
             : isPriority
@@ -130,9 +148,19 @@ const PortDiagram: React.FC<{
             >
               <title>
                 {`${portLabel} · ${
-                  canToggle ? (enabled ? '活跃（点击禁用）' : '已禁用（点击启用）') : '固定启用（不可关闭）'
-                }${isPriority ? ' · 优先通道' : ''}${
-                  filterItemId ? ` · 过滤：${getItemNameZh(filterItemId)}` : ''
+                  canToggle
+                    ? enabled
+                      ? lang === 'en'
+                        ? 'Active'
+                        : '活跃'
+                      : lang === 'en'
+                        ? 'Disabled'
+                        : '禁用'
+                    : lang === 'en'
+                      ? 'Fixed'
+                      : '固定'
+                }${isPriority ? (lang === 'en' ? ' · Priority' : ' · 优先') : ''}${
+                  filterItemId ? ` · ${getItemName(filterItemId, lang)}` : ''
                 }`}
               </title>
               <rect
@@ -148,23 +176,9 @@ const PortDiagram: React.FC<{
               />
               {enabled ? (
                 isHoriz ? (
-                  <line
-                    x1={cx - rw * 0.3}
-                    y1={cy}
-                    x2={cx + rw * 0.3}
-                    y2={cy}
-                    stroke={strokeCol}
-                    strokeWidth={0.08}
-                  />
+                  <line x1={cx - rw * 0.3} y1={cy} x2={cx + rw * 0.3} y2={cy} stroke={strokeCol} strokeWidth={0.08} />
                 ) : (
-                  <line
-                    x1={cx}
-                    y1={cy - rh * 0.3}
-                    x2={cx}
-                    y2={cy + rh * 0.3}
-                    stroke={strokeCol}
-                    strokeWidth={0.08}
-                  />
+                  <line x1={cx} y1={cy - rh * 0.3} x2={cx} y2={cy + rh * 0.3} stroke={strokeCol} strokeWidth={0.08} />
                 )
               ) : (
                 <g stroke="var(--line-disabled)" strokeWidth={0.08}>
@@ -187,7 +201,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   doc,
   selection,
   onUpdateBuilding,
-  onUpdateModuleLabel,
+  onUpdateModuleConfig,
   onCopySelection,
   onCutSelection,
   onSaveSelectionAsBlueprint,
@@ -195,6 +209,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onDeleteSelection,
   onClearSelection,
 }) => {
+  const { lang, isEn, t } = useI18n();
   const [recipeQuery, setRecipeQuery] = useState('');
   const [itemQuery, setItemQuery] = useState('');
 
@@ -224,7 +239,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
       if (!q) return true;
       return (
         r.nameZh.toLowerCase().includes(q) ||
-        r.nameEn.toLowerCase().includes(q) ||
+        getRecipeName(r, 'en').toLowerCase().includes(q) ||
         r.shortCode.toLowerCase().includes(q)
       );
     });
@@ -240,7 +255,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     const filteredCatalogItems = CATALOG_ITEMS.filter((it) => {
       const q = itemQuery.trim().toLowerCase();
       if (!q) return true;
-      return it.nameZh.toLowerCase().includes(q) || it.id.toLowerCase().includes(q);
+      return (
+        it.nameZh.toLowerCase().includes(q) ||
+        it.nameEn.toLowerCase().includes(q) ||
+        it.id.toLowerCase().includes(q)
+      );
     });
 
     const handleTogglePort = (idx: number) => {
@@ -277,59 +296,55 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         <div className="panel-header">
           <div className="panel-title-wrap">
             <span className="panel-tag">BUILDING</span>
-            <span className="panel-title">{def?.nameZh ?? singleBuilding.type}</span>
+            <span className="panel-title">{def ? getBuildableName(def, lang) : singleBuilding.type}</span>
           </div>
-          <button type="button" className="icon-btn" onClick={onClearSelection} title="取消选中 (Esc/右键)">
+          <button type="button" className="icon-btn" onClick={onClearSelection} title={t('关闭 (Esc)', 'Close (Esc)')}>
             ×
           </button>
         </div>
 
         <div className="inspector-body">
           <div className="inspector-kv">
-            <span>原名</span>
-            <code>{def?.nameEn ?? singleBuilding.type}</code>
-            <span>坐标 / 楼层</span>
-            <code>({singleBuilding.x}, {singleBuilding.y}) · L{singleBuilding.floor}</code>
-            <span>尺寸 / 朝向</span>
+            <span>{t('坐标 / 楼层', 'Pos / Floor')}</span>
+            <code>({singleBuilding.x}, {singleBuilding.y}) · {formatFloorTag(singleBuilding.floor)}</code>
+            <span>{t('尺寸 / 朝向', 'Size / Rot')}</span>
             <code>{def ? `${def.size[0]}×${def.size[1]}` : '?'} · {singleBuilding.rotation * 90}°</code>
           </div>
 
-          {/* Underground entry/exit switch */}
           {def?.kind === 'underground' && (
             <div className="inspector-section">
-              <div className="section-label">地下传送带端模式</div>
+              <div className="section-label">{t('端模式', 'Tunnel End')}</div>
               <div className="btn-row">
                 <button
                   type="button"
                   className={`cad-btn ${singleBuilding.undergroundMode !== 'out' ? 'accent' : ''}`}
                   onClick={() => onUpdateBuilding([singleBuilding.id], { undergroundMode: 'in' })}
                 >
-                  入口 (IN)
+                  {t('入口 (IN)', 'Entry (IN)')}
                 </button>
                 <button
                   type="button"
                   className={`cad-btn ${singleBuilding.undergroundMode === 'out' ? 'accent' : ''}`}
                   onClick={() => onUpdateBuilding([singleBuilding.id], { undergroundMode: 'out' })}
                 >
-                  出口 (OUT)
+                  {t('出口 (OUT)', 'Exit (OUT)')}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Splitter / Balancer Priority Configuration */}
           {isSplitterOrBalancer && def && (
             <div className="inspector-section">
               {def.kind === 'balancer' && inputPorts.length >= 2 && (
                 <>
-                  <div className="section-label">输入优先级</div>
+                  <div className="section-label">{t('输入优先', 'Input Priority')}</div>
                   <div className="btn-row compact">
                     <button
                       type="button"
                       className={`cad-btn ${singleBuilding.priorityIn === undefined ? 'accent' : ''}`}
                       onClick={() => onUpdateBuilding([singleBuilding.id], { priorityIn: null })}
                     >
-                      均衡
+                      {t('均衡', 'Even')}
                     </button>
                     {inputPorts.map((p) => (
                       <button
@@ -342,7 +357,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           })
                         }
                       >
-                        {getPortDisplayLabel(def.kind, p, singleBuilding.rotation)}
+                        {getPortDisplayLabel(def.kind, p, singleBuilding.rotation, lang)}
                       </button>
                     ))}
                   </div>
@@ -351,14 +366,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
               {outputPorts.length >= 2 && (
                 <>
-                  <div className="section-label">输出优先级</div>
+                  <div className="section-label">{t('输出优先', 'Output Priority')}</div>
                   <div className="btn-row compact">
                     <button
                       type="button"
                       className={`cad-btn ${singleBuilding.priorityOut === undefined ? 'accent' : ''}`}
                       onClick={() => onUpdateBuilding([singleBuilding.id], { priorityOut: null })}
                     >
-                      均分
+                      {t('均分', 'Even')}
                     </button>
                     {outputPorts.map((p) => (
                       <button
@@ -371,7 +386,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           })
                         }
                       >
-                        {getPortDisplayLabel(def.kind, p, singleBuilding.rotation)}
+                        {getPortDisplayLabel(def.kind, p, singleBuilding.rotation, lang)}
                       </button>
                     ))}
                   </div>
@@ -380,18 +395,17 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             </div>
           )}
 
-          {/* Splitter / Balancer Output Item Filters */}
           {isSplitterOrBalancer && def && outputPorts.length > 0 && (
             <div className="inspector-section">
               <div className="section-head">
-                <span className="section-label">输出口物品过滤</span>
+                <span className="section-label">{t('输出过滤', 'Output Filter')}</span>
                 {singleBuilding.portFilters && Object.keys(singleBuilding.portFilters).length > 0 && (
                   <button
                     type="button"
                     className="lib-mini-btn"
                     onClick={() => onUpdateBuilding([singleBuilding.id], { portFilters: null })}
                   >
-                    清空
+                    {t('清空', 'Clear')}
                   </button>
                 )}
               </div>
@@ -401,17 +415,17 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   return (
                     <label key={p.index} className="port-filter-row">
                       <span className="port-filter-tag">
-                        {getPortDisplayLabel(def.kind, p, singleBuilding.rotation)}
+                        {getPortDisplayLabel(def.kind, p, singleBuilding.rotation, lang)}
                       </span>
                       <select
                         className="cad-input port-filter-select"
                         value={curVal}
                         onChange={(e) => handleSetPortFilter(p.index, e.target.value)}
                       >
-                        <option value="">不限物品</option>
+                        <option value="">{t('不限', 'Any')}</option>
                         {CATALOG_ITEMS.map((it) => (
                           <option key={it.id} value={it.id}>
-                            {it.nameZh}
+                            {isEn ? it.nameEn : it.nameZh}
                           </option>
                         ))}
                       </select>
@@ -422,27 +436,26 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             </div>
           )}
 
-          {/* Recipe Picker (0 simulation, pure planning tag!) */}
           {recipes.length > 0 && (
             <div className="inspector-section">
               <div className="section-head">
-                <span className="section-label">配方</span>
+                <span className="section-label">{t('配方', 'Recipe')}</span>
                 {currentRecipe && (
                   <button
                     type="button"
                     className="lib-mini-btn"
                     onClick={() => onUpdateBuilding([singleBuilding.id], { recipeId: null })}
                   >
-                    清除
+                    {t('清除', 'Clear')}
                   </button>
                 )}
               </div>
               {currentRecipe && (
                 <div className="recipe-active-card">
-                  <div className="recipe-active-title">{currentRecipe.nameZh}</div>
+                  <div className="recipe-active-title">{getRecipeName(currentRecipe, lang)}</div>
                   <div className="recipe-io">
-                    {currentRecipe.inputs.map((i) => i.nameZh).join(' + ')} →{' '}
-                    {currentRecipe.outputs.map((o) => o.nameZh).join(' + ')}
+                    {currentRecipe.inputs.map((i) => getItemName(i.itemId, lang)).join(' + ')} →{' '}
+                    {currentRecipe.outputs.map((o) => getItemName(o.itemId, lang)).join(' + ')}
                   </div>
                 </div>
               )}
@@ -451,7 +464,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 name="recipeFilter"
                 type="text"
                 className="cad-input"
-                placeholder={`筛选 ${recipes.length} 个配方...`}
+                placeholder={t(`筛选 ${recipes.length} 个配方...`, `Filter ${recipes.length} recipes...`)}
                 value={recipeQuery}
                 onChange={(e) => setRecipeQuery(e.target.value)}
               />
@@ -463,7 +476,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     className={`recipe-item ${singleBuilding.recipeId === r.id ? 'selected' : ''}`}
                     onClick={() => onUpdateBuilding([singleBuilding.id], { recipeId: r.id })}
                   >
-                    <span className="recipe-name">{r.nameZh}</span>
+                    <span className="recipe-name">{getRecipeName(r, lang)}</span>
                     <span className="recipe-en">{r.shortCode}</span>
                   </button>
                 ))}
@@ -471,12 +484,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             </div>
           )}
 
-          {/* Container Logistic Item Filters (WBP_LogisticFilters) */}
           {isContainer && (
             <div className="inspector-section">
               <div className="section-head">
                 <span className="section-label">
-                  容器物流过滤（{singleBuilding.filterItems?.length ?? 0}）
+                  {t(`容器过滤 (${singleBuilding.filterItems?.length ?? 0})`, `Filters (${singleBuilding.filterItems?.length ?? 0})`)}
                 </span>
                 {singleBuilding.filterItems && singleBuilding.filterItems.length > 0 && (
                   <button
@@ -484,7 +496,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     className="lib-mini-btn"
                     onClick={() => onUpdateBuilding([singleBuilding.id], { filterItems: null })}
                   >
-                    清空
+                    {t('清空', 'Clear')}
                   </button>
                 )}
               </div>
@@ -496,9 +508,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                       type="button"
                       className="filter-chip"
                       onClick={() => handleToggleContainerFilter(itemId)}
-                      title="点击移除该物品过滤"
                     >
-                      {getItemNameZh(itemId)} ×
+                      {getItemName(itemId, lang)} ×
                     </button>
                   ))}
                 </div>
@@ -508,7 +519,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 name="containerItemFilter"
                 type="text"
                 className="cad-input"
-                placeholder={`筛选 ${CATALOG_ITEMS.length} 种物品...`}
+                placeholder={t(`筛选物品...`, `Filter items...`)}
                 value={itemQuery}
                 onChange={(e) => setItemQuery(e.target.value)}
               />
@@ -522,8 +533,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                       className={`recipe-item ${active ? 'selected' : ''}`}
                       onClick={() => handleToggleContainerFilter(it.id)}
                     >
-                      <span className="recipe-name">{it.nameZh}</span>
-                      <span className="recipe-en">{active ? '已选' : '+'}</span>
+                      <span className="recipe-name">{isEn ? it.nameEn : it.nameZh}</span>
+                      <span className="recipe-en">{active ? '✓' : '+'}</span>
                     </button>
                   );
                 })}
@@ -531,12 +542,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             </div>
           )}
 
-          {/* Active / Disabled Ports Configuration (only for buildings with genuinely toggleable ports!) */}
           {def && toggleablePorts.length > 0 && (
             <div className="inspector-section">
               <div className="section-head">
                 <span className="section-label">
-                  {def.kind === 'splitter' ? '输出接口' : '接口状态'}（活跃 {activeToggleCount}/{toggleablePorts.length}）
+                  {t('接口', 'Ports')} ({activeToggleCount}/{toggleablePorts.length})
                 </span>
                 <div className="btn-row compact">
                   <button
@@ -544,7 +554,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     className="lib-mini-btn"
                     onClick={() => onUpdateBuilding([singleBuilding.id], { disabledPorts: [] })}
                   >
-                    全开
+                    {t('全开', 'All On')}
                   </button>
                   <button
                     type="button"
@@ -556,35 +566,33 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                       })
                     }
                   >
-                    全关
+                    {t('全关', 'All Off')}
                   </button>
                 </div>
               </div>
-              <PortDiagram building={singleBuilding} onTogglePort={handleTogglePort} />
+              <PortDiagram building={singleBuilding} lang={lang} onTogglePort={handleTogglePort} />
               <div className="port-legend">
-                <span><i className="dot green" /> 活跃</span>
-                <span><i className="dot red" /> 禁用</span>
+                <span><i className="dot green" /> {t('活跃', 'On')}</span>
+                <span><i className="dot red" /> {t('禁用', 'Off')}</span>
               </div>
             </div>
           )}
 
-          {/* Read-only lane reference diagram for Belt Balancer (all 4 lanes are fixed always-on) */}
           {def?.kind === 'balancer' && (
             <div className="inspector-section">
-              <div className="section-label">通道方位</div>
-              <PortDiagram building={singleBuilding} />
+              <div className="section-label">{t('通道方位', 'Lanes')}</div>
+              <PortDiagram building={singleBuilding} lang={lang} />
             </div>
           )}
 
-          {/* Custom planning note */}
           <div className="inspector-section">
-            <div className="section-label">标注</div>
+            <div className="section-label">{t('标注', 'Label')}</div>
             <input
               id="building-label"
               name="buildingLabel"
               type="text"
               className="cad-input"
-              placeholder="输入标注"
+              placeholder={t('输入标注', 'Optional note')}
               value={singleBuilding.label ?? ''}
               onChange={(e) => onUpdateBuilding([singleBuilding.id], { label: e.target.value })}
             />
@@ -592,10 +600,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         </div>
 
         <div className="inspector-footer">
-          <button type="button" className="cad-btn" onClick={onRotateSelection} title="原地旋转 (R)">旋转 (R)</button>
-          <button type="button" className="cad-btn" onClick={onCutSelection} title="剪切并搬移到新位置 (Ctrl+X)">剪切搬移</button>
-          <button type="button" className="cad-btn" onClick={onCopySelection} title="复制为幽灵蓝图 (Ctrl+C)">复制</button>
-          <button type="button" className="cad-btn danger" onClick={onDeleteSelection} title="删除 (Del)">删除</button>
+          <button type="button" className="cad-btn" onClick={onRotateSelection} title="R">{t('旋转', 'Rotate')}</button>
+          <button type="button" className="cad-btn" onClick={onCutSelection} title="Ctrl+X">{t('搬移', 'Move')}</button>
+          <button type="button" className="cad-btn" onClick={onCopySelection} title="Ctrl+C">{t('复制', 'Copy')}</button>
+          <button type="button" className="cad-btn danger" onClick={onDeleteSelection} title="Del">{t('删除', 'Delete')}</button>
         </div>
       </aside>
     );
@@ -604,95 +612,236 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   if (singleModule) {
     const def = getModuleDef(singleModule.type);
     const insideCount = findBuildingsInsideModule(doc, singleModule).length;
+    const dockPortsWorld = def ? getModuleWorldDockPorts(singleModule, def) : [];
+    const hasDockName =
+      dockPortsWorld.length > 0 || singleModule.type.startsWith('BPO_ShipyardCore');
+    const isMiningBay = singleModule.type.startsWith('BPO_MiningDroneBay');
+    const obsRecipes =
+      singleModule.type === 'BPO_DeepSpaceObservatory'
+        ? getRecipesForCrafter('CRAFT_DeepSpaceObservatory')
+        : [];
+
+    const updateDockSlot = (portIndex: number, nextItemId: string, nextMode?: 'unload' | 'load') => {
+      const existing = (singleModule.dockPorts ?? []).filter((p) => p.portIndex !== portIndex);
+      if (nextItemId) {
+        const cur = singleModule.dockPorts?.find((p) => p.portIndex === portIndex);
+        existing.push({
+          portIndex,
+          itemId: nextItemId,
+          mode: nextMode ?? cur?.mode ?? 'unload',
+        });
+      }
+      onUpdateModuleConfig(singleModule.id, { dockPorts: existing });
+    };
+
     return (
       <aside className="cad-sidebar right">
         <div className="panel-header">
           <div className="panel-title-wrap">
             <span className="panel-tag">MODULE</span>
-            <span className="panel-title">{def?.nameZh ?? singleModule.type}</span>
+            <span className="panel-title">{def ? getModuleName(def, lang) : singleModule.type}</span>
           </div>
           <button type="button" className="icon-btn" onClick={onClearSelection}>×</button>
         </div>
         <div className="inspector-body">
           <div className="inspector-kv">
-            <span>原名</span>
-            <code>{def?.nameEn ?? singleModule.type}</code>
-            <span>大格 / 楼层</span>
-            <code>({singleModule.gx}, {singleModule.gy}) · L{singleModule.floor}</code>
-            <span>跨度 / 接口</span>
-            <code>{def ? `${def.sizeUnits[0]}×${def.sizeUnits[1]}×${def.sizeUnits[2]}层` : '?'} · {def?.connectors.length ?? 0}口</code>
-            <span>内部建筑</span>
-            <code>{insideCount} 个</code>
+            <span>{t('大格 / 楼层', 'Grid / Floor')}</span>
+            <code>({singleModule.gx}, {singleModule.gy}) · {formatFloorTag(singleModule.floor)}</code>
+            <span>{t('跨度 / 接口', 'Span / Ports')}</span>
+            <code>
+              {def
+                ? isEn
+                  ? `${def.sizeUnits[0]}×${def.sizeUnits[1]}×${def.sizeUnits[2]}F · ${def.connectors.length}P`
+                  : `${def.sizeUnits[0]}×${def.sizeUnits[1]}×${def.sizeUnits[2]}层 · ${def.connectors.length}口`
+                : '?'}
+            </code>
+            <span>{t('内部建筑', 'Buildings')}</span>
+            <code>{insideCount}</code>
           </div>
-          {def?.floors.some((f) => f.note) && (
-            <div className="inspector-note">
-              {def.floors.filter((f) => f.note).map((f) => f.note).join('；')}
+
+          {hasDockName && (
+            <div className="inspector-section">
+              <div className="section-label">{t('泊位名称', 'Dock Name')}</div>
+              <input
+                id="module-dock-name"
+                name="moduleDockName"
+                type="text"
+                className="cad-input"
+                placeholder={t('输入泊位名称', 'Dock name')}
+                value={singleModule.dockName ?? ''}
+                onChange={(e) => onUpdateModuleConfig(singleModule.id, { dockName: e.target.value })}
+              />
             </div>
           )}
+
+          {dockPortsWorld.length > 0 && (
+            <div className="inspector-section">
+              <div className="section-head">
+                <span className="section-label">
+                  {t('货港接口', 'Dock Ports')} ({singleModule.dockPorts?.length ?? 0}/{dockPortsWorld.length})
+                </span>
+                {singleModule.dockPorts && singleModule.dockPorts.length > 0 && (
+                  <button
+                    type="button"
+                    className="lib-mini-btn"
+                    onClick={() => onUpdateModuleConfig(singleModule.id, { dockPorts: [] })}
+                  >
+                    {t('清空', 'Clear')}
+                  </button>
+                )}
+              </div>
+              <div className="port-filter-list">
+                {dockPortsWorld.map((wp) => {
+                  const curItem = wp.itemId ?? '';
+                  const curMode = wp.mode ?? 'unload';
+                  return (
+                    <div key={wp.portIndex} className="dock-port-row">
+                      <span
+                        className="dock-port-tag"
+                        title={`#${wp.portIndex} (${wp.portX},${wp.portY}) -> (${wp.adjX},${wp.adjY})`}
+                      >
+                        #{wp.portIndex} ({wp.adjX},{wp.adjY})
+                      </span>
+                      <button
+                        type="button"
+                        className={`cad-btn dock-mode-btn ${curItem ? (curMode === 'load' ? 'accent' : '') : ''}`}
+                        disabled={!curItem}
+                        onClick={() =>
+                          curItem && updateDockSlot(wp.portIndex, curItem, curMode === 'load' ? 'unload' : 'load')
+                        }
+                      >
+                        {curMode === 'load' ? t('装货', 'Load') : t('卸货', 'Unload')}
+                      </button>
+                      <select
+                        className="cad-input port-filter-select"
+                        value={curItem}
+                        onChange={(e) => updateDockSlot(wp.portIndex, e.target.value, curMode)}
+                      >
+                        <option value="">{t('未配', 'None')}</option>
+                        {CATALOG_ITEMS.map((it) => (
+                          <option key={it.id} value={it.id}>
+                            {isEn ? it.nameEn : it.nameZh}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {isMiningBay && (
+            <div className="inspector-section">
+              <div className="section-label">{t('开采目标', 'Mining Target')}</div>
+              <select
+                className="cad-input"
+                value={singleModule.miningItem ?? ''}
+                onChange={(e) => onUpdateModuleConfig(singleModule.id, { miningItem: e.target.value || null })}
+              >
+                <option value="">{t('未指定', 'None')}</option>
+                {CATALOG_ITEMS.map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {isEn ? it.nameEn : it.nameZh}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {obsRecipes.length > 0 && (
+            <div className="inspector-section">
+              <div className="section-head">
+                <span className="section-label">{t('观测配方', 'Observatory Recipe')}</span>
+                {singleModule.recipeId && (
+                  <button
+                    type="button"
+                    className="lib-mini-btn"
+                    onClick={() => onUpdateModuleConfig(singleModule.id, { recipeId: null })}
+                  >
+                    {t('清除', 'Clear')}
+                  </button>
+                )}
+              </div>
+              <div className="recipe-list">
+                {obsRecipes.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={`recipe-item ${singleModule.recipeId === r.id ? 'selected' : ''}`}
+                    onClick={() => onUpdateModuleConfig(singleModule.id, { recipeId: r.id })}
+                  >
+                    <span className="recipe-name">{getRecipeName(r, lang)}</span>
+                    <span className="recipe-en">{r.shortCode}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="inspector-section">
-            <div className="section-label">标注</div>
+            <div className="section-label">{t('标注', 'Label')}</div>
             <input
               id="module-label"
               name="moduleLabel"
               type="text"
               className="cad-input"
-              placeholder="输入标注"
+              placeholder={t('输入标注', 'Optional note')}
               value={singleModule.label ?? ''}
-              onChange={(e) => onUpdateModuleLabel(singleModule.id, e.target.value)}
+              onChange={(e) => onUpdateModuleConfig(singleModule.id, { label: e.target.value })}
             />
           </div>
         </div>
         <div className="inspector-footer">
-          <button type="button" className="cad-btn" onClick={onRotateSelection} title="原地旋转 (R)">旋转 (R)</button>
-          <button type="button" className="cad-btn accent" onClick={onCutSelection} title="连带内部建筑一起剪切搬移 (Ctrl+X)">剪切搬移</button>
-          <button type="button" className="cad-btn" onClick={onCopySelection} title="复制模块及内部建筑 (Ctrl+C)">复制</button>
-          <button type="button" className="cad-btn" onClick={onSaveSelectionAsBlueprint} title="保存为蓝图文件 (Ctrl+S)">存蓝图</button>
-          <button type="button" className="cad-btn danger" onClick={onDeleteSelection} title="删除 (Del)">删除</button>
+          <button type="button" className="cad-btn" onClick={onRotateSelection} title="R">{t('旋转', 'Rotate')}</button>
+          <button type="button" className="cad-btn accent" onClick={onCutSelection} title="Ctrl+X">{t('搬移', 'Move')}</button>
+          <button type="button" className="cad-btn" onClick={onCopySelection} title="Ctrl+C">{t('复制', 'Copy')}</button>
+          <button type="button" className="cad-btn" onClick={onSaveSelectionAsBlueprint} title="Ctrl+S">{t('存蓝图', 'Save')}</button>
+          <button type="button" className="cad-btn danger" onClick={onDeleteSelection} title="Del">{t('删除', 'Delete')}</button>
         </div>
       </aside>
     );
   }
 
-  // Multi-selection panel
   const floors = new Set<number>([
     ...selectedModules.map((m) => m.floor),
     ...selectedBuildings.map((b) => b.floor),
   ]);
-  const floorLabel = Array.from(floors).sort((a, b) => a - b).map((f) => `L${f}`).join(', ');
+  const floorLabel = Array.from(floors).sort((a, b) => a - b).map(formatFloorTag).join(', ');
 
   return (
     <aside className="cad-sidebar right">
       <div className="panel-header">
         <div className="panel-title-wrap">
           <span className="panel-tag">MULTI</span>
-          <span className="panel-title">已选 {totalSelected} 项</span>
+          <span className="panel-title">{t(`已选 ${totalSelected} 项`, `${totalSelected} Selected`)}</span>
         </div>
         <button type="button" className="icon-btn" onClick={onClearSelection}>×</button>
       </div>
       <div className="inspector-body">
         <div className="inspector-kv">
-          <span>空间站模块</span>
+          <span>{t('模块', 'Modules')}</span>
           <code>{selectedModules.length}</code>
-          <span>内部建筑</span>
+          <span>{t('建筑', 'Buildings')}</span>
           <code>{selectedBuildings.length}</code>
-          <span>涉及楼层</span>
+          <span>{t('楼层', 'Floors')}</span>
           <code>{floorLabel || '-'}</code>
         </div>
         <div className="inspector-footer vertical">
           <button type="button" className="cad-btn accent" onClick={onCutSelection}>
-            剪切搬移（连带内部建筑 · Ctrl+X）
+            {t('剪切搬移 (Ctrl+X)', 'Cut & Move (Ctrl+X)')}
           </button>
           <button type="button" className="cad-btn" onClick={onCopySelection}>
-            复制为幽灵蓝图 (Ctrl+C)
+            {t('复制 (Ctrl+C)', 'Copy (Ctrl+C)')}
           </button>
           <button type="button" className="cad-btn" onClick={onSaveSelectionAsBlueprint}>
-            保存选区为蓝图 (Ctrl+S)
+            {t('存为蓝图 (Ctrl+S)', 'Save Selection (Ctrl+S)')}
           </button>
           <button type="button" className="cad-btn" onClick={onRotateSelection}>
-            原地旋转 (R)
+            {t('旋转 (R)', 'Rotate (R)')}
           </button>
           <button type="button" className="cad-btn danger" onClick={onDeleteSelection}>
-            删除选中 (Del)
+            {t('删除 (Del)', 'Delete (Del)')}
           </button>
         </div>
       </div>

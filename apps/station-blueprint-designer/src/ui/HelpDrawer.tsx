@@ -1,31 +1,32 @@
 import React from 'react';
+import { useI18n } from '../core/i18n';
 
 interface HelpDrawerProps {
   open: boolean;
   onClose: () => void;
 }
 
-const KEY_GROUPS = [
+const KEY_GROUPS_ZH = [
   {
     title: '视角与楼层',
     items: [
-      ['右键拖拽 / 右键短按', '旋转俯仰 3D 视角 / 取消工具与选区'],
-      ['中键 / WASD / 空格+拖', '平移视野'],
-      ['滚轮 / ` / Tab / 双击模块', '缩放或切入空间站 ↔ 建筑视野'],
-      ['E / Q / Shift+滚轮', '升降楼层（或点右侧楼层条）'],
-      ['V / G', '切换上层隐透 / 视角吸附'],
+      ['右键拖 / 短按', '3D 旋转 / 取消工具与选区'],
+      ['中键 / WASD / 空格+拖', '平移画布'],
+      ['滚轮 / ` / Tab / 双击模块', '缩放 / 空间站 ↔ 建筑视野'],
+      ['E / Q / Shift+滚轮', '升降楼层'],
+      ['V / G', '上层隐透 / 视角吸附'],
       ['Home / F', '适配整站 / 聚焦选中'],
     ],
   },
   {
     title: '选择与搬移',
     items: [
-      ['悬停建筑 / 模块', '选择态直读配方、规格与实时流速'],
+      ['悬停实体', '查看配方、规格与实时流速'],
       ['左键 / Shift / Alt+左键', '单选 / 加选 / 减选'],
-      ['左键 / Shift / Alt+拖', '实时高亮框选 / 加选 / 减选'],
-      ['X（点 / 扫 / Shift+拖）', '拆除（整笔支持 Ctrl+Z 撤销）'],
-      ['B', '切换框选层域（当前 / 可见 / 全部）'],
-      ['Ctrl+X / C / V', '剪切搬移 / 复制盖章 / 唤出剪贴板'],
+      ['左键 / Shift / Alt+拖', '框选 / 加选 / 减选'],
+      ['X（点 / 扫 / Shift+拖）', '拆除（可撤销）'],
+      ['B', '框选层域（当前 / 可见 / 全部）'],
+      ['Ctrl+X / C / V', '剪切搬移 / 复制 / 粘贴'],
       ['O / Del', '选整条传送带 / 删除选中'],
     ],
   },
@@ -33,28 +34,79 @@ const KEY_GROUPS = [
     title: '建造与拉带',
     items: [
       ['1 ~ 9 / Tab', '选分组 / 组内换型（Shift 反向）'],
-      ['左键拖拽（传送带）', '自动转弯铺带（T/U 潜入/钻出地下带）'],
+      ['左键拖（传送带）', '自动转弯（T/U 切地下带）'],
       ['Shift+拖（传送带）', 'L 形规划（R 切拐 · T/U 跨障 · Alt 反向）'],
-      ['T / U', '传送带 ↔ 同级地下带互切 / 拖拽切隧道'],
-      ['R / Shift+R / M', '顺逆旋转 90° / 镜像蓝图与翻转装甲'],
-      ['C / 中键短按', '吸管复制机器及全部配置'],
+      ['T / U', '传送带 ↔ 地下带互切'],
+      ['R / Shift+R / M', '旋转 90° / 镜像蓝图与装甲'],
+      ['C / 中键短按', '吸管复制机器配置'],
     ],
   },
   {
     title: '蓝图与系统',
     items: [
-      ['L', '打开 / 关闭俯视缩略图蓝图库'],
-      ['Ctrl+S', '保存选区或当前蓝图'],
-      ['Ctrl+Z / Ctrl+Shift+Z', '撤销 / 重做（也支持 Ctrl+Y）'],
+      ['L', '打开 / 关闭蓝图库'],
+      ['Ctrl+S', '保存蓝图或选区'],
+      ['Ctrl+Z / Ctrl+Shift+Z', '撤销 / 重做'],
       ['拖入 .sav / .json', '直接导入画布'],
-      ['右键短按 / Esc', '关闭弹窗 / 取消工具与选区'],
-      ['F1 / ?', '快捷键帮助'],
+      ['右键短按 / Esc', '关闭弹窗 / 取消'],
+      ['F1 / ?', '快捷键'],
+    ],
+  },
+];
+
+const KEY_GROUPS_EN = [
+  {
+    title: 'Camera & Floors',
+    items: [
+      ['RMB Drag / Click', 'Orbit 3D / Cancel tool & selection'],
+      ['MMB / WASD / Space+Drag', 'Pan canvas'],
+      ['Wheel / ` / Tab / Dbl-Click', 'Zoom / Station ↔ Building view'],
+      ['E / Q / Shift+Wheel', 'Step floor up / down'],
+      ['V / G', 'Hide upper floors / Snap camera'],
+      ['Home / F', 'Fit station / Focus selection'],
+    ],
+  },
+  {
+    title: 'Select & Edit',
+    items: [
+      ['Hover Entity', 'Inspect recipe, specs & live flow'],
+      ['LMB / Shift / Alt+Click', 'Select / Add / Subtract'],
+      ['LMB / Shift / Alt+Drag', 'Box select / Add / Subtract'],
+      ['X (Click / Sweep / Shift+Drag)', 'Demolish (undoable)'],
+      ['B', 'Box layer scope (Focus / Visible / All)'],
+      ['Ctrl+X / C / V', 'Cut & Move / Copy / Paste'],
+      ['O / Del', 'Select belt chain / Delete'],
+    ],
+  },
+  {
+    title: 'Build & Belts',
+    items: [
+      ['1–9 / Tab', 'Pick group / Cycle variant (Shift reverse)'],
+      ['LMB Drag (Belt)', 'Auto-bend belt (T/U underground)'],
+      ['Shift+Drag (Belt)', 'L-route (R flip · T/U tunnel · Alt rev)'],
+      ['T / U', 'Toggle belt ↔ underground'],
+      ['R / Shift+R / M', 'Rotate 90° / Mirror blueprint & armour'],
+      ['C / MMB Click', 'Eyedropper with full config'],
+    ],
+  },
+  {
+    title: 'Blueprints & App',
+    items: [
+      ['L', 'Toggle Blueprint Library'],
+      ['Ctrl+S', 'Save blueprint or selection'],
+      ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / Redo'],
+      ['Drop .sav / .json', 'Import onto canvas'],
+      ['RMB Click / Esc', 'Close modal / Cancel'],
+      ['F1 / ?', 'Shortcuts'],
     ],
   },
 ];
 
 export const HelpDrawer: React.FC<HelpDrawerProps> = ({ open, onClose }) => {
+  const { isEn, t } = useI18n();
   if (!open) return null;
+
+  const groups = isEn ? KEY_GROUPS_EN : KEY_GROUPS_ZH;
 
   return (
     <div className="cad-help-overlay" onClick={onClose}>
@@ -62,15 +114,15 @@ export const HelpDrawer: React.FC<HelpDrawerProps> = ({ open, onClose }) => {
         <div className="panel-header">
           <div className="panel-title-wrap">
             <span className="panel-tag">HELP</span>
-            <span className="panel-title">快捷键</span>
+            <span className="panel-title">{t('快捷键', 'Shortcuts')}</span>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} title="关闭 (Esc)">×</button>
+          <button type="button" className="icon-btn" onClick={onClose} title={t('关闭 (Esc)', 'Close (Esc)')}>×</button>
         </div>
 
         <div className="help-body">
           <section className="help-section">
             <div className="help-grid">
-              {KEY_GROUPS.map((group) => (
+              {groups.map((group) => (
                 <div key={group.title} className="help-card">
                   <div className="help-card-title">{group.title}</div>
                   <div className="help-rows">
@@ -88,8 +140,10 @@ export const HelpDrawer: React.FC<HelpDrawerProps> = ({ open, onClose }) => {
 
           <section className="help-section help-meta">
             <ul>
-              <li>目录：<code>Main Sequence Build 26639889</code>（27 模块 · 36 建筑 · 83 配方）</li>
-              <li>规范：<code>2×2 B</code> 二层回字形挑台可建 · 超算/生长舱 <code>7×7</code> · 跨层由 <code>1×1 / 2×2 电梯</code> 承载</li>
+              <li>
+                <code>Main Sequence Build 26639889</code> ·{' '}
+                {t('27 模块 · 36 建筑 · 83 配方', '27 Modules · 36 Buildings · 83 Recipes')}
+              </li>
             </ul>
           </section>
         </div>

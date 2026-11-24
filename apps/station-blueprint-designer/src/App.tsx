@@ -10,10 +10,11 @@ import {
   type BeltCellSpec,
   type BeltStrokeTunnel,
 } from './core/belt-router';
-import { getBuildableDef, getItemNameZh, getModuleDef, getRecipeDef } from './core/catalog';
+import { getBuildableDef, getItemName, getModuleDef, getRecipeDef, getRecipeName } from './core/catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './core/codec';
 import { DEFAULT_LIBRARY_PRESETS } from './core/presets';
 import { cycleVariantInGroup, findGroupForEntity, getGroupsForView, getShortLabel } from './core/groups';
+import { formatFloorTag, useI18n } from './core/i18n';
 import {
   boxSelectEntities,
   commitHistory,
@@ -31,7 +32,7 @@ import {
   stampBlueprintCmd,
   undoHistory,
   updateBuildingConfigCmd,
-  updateModuleLabelCmd,
+  updateModuleConfigCmd,
 } from './core/commands';
 import {
   findBuildingAtCell,
@@ -104,6 +105,7 @@ function collectFolderPaths(nodes: LibraryNode[]): string[] {
 }
 
 export const App: React.FC = () => {
+  const { lang, isEn, toggleLang, t } = useI18n();
   const initialSession = useMemo(() => {
     const recovered = loadWorkspaceAutosave();
     if (recovered) return recovered;
@@ -196,7 +198,7 @@ export const App: React.FC = () => {
     (world: { x: number; y: number } | null, clientX: number, clientY: number) => {
       const el = hoverTipRef.current;
       if (!el) return;
-      const { doc: curDoc, viewMode: vm, focusFloor: fl, activeTool: tool, simReport: curSim } = stateRef.current;
+      const { doc: curDoc, viewMode: vm, focusFloor: fl, activeTool: tool, simReport: curSim, lang: curLang } = stateRef.current;
       if (!world || tool.kind !== 'select' || dragRef.current.kind !== 'none') {
         hideHoverTip();
         return;
@@ -207,7 +209,7 @@ export const App: React.FC = () => {
       const gx = Math.floor(world.x / STATION_UNIT_M);
       const gy = Math.floor(world.y / STATION_UNIT_M);
       const simTag = curSim ? `${curSim.errorCount}:${curSim.warnCount}` : '0';
-      const key = vm === 'building' ? `b:${fl}:${cx},${cy}:${simTag}` : `m:${fl}:${gx},${gy}`;
+      const key = vm === 'building' ? `b:${curLang}:${fl}:${cx},${cy}:${simTag}` : `m:${curLang}:${fl}:${gx},${gy}`;
 
       const tipW = 264;
       const tipH = 74;
@@ -229,13 +231,13 @@ export const App: React.FC = () => {
           return;
         }
         const def = getBuildableDef(hit.type);
-        const titleParts: string[] = [getShortLabel(hit.type, def?.nameZh)];
+        const titleParts: string[] = [getShortLabel(hit.type, curLang === 'en' ? def?.nameEn : def?.nameZh, curLang)];
         if (def?.kind === 'underground') {
           titleParts.push(hit.undergroundMode === 'out' ? 'OUT' : 'IN');
         }
         if (hit.recipeId) {
           const rec = getRecipeDef(hit.recipeId);
-          if (rec) titleParts.push(`· ${rec.nameZh}`);
+          if (rec) titleParts.push(`· ${getRecipeName(rec, curLang)}`);
         }
         if (hit.label) titleParts.push(`[${hit.label}]`);
 
@@ -251,15 +253,15 @@ export const App: React.FC = () => {
               entries.sort((a, b) => b[1] - a[1]);
               const topStr = entries
                 .slice(0, 2)
-                .map(([itemId, rate]) => `${getItemNameZh(itemId)} ${rate.toFixed(1)}/s`)
+                .map(([itemId, rate]) => `${getItemName(itemId, curLang)} ${rate.toFixed(1)}/s`)
                 .join(' + ');
-              subText = `${topStr} · 容 ${flow.capacity}/s`;
+              subText = curLang === 'en' ? `${topStr} · Cap ${flow.capacity}/s` : `${topStr} · 容 ${flow.capacity}/s`;
               if (flow.overloaded) {
-                subText += ' (超载)';
+                subText += curLang === 'en' ? ' (Overload)' : ' (超载)';
                 tone = 'error';
               }
             } else if (def && ['belt', 'underground', 'splitter', 'balancer'].includes(def.kind)) {
-              subText = `空带 · 0/${flow.capacity}/s`;
+              subText = curLang === 'en' ? `Empty · 0/${flow.capacity}/s` : `空带 · 0/${flow.capacity}/s`;
             }
           }
           const issue = curSim.issues.find(
@@ -285,9 +287,9 @@ export const App: React.FC = () => {
           if (def.powerKW && def.powerKW > 0) specs.push(`${+(def.powerKW / 1000).toFixed(1)} MW`);
           if (hit.portFilters && Object.keys(hit.portFilters).length > 0) {
             const firstItem = Object.values(hit.portFilters)[0];
-            specs.push(`过滤 ${getItemNameZh(firstItem)}`);
+            specs.push(`${curLang === 'en' ? 'Filter' : '过滤'} ${getItemName(firstItem, curLang)}`);
           } else if (hit.filterItems && hit.filterItems.length > 0) {
-            specs.push(`过滤 ${hit.filterItems.length}项`);
+            specs.push(curLang === 'en' ? `${hit.filterItems.length} filters` : `过滤 ${hit.filterItems.length}项`);
           }
           subText = specs.join(' · ');
         }
@@ -314,18 +316,18 @@ export const App: React.FC = () => {
         return;
       }
       const mDef = getModuleDef(hitMod.type);
-      const titleParts: string[] = [getShortLabel(hitMod.type, mDef?.nameZh)];
+      const titleParts: string[] = [getShortLabel(hitMod.type, curLang === 'en' ? mDef?.nameEn : mDef?.nameZh, curLang)];
       if (hitMod.recipeId) {
         const rec = getRecipeDef(hitMod.recipeId);
-        if (rec) titleParts.push(`· ${rec.nameZh}`);
+        if (rec) titleParts.push(`· ${getRecipeName(rec, curLang)}`);
       }
       if (hitMod.label) titleParts.push(`[${hitMod.label}]`);
 
       const subParts: string[] = [];
       if (mDef) {
         const [wu, du, hu] = getModuleSizeUnits(mDef, hitMod.rotation);
-        subParts.push(`${wu}×${du}${hu > 1 ? `×${hu}层` : ''}`);
-        subParts.push(hitMod.floor < 0 ? `B${Math.abs(hitMod.floor)}` : `L${hitMod.floor}`);
+        subParts.push(`${wu}×${du}${hu > 1 ? (curLang === 'en' ? `×${hu}F` : `×${hu}层`) : ''}`);
+        subParts.push(formatFloorTag(hitMod.floor));
         if (mDef.powerGenKW && mDef.powerGenKW > 0) subParts.push(`+${+(mDef.powerGenKW / 1000).toFixed(1)} MW`);
         else if (mDef.powerKW && mDef.powerKW > 0) subParts.push(`-${+(mDef.powerKW / 1000).toFixed(1)} MW`);
       }
@@ -414,6 +416,7 @@ export const App: React.FC = () => {
     clipboardBp,
     simReport,
     activeSimIssueId,
+    lang,
   });
   stateRef.current = {
     doc,
@@ -427,6 +430,7 @@ export const App: React.FC = () => {
     clipboardBp,
     simReport,
     activeSimIssueId,
+    lang,
   };
 
   const dragRef = useRef<{
@@ -924,8 +928,8 @@ export const App: React.FC = () => {
         }
         if (ghModal && !ghModal.busy) { setGhModal(null); return; }
         if (saveDialog) { setSaveDialog(null); return; }
-        if (libraryModalOpen) { setLibraryModalOpen(false); return; }
         if (helpOpen) { setHelpOpen(false); return; }
+        if (libraryModalOpen) { setLibraryModalOpen(false); return; }
         if (prefsMenuOpen) { setPrefsMenuOpen(false); return; }
         const { activeTool: curTool, selection: curSel } = stateRef.current;
         if (curTool.kind !== 'select' || curSel.moduleIds.length > 0 || curSel.buildingIds.length > 0) {
@@ -2263,10 +2267,10 @@ export const App: React.FC = () => {
   const hasRightPanel = simOpen || selection.moduleIds.length > 0 || selection.buildingIds.length > 0;
   const saveTargetLabel =
     driver.mode === 'github-private'
-      ? '写入私有云库'
+      ? t('写入私有云库', 'Save to Cloud')
       : driver.mode === 'fs-local'
-        ? '写入本地文件夹'
-        : '写入内置库';
+        ? t('写入本地目录', 'Save Locally')
+        : t('写入内置库', 'Save Built-in');
 
   return (
     <div className="cad-shell" data-theme={theme}>
@@ -2276,7 +2280,7 @@ export const App: React.FC = () => {
           <div className="doc-title-wrap">
             <span
               className={`doc-status-dot ${dirty ? 'dirty' : 'clean'}`}
-              title={dirty ? '有未保存更改' : activeSourcePath ? '已保存' : '草稿'}
+              title={dirty ? t('未保存', 'Unsaved') : activeSourcePath ? t('已保存', 'Saved') : t('草稿', 'Draft')}
             />
             <input
               id="doc-title"
@@ -2289,24 +2293,24 @@ export const App: React.FC = () => {
                 setHistory((h) => ({ ...h, present: { ...h.present, name } }));
                 setDirty(true);
               }}
-              title="点击修改当前蓝图名称"
+              title={t('蓝图名称', 'Blueprint name')}
             />
           </div>
           <button
             type="button"
             className={`cad-btn ${libraryModalOpen ? 'accent' : ''}`}
             onClick={() => setLibraryModalOpen((o) => !o)}
-            title="打开俯视缩略图蓝图库 (L)"
+            title={t('蓝图库 (L)', 'Library (L)')}
           >
             <span
               className={`status-dot inline ${
                 driver.mode === 'fs-local' ? 'green' : driver.mode === 'github-private' ? 'amber' : 'blue'
               }`}
             />
-            蓝图库
+            {t('蓝图库', 'Library')}
           </button>
-          <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="保存当前画布 (Ctrl+S)">
-            保存
+          <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="Ctrl+S">
+            {t('保存', 'Save')}
           </button>
         </div>
 
@@ -2316,25 +2320,25 @@ export const App: React.FC = () => {
               type="button"
               className={`seg-btn ${viewMode === 'station' ? 'active' : ''}`}
               onClick={() => switchViewMode('station')}
-              title="空间站视野 (` 或选择态 Tab)"
+              title={t('空间站视野 (` / Tab)', 'Station View (` / Tab)')}
             >
-              空间站
+              {t('空间站', 'Station')}
             </button>
             <button
               type="button"
               className={`seg-btn ${viewMode === 'building' ? 'active' : ''}`}
               onClick={() => switchViewMode('building')}
-              title="建筑视野 (` 或选择态 Tab)"
+              title={t('建筑视野 (` / Tab)', 'Building View (` / Tab)')}
             >
-              建筑
+              {t('建筑', 'Building')}
             </button>
           </div>
 
-          <div className="floor-stepper" title="焦点楼层 (Q 降 / E 升 / Shift+滚轮)">
+          <div className="floor-stepper" title={t('楼层 (Q / E / Shift+滚轮)', 'Floor (Q / E / Shift+Wheel)')}>
             <button type="button" className="step-btn" onClick={() => setFocusFloor((f) => Math.max(-2, f - 1))}>
               Q↓
             </button>
-            <span className="floor-readout">{focusFloor < 0 ? `B${Math.abs(focusFloor)}` : `L${focusFloor}`}</span>
+            <span className="floor-readout">{formatFloorTag(focusFloor)}</span>
             <button type="button" className="step-btn" onClick={() => setFocusFloor((f) => Math.min(8, f + 1))}>
               E↑
             </button>
@@ -2344,9 +2348,9 @@ export const App: React.FC = () => {
             type="button"
             className="cad-btn"
             onClick={() => setHideAbove((v) => !v)}
-            title="切换是否隐藏焦点楼层以上所有层 (V)"
+            title={t('切换上层隐透 (V)', 'Toggle upper floors (V)')}
           >
-            {hideAbove ? '上层 · 隐' : '上层 · 透'}
+            {hideAbove ? t('上层 · 隐', 'Upper · Off') : t('上层 · 透', 'Upper · On')}
           </button>
         </div>
 
@@ -2355,13 +2359,13 @@ export const App: React.FC = () => {
             type="button"
             className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
             onClick={() => setSimOpen((v) => !v)}
-            title="开启/关闭实时产线诊断与流量计算"
+            title={t('产线诊断', 'Line diagnostics')}
           >
             {simOpen
               ? simReport?.passed
-                ? '诊断 · 0异常'
-                : `诊断 · ${simReport?.errorCount ?? 0}异常`
-              : '产线诊断'}
+                ? t('诊断 · 0异常', 'Sim · Clean')
+                : t(`诊断 · ${simReport?.errorCount ?? 0}异常`, `Sim · ${simReport?.errorCount ?? 0} Err`)
+              : t('产线诊断', 'Simulate')}
           </button>
 
           <GameInteropMenu
@@ -2380,14 +2384,14 @@ export const App: React.FC = () => {
               type="button"
               className={`cad-btn ${prefsMenuOpen ? 'accent' : ''}`}
               onClick={() => setPrefsMenuOpen((o) => !o)}
-              title="视角吸附、俯角预设、框选层域、撤销与主题"
+              title={t('视角与偏好', 'View & Preferences')}
             >
-              视角 ▾
+              {t('视角 ▾', 'View ▾')}
             </button>
             {prefsMenuOpen && (
               <div className="prefs-popover">
                 <div className="prefs-section">
-                  <div className="prefs-title">相机与吸附</div>
+                  <div className="prefs-title">{t('相机与吸附', 'Camera')}</div>
                   <div className="prefs-row">
                     <button
                       type="button"
@@ -2398,13 +2402,13 @@ export const App: React.FC = () => {
                         sceneRef.current?.rig.setSnapEnabled(next);
                       }}
                     >
-                      {snapEnabled ? '四向吸附 · 开 (G)' : '自由视角 · 关 (G)'}
+                      {snapEnabled ? t('吸附 · 开 (G)', 'Snap · On (G)') : t('自由 · 关 (G)', 'Free (G)')}
                     </button>
                     <button
                       type="button"
                       className="cad-btn"
                       onClick={() => sceneRef.current?.rig.stepYawCardinal(1)}
-                      title="顺时针旋转正交视角 90°"
+                      title={t('旋转 90°', 'Rotate 90°')}
                     >
                       ↻90°
                     </button>
@@ -2415,9 +2419,9 @@ export const App: React.FC = () => {
                         fitAllStation();
                         setPrefsMenuOpen(false);
                       }}
-                      title="适配整站 (Home)"
+                      title="Home"
                     >
-                      适配
+                      {t('适配', 'Fit')}
                     </button>
                   </div>
                   <div className="pitch-pills prefs-pitch">
@@ -2427,16 +2431,16 @@ export const App: React.FC = () => {
                         type="button"
                         className="mini-pill"
                         onClick={() => sceneRef.current?.rig.setPitchPreset(p.rad)}
-                        title={`切换到${p.label}`}
+                        title={isEn ? p.labelEn : p.label}
                       >
-                        {p.label.slice(0, 2)}
+                        {isEn ? p.labelEn.split(' ')[0] : p.label.slice(0, 2)}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="prefs-section">
-                  <div className="prefs-title">编辑与框选</div>
+                  <div className="prefs-title">{t('编辑与框选', 'Edit')}</div>
                   <div className="prefs-row">
                     <button
                       type="button"
@@ -2444,7 +2448,7 @@ export const App: React.FC = () => {
                       disabled={history.past.length === 0}
                       onClick={() => setHistory((h) => undoHistory(h))}
                     >
-                      撤销 (Ctrl+Z)
+                      {t('撤销 (Ctrl+Z)', 'Undo')}
                     </button>
                     <button
                       type="button"
@@ -2452,7 +2456,7 @@ export const App: React.FC = () => {
                       disabled={history.future.length === 0}
                       onClick={() => setHistory((h) => redoHistory(h))}
                     >
-                      重做
+                      {t('重做', 'Redo')}
                     </button>
                   </div>
                   <button
@@ -2462,13 +2466,17 @@ export const App: React.FC = () => {
                       setSelectionLayerMode((m) => (m === 'focus' ? 'visible' : m === 'visible' ? 'all' : 'focus'))
                     }
                   >
-                    跨层框选 (B)：
-                    {selectionLayerMode === 'focus' ? '仅当前层' : selectionLayerMode === 'visible' ? '当前可见层' : '全部楼层'}
+                    {t('框选层域 (B)：', 'Layer Scope (B): ')}
+                    {selectionLayerMode === 'focus'
+                      ? t('仅当前层', 'Focus')
+                      : selectionLayerMode === 'visible'
+                        ? t('可见层', 'Visible')
+                        : t('全部', 'All')}
                   </button>
                 </div>
 
                 <div className="prefs-section">
-                  <div className="prefs-title">外观主题</div>
+                  <div className="prefs-title">{t('外观', 'Theme')}</div>
                   <button
                     type="button"
                     className="cad-btn prefs-full"
@@ -2478,7 +2486,7 @@ export const App: React.FC = () => {
                       saveTheme(next);
                     }}
                   >
-                    当前：{CAD_THEMES[theme].nameZh}（点击切换）
+                    {isEn ? CAD_THEMES[theme].nameEn : CAD_THEMES[theme].nameZh}
                   </button>
                 </div>
               </div>
@@ -2487,9 +2495,18 @@ export const App: React.FC = () => {
 
           <button
             type="button"
+            className="cad-btn"
+            onClick={toggleLang}
+            title={t('切换为 English', 'Switch to 中文')}
+          >
+            {isEn ? '中' : 'EN'}
+          </button>
+
+          <button
+            type="button"
             className={`cad-btn icon-pill ${helpOpen ? 'accent' : ''}`}
             onClick={() => setHelpOpen((o) => !o)}
-            title="操作快捷键与帮助 (F1 / ?)"
+            title={t('快捷键 (F1 / ?)', 'Shortcuts (F1 / ?)')}
           >
             ?
           </button>
@@ -2550,17 +2567,17 @@ export const App: React.FC = () => {
             <span className="hud-coord" ref={hudCoordRef}>X --  Y --</span>
             <span className="hud-sep">·</span>
             <span className="hud-grid" ref={hudGridRef}>G(-,-)</span>
-            <span className="hud-floor">{focusFloor < 0 ? `B${Math.abs(focusFloor)}` : `L${focusFloor}`}</span>
+            <span className="hud-floor">{formatFloorTag(focusFloor)}</span>
           </div>
           <div className="hud-row secondary">
-            <span>{viewMode === 'station' ? '空间站' : '建筑'}</span>
+            <span>{viewMode === 'station' ? t('空间站', 'Station') : t('建筑', 'Building')}</span>
             <span ref={hudCamRef}>0°/64° · 76m</span>
-            <span>{snapEnabled ? '吸附' : '自由'}</span>
+            <span>{snapEnabled ? t('吸附', 'Snap') : t('自由', 'Free')}</span>
             <span>
-              {doc.modules.length}模 · {doc.buildings.length}建
+              {isEn ? `${doc.modules.length}M · ${doc.buildings.length}B` : `${doc.modules.length}模 · ${doc.buildings.length}建`}
             </span>
             {lastAutosaveAt && (
-              <span title="最近自动恢复点">{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
+              <span title={t('自动恢复点', 'Autosave')}>{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
             )}
           </div>
         </div>
@@ -2581,8 +2598,8 @@ export const App: React.FC = () => {
             const res = updateBuildingConfigCmd(doc, ids, patch);
             if (res.changed) commitDoc(res.doc);
           }}
-          onUpdateModuleLabel={(id, label) => {
-            const res = updateModuleLabelCmd(doc, id, label);
+          onUpdateModuleConfig={(id, patch) => {
+            const res = updateModuleConfigCmd(doc, id, patch);
             if (res.changed) commitDoc(res.doc);
           }}
           onCopySelection={() => copySelectionToGhost(false)}
@@ -2616,29 +2633,44 @@ export const App: React.FC = () => {
 
         {activeTool.kind !== 'select' && (
           <div className="cad-tool-banner">
-            {activeTool.kind === 'demolish' && '拆除刷 · 左键点/扫拆 · Shift+拖 红框拆 · Ctrl+Z 撤销 · Esc/右键退出'}
+            {activeTool.kind === 'demolish' &&
+              t('拆除 · 点/扫拆 · Shift+拖 框拆 · Esc 退出', 'Demolish · Click/Sweep · Shift+Drag Box · Esc Exit')}
             {activeTool.kind === 'place-module' &&
-              `${getShortLabel(activeTool.moduleType, getModuleDef(activeTool.moduleType)?.nameZh)}${
-                activeTool.label ? ` [${activeTool.label}]` : ''
-              }${
+              `${getShortLabel(
+                activeTool.moduleType,
+                isEn ? getModuleDef(activeTool.moduleType)?.nameEn : getModuleDef(activeTool.moduleType)?.nameZh,
+                lang
+              )}${activeTool.label ? ` [${activeTool.label}]` : ''}${
                 activeTool.moduleType === 'BPO_StationArmour_01' || activeTool.moduleType === 'BPO_StationArmour_01B'
-                  ? ' · M 翻转'
+                  ? t(' · M 翻转', ' · M Flip')
                   : ''
-              } · R 旋转 · Q/E 切层 · Esc 取消`}
+              }${t(' · R 旋转 · Q/E 切层', ' · R Rotate · Q/E Floor')}`}
             {activeTool.kind === 'place-building' &&
-              `${getShortLabel(activeTool.buildingType, getBuildableDef(activeTool.buildingType)?.nameZh)}${
-                activeTool.recipeId ? ` [${getRecipeDef(activeTool.recipeId)?.nameZh ?? activeTool.recipeId}]` : ''
+              `${getShortLabel(
+                activeTool.buildingType,
+                isEn ? getBuildableDef(activeTool.buildingType)?.nameEn : getBuildableDef(activeTool.buildingType)?.nameZh,
+                lang
+              )}${
+                activeTool.recipeId
+                  ? ` [${getRecipeDef(activeTool.recipeId) ? getRecipeName(getRecipeDef(activeTool.recipeId)!, lang) : activeTool.recipeId}]`
+                  : ''
               }${
                 getBuildableDef(activeTool.buildingType)?.kind === 'underground'
-                  ? ` · ${activeTool.undergroundMode === 'out' ? 'OUT' : 'IN'} · T/U 切回传送带`
+                  ? ` · ${activeTool.undergroundMode === 'out' ? 'OUT' : 'IN'}${t(' · T/U 地面带', ' · T/U Belt')}`
                   : getBuildableDef(activeTool.buildingType)?.kind === 'belt'
-                    ? ' · 拖带按 T/U 切地下带'
+                    ? t(' · T/U 地下带', ' · T/U Underground')
                     : ''
-              } · R 旋转 · Tab 换型 · Esc 取消`}
+              }${t(' · R 旋转 · Tab 换型', ' · R Rotate · Tab Variant')}`}
             {activeTool.kind === 'stamp-blueprint' &&
               (activeTool.fromCut
-                ? `剪切搬移「${activeTool.name}」 · R 旋转 · M 镜像 · Q/E 切层 · Esc 取消`
-                : `盖章「${activeTool.name}」 · Shift 覆盖 · R 旋转 · M 镜像 · Esc 放下`)}
+                ? t(
+                    `搬移「${activeTool.name}」· R 旋转 · M 镜像 · Q/E 切层`,
+                    `Move "${activeTool.name}" · R Rotate · M Mirror · Q/E Floor`
+                  )
+                : t(
+                    `盖章「${activeTool.name}」· Shift 覆盖 · R 旋转 · M 镜像`,
+                    `Stamp "${activeTool.name}" · Shift Overwrite · R Rotate · M Mirror`
+                  ))}
           </div>
         )}
 
@@ -2647,8 +2679,8 @@ export const App: React.FC = () => {
           activeTool={activeTool}
           lastGroupMember={lastGroupMember}
           onSelectEntity={(id) => selectEntityTool(id)}
-          onSelectTool={(t) => {
-            setActiveTool(t);
+          onSelectTool={(tTool) => {
+            setActiveTool(tTool);
             setStampingLibPath(null);
           }}
         />
@@ -2687,13 +2719,13 @@ export const App: React.FC = () => {
             <div className="panel-header">
               <div className="panel-title-wrap">
                 <span className="panel-tag">CLOUD</span>
-                <span className="panel-title">GitHub 私有蓝图库</span>
+                <span className="panel-title">{t('GitHub 私有蓝图库', 'GitHub Private Repo')}</span>
               </div>
               <button type="button" className="icon-btn" onClick={() => !ghModal.busy && setGhModal(null)}>×</button>
             </div>
             <div className="modal-body">
               <label className="field-label">
-                <span>仓库</span>
+                <span>{t('仓库', 'Repository')}</span>
                 <input
                   type="text"
                   className="cad-input"
@@ -2704,7 +2736,7 @@ export const App: React.FC = () => {
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 8 }}>
                 <label className="field-label">
-                  <span>分支</span>
+                  <span>{t('分支', 'Branch')}</span>
                   <input
                     type="text"
                     className="cad-input"
@@ -2713,11 +2745,11 @@ export const App: React.FC = () => {
                   />
                 </label>
                 <label className="field-label">
-                  <span>子目录</span>
+                  <span>{t('子目录', 'Subpath')}</span>
                   <input
                     type="text"
                     className="cad-input"
-                    placeholder="留空为根目录"
+                    placeholder={t('留空为根目录', 'Empty for root')}
                     value={ghModal.basePath}
                     onChange={(e) => setGhModal({ ...ghModal, basePath: e.target.value })}
                   />
@@ -2736,7 +2768,7 @@ export const App: React.FC = () => {
                   }}
                 />
               </label>
-              <div className="modal-sub">Token 仅存本机浏览器，断开即清除</div>
+              <div className="modal-sub">{t('Token 仅存本机浏览器，断开即清除', 'Stored locally in browser only; cleared on disconnect')}</div>
               {ghModal.error && (
                 <div className="modal-sub" style={{ color: 'var(--line-disabled)' }}>
                   {ghModal.error}
@@ -2751,11 +2783,11 @@ export const App: React.FC = () => {
                   disabled={ghModal.busy}
                   onClick={() => void handleDisconnectGitHubRepo()}
                 >
-                  断开并清除
+                  {t('断开并清除', 'Disconnect')}
                 </button>
               )}
               <button type="button" className="cad-btn" disabled={ghModal.busy} onClick={() => setGhModal(null)}>
-                取消
+                {t('取消', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -2763,7 +2795,7 @@ export const App: React.FC = () => {
                 disabled={ghModal.busy}
                 onClick={() => void handleConnectGitHubRepo()}
               >
-                {ghModal.busy ? '连接中...' : '连接'}
+                {ghModal.busy ? t('连接中...', 'Connecting...') : t('连接', 'Connect')}
               </button>
             </div>
           </div>
@@ -2777,14 +2809,14 @@ export const App: React.FC = () => {
               <div className="panel-title-wrap">
                 <span className="panel-tag">SAVE</span>
                 <span className="panel-title">
-                  {saveDialog.mode === 'selection' ? '保存选区蓝图' : '保存蓝图'}
+                  {saveDialog.mode === 'selection' ? t('保存选区蓝图', 'Save Selection') : t('保存蓝图', 'Save Blueprint')}
                 </span>
               </div>
               <button type="button" className="icon-btn" onClick={() => setSaveDialog(null)}>×</button>
             </div>
             <div className="modal-body">
               <label className="field-label">
-                <span>目录</span>
+                <span>{t('目录', 'Folder')}</span>
                 <select
                   className="cad-input"
                   value={saveDialog.folder}
@@ -2798,7 +2830,7 @@ export const App: React.FC = () => {
                 </select>
               </label>
               <label className="field-label">
-                <span>名称</span>
+                <span>{t('名称', 'Name')}</span>
                 <input
                   type="text"
                   className="cad-input"
@@ -2811,11 +2843,13 @@ export const App: React.FC = () => {
                 />
               </label>
               <div className="modal-sub">
-                {saveDialog.docToSave.modules.length} 模 · {saveDialog.docToSave.buildings.length} 建
+                {isEn
+                  ? `${saveDialog.docToSave.modules.length}M · ${saveDialog.docToSave.buildings.length}B`
+                  : `${saveDialog.docToSave.modules.length} 模 · ${saveDialog.docToSave.buildings.length} 建`}
               </div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="cad-btn" onClick={() => setSaveDialog(null)}>取消</button>
+              <button type="button" className="cad-btn" onClick={() => setSaveDialog(null)}>{t('取消', 'Cancel')}</button>
               <button type="button" className="cad-btn accent" onClick={() => void executeSaveDialog()}>
                 {saveTargetLabel}
               </button>

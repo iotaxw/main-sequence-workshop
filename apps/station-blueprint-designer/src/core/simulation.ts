@@ -5,10 +5,12 @@ import {
   getBuildingSizeCells,
   getBuildingWorldPorts,
   getModuleCenterM,
+  getModuleWorldDockPorts,
   isCellBuildable,
   normalizeRotation,
   rotateVec2,
   rotationToDelta,
+  type WorldDockPort,
 } from './geometry';
 import type { BlueprintDocument, BuildableDef, PlacedBuilding, RecipeDef, Rotation } from './types';
 
@@ -345,25 +347,11 @@ function collectElevatorPortStacks(doc: BlueprintDocument): {
   return { byPortCell, byAdjCell, stackAnomalies };
 }
 
-interface DockPortSpec {
-  moduleId: string;
-  portIndex: number;
-  portX: number;
-  portY: number;
-  adjX: number;
-  adjY: number;
-  outDir: Rotation;
-  itemId?: string;
-  mode?: 'unload' | 'load';
-}
+type DockPortSpec = WorldDockPort;
 
 /**
- * Build 26639889 binary-verified Dock port cells:
- * Both BPO_Dock_2 (BPO_IndustrialDock) and BPO_Dock (BPO_StationBlockDock) mount their built-in Dock machine
- * at DefaultMachines[0].GridRotation = 2 (180° flip), so local Outputs[0..N-1] (Y ascending in machine frame)
- * map to Y descending in module frame:
- * - BPO_Dock_2: lx=-8.5, ly=[+5.5, +4.5, +3.5, +2.5, -2.5, -3.5, -4.5, -5.5]
- * - BPO_Dock:   lx=-7.5, ly=[+0.5, -0.5]
+ * Collect Build 26639889 binary-verified dock port cells via the unified `geometry.ts::getModuleWorldDockPorts`
+ * source of truth (accounts for DefaultMachines[0].GridRotation = 2 Y-descending port ordering).
  */
 function collectDockPorts(doc: BlueprintDocument): {
   byPortCell: Map<string, DockPortSpec>;
@@ -371,39 +359,14 @@ function collectDockPorts(doc: BlueprintDocument): {
 } {
   const byPortCell = new Map<string, DockPortSpec>();
   const byAdjCell = new Map<string, DockPortSpec[]>();
-  const IND_LOCAL_Y = [5.5, 4.5, 3.5, 2.5, -2.5, -3.5, -4.5, -5.5];
-  const STD_LOCAL_Y = [0.5, -0.5];
 
   for (const mod of doc.modules) {
-    if (mod.type !== 'BPO_Dock_2' && mod.type !== 'BPO_Dock') continue;
     const def = getModuleDef(mod.type);
     if (!def) continue;
-    const [cx, cy] = getModuleCenterM(mod, def);
-    const localX = mod.type === 'BPO_Dock_2' ? -8.5 : -7.5;
-    const ys = mod.type === 'BPO_Dock_2' ? IND_LOCAL_Y : STD_LOCAL_Y;
-    const outDir = normalizeRotation(2 + mod.rotation); // West face at rot=0
-    const [odx, ody] = rotationToDelta(outDir);
-
-    for (let i = 0; i < ys.length; i++) {
-      const [rx, ry] = rotateVec2(localX, ys[i], mod.rotation);
-      const portX = Math.floor(cx + rx);
-      const portY = Math.floor(cy + ry);
-      const adjX = portX + odx;
-      const adjY = portY + ody;
-      const cfg = mod.dockPorts?.find((p) => p.portIndex === i);
-      const spec: DockPortSpec = {
-        moduleId: mod.id,
-        portIndex: i,
-        portX,
-        portY,
-        adjX,
-        adjY,
-        outDir,
-        itemId: cfg?.itemId,
-        mode: cfg?.mode,
-      };
-      byPortCell.set(cellKey(mod.floor, portX, portY), spec);
-      const adjKey = cellKey(mod.floor, adjX, adjY);
+    const worldPorts = getModuleWorldDockPorts(mod, def);
+    for (const spec of worldPorts) {
+      byPortCell.set(cellKey(mod.floor, spec.portX, spec.portY), spec);
+      const adjKey = cellKey(mod.floor, spec.adjX, spec.adjY);
       const adjArr = byAdjCell.get(adjKey);
       if (adjArr) adjArr.push(spec);
       else byAdjCell.set(adjKey, [spec]);
@@ -1809,27 +1772,31 @@ export function simulateBlueprint(doc: BlueprintDocument, options?: SimulateOpti
   }
 
   // Propagate backward until fixed-point (cap cyclic feedback re-enqueues per node for guaranteed O(V + E))
-  const demandVisits = new Map<string, number>();
-  let dqHead = 0;
-  while (dqHead < demandQueue.length) {
-    const id = demandQueue[dqHead++];
-    inDemandQueue.delete(id);
-    if (fixedDemandNodes.has(id)) continue;
-    const b = buildingById.get(id);
-    const def = defById.get(id);
-    if (!b || !def) continue;
-    const nextDm =
-      backpressureMode && def.kind === 'crafter'
-        ? computeCrafterBackpressureDemand(b)
-        : computeRelayDemand(b, def);
-    const prevDm = nodeDemand.get(id);
-    if (demandChanged(prevDm, nextDm)) {
-      nodeDemand.set(id, nextDm);
-      const v = (demandVisits.get(id) ?? 0) + 1;
-      demandVisits.set(id, v);
-      if (v < 16) enqueuePreds(id);
+  const propagateDemandWorklist = () => {
+    const demandVisits = new Map<string, number>();
+    let dqHead = 0;
+    while (dqHead < demandQueue.length) {
+      const id = demandQueue[dqHead++];
+      inDemandQueue.delete(id);
+      if (fixedDemandNodes.has(id)) continue;
+      const b = buildingById.get(id);
+      const def = defById.get(id);
+      if (!b || !def) continue;
+      const nextDm =
+        backpressureMode && def.kind === 'crafter'
+          ? computeCrafterBackpressureDemand(b)
+          : computeRelayDemand(b, def);
+      const prevDm = nodeDemand.get(id);
+      if (demandChanged(prevDm, nextDm)) {
+        nodeDemand.set(id, nextDm);
+        const v = (demandVisits.get(id) ?? 0) + 1;
+        demandVisits.set(id, v);
+        if (v < 16) enqueuePreds(id);
+      }
     }
-  }
+    demandQueue.length = 0;
+  };
+  propagateDemandWorklist();
 
   const getEdgeEffectiveCap = (oe: OutEdge, itemId: string): number => {
     const childDm = nodeDemand.get(oe.toId);
@@ -1925,317 +1892,397 @@ export function simulateBlueprint(doc: BlueprintDocument, options?: SimulateOpti
     }
   }
 
-  const ITERS = 32;
-  for (let iter = 0; iter < ITERS; iter++) {
-    let maxDelta = 0;
-    const setEdgeFlow = (key: string, fm: FlowMap) => {
-      const prev = edgeFlows.get(key);
-      if (prev) {
-        for (const [it, r] of fm.entries()) {
-          const d = Math.abs(r - (prev.get(it) ?? 0));
-          if (d > maxDelta) maxDelta = d;
+  const crafterOutputEff = new Map<string, number>();
+
+  const runForwardSolver = (allowCycleSeed: boolean, maxIters = 32) => {
+    for (let iter = 0; iter < maxIters; iter++) {
+      let maxDelta = 0;
+      const setEdgeFlow = (key: string, fm: FlowMap) => {
+        const prev = edgeFlows.get(key);
+        if (prev) {
+          for (const [it, r] of fm.entries()) {
+            const d = Math.abs(r - (prev.get(it) ?? 0));
+            if (d > maxDelta) maxDelta = d;
+          }
+          for (const [it, r] of prev.entries()) {
+            if (!fm.has(it) && r > maxDelta) maxDelta = r;
+          }
+        } else {
+          for (const r of fm.values()) if (r > maxDelta) maxDelta = r;
         }
-        for (const [it, r] of prev.entries()) {
-          if (!fm.has(it) && r > maxDelta) maxDelta = r;
-        }
-      } else {
-        for (const r of fm.values()) if (r > maxDelta) maxDelta = r;
-      }
-      edgeFlows.set(key, fm);
-    };
+        edgeFlows.set(key, fm);
+      };
 
-    for (const b of bfsOrder) {
-      const def = defById.get(b.id);
-      if (!def) continue;
-      const outs = outEdges.get(b.id) ?? [];
+      for (const b of bfsOrder) {
+        const def = defById.get(b.id);
+        if (!def) continue;
+        const outs = outEdges.get(b.id) ?? [];
 
-      if (def.kind === 'crafter' || def.kind === 'research') {
-        if (!b.recipeId) continue;
-        const rec = getRecipeDef(b.recipeId);
-        if (!rec) continue;
-        const dur = rec.durationSeconds && rec.durationSeconds > 0 ? rec.durationSeconds : 1;
-        const inFlow = getNodeInFlow(b.id);
-        const headSet = machineHeadInputs.get(b.id);
+        if (def.kind === 'crafter' || def.kind === 'research') {
+          if (!b.recipeId) continue;
+          const rec = getRecipeDef(b.recipeId);
+          if (!rec) continue;
+          const dur = rec.durationSeconds && rec.durationSeconds > 0 ? rec.durationSeconds : 1;
+          const inFlow = getNodeInFlow(b.id);
+          const headSet = machineHeadInputs.get(b.id);
 
-        // 1) Input-limited efficiency (unfed machine-head inputs are virtually supplied so downstream traces cleanly!)
-        let inputEff = 1.0;
-        if (rec.inputs.length > 0) {
-          for (const inp of rec.inputs) {
-            const need = (inp.quantity ?? 1) / dur;
-            let got = inFlow.get(inp.itemId) ?? 0;
-            if (got <= 1e-4 && headSet?.has(inp.itemId)) {
-              got = need;
-            }
-            // Ignite closed self-recycling & multi-machine regenerative loops (e.g. Xenobacteria <-> Enzyme <-> Biomass) on iter 0..3;
-            // subsequent iterations (iter 4..31) run WITHOUT seed injection so any non-conserving/broken loop still decays to 0!
-            if (iter <= 3 && got < need) {
-              const isSelfLoop = rec.outputs.some((o) => o.itemId === inp.itemId);
-              const hasInternalCycleProducer =
-                !isSelfLoop &&
-                (inEdges.get(b.id) ?? []).some((ie) => upstreamProducedByNode.get(ie.fromId)?.has(inp.itemId));
-              if (isSelfLoop || hasInternalCycleProducer) {
+          // 1) Input-limited efficiency (unfed machine-head inputs are virtually supplied so downstream traces cleanly!)
+          let inputEff = 1.0;
+          if (rec.inputs.length > 0) {
+            for (const inp of rec.inputs) {
+              const need = (inp.quantity ?? 1) / dur;
+              let got = inFlow.get(inp.itemId) ?? 0;
+              if (got <= 1e-4 && headSet?.has(inp.itemId)) {
                 got = need;
               }
+              // Ignite closed self-recycling & multi-machine regenerative loops (e.g. Xenobacteria <-> Enzyme <-> Biomass) on iter 0..3;
+              // subsequent iterations (iter 4..31) run WITHOUT seed injection so any non-conserving/broken loop still decays to 0!
+              if (allowCycleSeed && iter <= 3 && got < need) {
+                const isSelfLoop = rec.outputs.some((o) => o.itemId === inp.itemId);
+                const hasInternalCycleProducer =
+                  !isSelfLoop &&
+                  (inEdges.get(b.id) ?? []).some((ie) => upstreamProducedByNode.get(ie.fromId)?.has(inp.itemId));
+                if (isSelfLoop || hasInternalCycleProducer) {
+                  got = need;
+                }
+              }
+              inputEff = Math.min(inputEff, need > 0 ? got / need : 1);
             }
-            inputEff = Math.min(inputEff, need > 0 ? got / need : 1);
           }
-        }
 
-        // 2) Scientific output-evacuation efficiency (disconnected, undersized, or backpressured output belt throttles steady-state eff!)
-        let outputEff = 1.0;
-        const portMap = crafterPortOutputItem.get(b.id);
-        if (rec.outputs.length > 0) {
-          if (outs.length === 0 || (backpressureMode && saturatedSinkIds?.has(b.id))) {
-            outputEff = 0.0;
-          } else if (rec.outputs.length === 1) {
-            const oItem = rec.outputs[0].itemId;
-            const maxOut = (rec.outputs[0].quantity ?? 1) / dur;
-            const totalOutCap = outs.reduce(
-              (s, e) => s + (backpressureMode ? getEdgeEffectiveCap(e, oItem) : e.capacity),
-              0
-            );
-            outputEff = maxOut > 1e-9 ? Math.min(1, totalOutCap / maxOut) : 1;
-          } else if (portMap) {
-            const capByItem = new Map<string, number>();
-            let totalOutCap = 0;
-            for (const oe of outs) {
-              const assignedItem = portMap.get(oe.portIndex ?? -1) ?? rec.outputs[0].itemId;
-              const ec = backpressureMode ? getEdgeEffectiveCap(oe, assignedItem) : oe.capacity;
-              totalOutCap += ec;
-              capByItem.set(assignedItem, (capByItem.get(assignedItem) ?? 0) + ec);
+          // 2) Scientific output-evacuation efficiency (disconnected, undersized, or backpressured output belt throttles steady-state eff!)
+          let outputEff = 1.0;
+          const portMap = crafterPortOutputItem.get(b.id);
+          if (rec.outputs.length > 0) {
+            if (outs.length === 0 || (backpressureMode && saturatedSinkIds?.has(b.id))) {
+              outputEff = 0.0;
+            } else if (rec.outputs.length === 1) {
+              const oItem = rec.outputs[0].itemId;
+              const maxOut = (rec.outputs[0].quantity ?? 1) / dur;
+              const totalOutCap = outs.reduce(
+                (s, e) => s + (backpressureMode ? getEdgeEffectiveCap(e, oItem) : e.capacity),
+                0
+              );
+              outputEff = maxOut > 1e-9 ? Math.min(1, totalOutCap / maxOut) : 1;
+            } else if (portMap) {
+              const capByItem = new Map<string, number>();
+              let totalOutCap = 0;
+              for (const oe of outs) {
+                const assignedItem = portMap.get(oe.portIndex ?? -1) ?? rec.outputs[0].itemId;
+                const ec = backpressureMode ? getEdgeEffectiveCap(oe, assignedItem) : oe.capacity;
+                totalOutCap += ec;
+                capByItem.set(assignedItem, (capByItem.get(assignedItem) ?? 0) + ec);
+              }
+              let sumMaxOut = 0;
+              for (const o of rec.outputs) {
+                const maxO = (o.quantity ?? 1) / dur;
+                sumMaxOut += maxO;
+                const capO = capByItem.get(o.itemId) ?? 0;
+                if (maxO > 1e-9) outputEff = Math.min(outputEff, capO / maxO);
+              }
+              if (sumMaxOut > 1e-9) outputEff = Math.min(outputEff, totalOutCap / sumMaxOut);
             }
-            let sumMaxOut = 0;
-            for (const o of rec.outputs) {
-              const maxO = (o.quantity ?? 1) / dur;
-              sumMaxOut += maxO;
-              const capO = capByItem.get(o.itemId) ?? 0;
-              if (maxO > 1e-9) outputEff = Math.min(outputEff, capO / maxO);
-            }
-            if (sumMaxOut > 1e-9) outputEff = Math.min(outputEff, totalOutCap / sumMaxOut);
           }
-        }
 
-        const eff = Math.max(0, Math.min(1, Math.min(inputEff, outputEff)));
-        crafterEfficiency.set(b.id, eff);
+          crafterOutputEff.set(b.id, outputEff);
+          const eff = Math.max(0, Math.min(1, Math.min(inputEff, outputEff)));
+          crafterEfficiency.set(b.id, eff);
 
-        if (outs.length === 0) continue;
-        if (rec.outputs.length === 1) {
-          const o = rec.outputs[0];
-          const totalOut = eff * ((o.quantity ?? 1) / dur);
-          const totalOutCap = outs.reduce((s, e) => s + e.capacity, 0);
-          for (const oe of outs) {
-            const fm: FlowMap = new Map();
-            const share = totalOutCap > 1e-9 ? totalOut * (oe.capacity / totalOutCap) : totalOut / outs.length;
-            addFlow(fm, o.itemId, Math.min(oe.capacity, share));
-            setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
-          }
-        } else if (portMap) {
-          const outsByItem = new Map<string, OutEdge[]>();
-          for (const oe of outs) {
-            const assignedItem = portMap.get(oe.portIndex ?? -1) ?? rec.outputs[0].itemId;
-            const list = outsByItem.get(assignedItem);
-            if (list) list.push(oe);
-            else outsByItem.set(assignedItem, [oe]);
-          }
-          for (const [itemId, itemOuts] of outsByItem.entries()) {
-            const o = rec.outputs.find((x) => x.itemId === itemId) ?? rec.outputs[0];
+          if (outs.length === 0) continue;
+          if (rec.outputs.length === 1) {
+            const o = rec.outputs[0];
             const totalOut = eff * ((o.quantity ?? 1) / dur);
-            const sumCap = itemOuts.reduce((s, e) => s + e.capacity, 0);
-            for (const oe of itemOuts) {
+            const totalOutCap = outs.reduce((s, e) => s + e.capacity, 0);
+            for (const oe of outs) {
               const fm: FlowMap = new Map();
-              const share = sumCap > 1e-9 ? totalOut * (oe.capacity / sumCap) : totalOut / itemOuts.length;
+              const share = totalOutCap > 1e-9 ? totalOut * (oe.capacity / totalOutCap) : totalOut / outs.length;
               addFlow(fm, o.itemId, Math.min(oe.capacity, share));
               setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
             }
-          }
-        }
-        continue;
-      }
-
-      if (outs.length === 0) continue;
-
-      if (def.kind === 'belt' || def.kind === 'underground') {
-        const inFlow = getNodeInFlow(b.id);
-        if (outs.length === 1) {
-          const oe = outs[0];
-          const total = sumFlow(inFlow);
-          const scale = total > oe.capacity ? oe.capacity / total : 1;
-          const fm: FlowMap = new Map();
-          for (const [it, r] of inFlow.entries()) addFlow(fm, it, r * scale);
-          setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
-        } else {
-          // Cross-floor elevator belt feeding multiple destination floors on the same vertical shaft column:
-          // Real-game StationManager (@ 0x1442aca80) + ElevatorObject::Update (@ 0x1442dff80) drains ItemColumns[i]
-          // in module registration order (earlier floor takes up to its demand first; surplus overflows to later floors).
-          const beltCap = getTierSpeed(def.tier);
-          const total = sumFlow(inFlow);
-          const capScale = total > beltCap ? beltCap / total : 1;
-          const outMaps = new Map<OutEdge, FlowMap>();
-          for (const oe of outs) outMaps.set(oe, new Map());
-          if (elevPriorityOutNodes.has(b.id)) {
-            for (const [itemId, rawRate] of inFlow.entries()) {
-              let rem = rawRate * capScale;
-              if (rem <= 1e-9) continue;
-              for (const oe of outs) {
-                if (rem <= 1e-9) break;
-                const om = outMaps.get(oe)!;
-                const effCap = getEdgeEffectiveCap(oe, itemId);
-                const free = Math.max(0, Math.min(oe.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
-                if (free <= 1e-9) continue;
-                const give = Math.min(rem, free);
-                addFlow(om, itemId, give);
-                rem -= give;
+          } else if (portMap) {
+            const outsByItem = new Map<string, OutEdge[]>();
+            for (const oe of outs) {
+              const assignedItem = portMap.get(oe.portIndex ?? -1) ?? rec.outputs[0].itemId;
+              const list = outsByItem.get(assignedItem);
+              if (list) list.push(oe);
+              else outsByItem.set(assignedItem, [oe]);
+            }
+            for (const [itemId, itemOuts] of outsByItem.entries()) {
+              const o = rec.outputs.find((x) => x.itemId === itemId) ?? rec.outputs[0];
+              const totalOut = eff * ((o.quantity ?? 1) / dur);
+              const sumCap = itemOuts.reduce((s, e) => s + e.capacity, 0);
+              for (const oe of itemOuts) {
+                const fm: FlowMap = new Map();
+                const share = sumCap > 1e-9 ? totalOut * (oe.capacity / sumCap) : totalOut / itemOuts.length;
+                addFlow(fm, o.itemId, Math.min(oe.capacity, share));
+                setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
               }
             }
+          }
+          continue;
+        }
+
+        if (outs.length === 0) continue;
+
+        if (def.kind === 'belt' || def.kind === 'underground') {
+          const inFlow = getNodeInFlow(b.id);
+          if (outs.length === 1) {
+            const oe = outs[0];
+            const total = sumFlow(inFlow);
+            const scale = total > oe.capacity ? oe.capacity / total : 1;
+            const fm: FlowMap = new Map();
+            for (const [it, r] of inFlow.entries()) addFlow(fm, it, r * scale);
+            setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
           } else {
-            for (const [itemId, rawRate] of inFlow.entries()) {
-              let rem = rawRate * capScale;
-              if (rem <= 1e-9) continue;
-              let active = outs.slice();
-              for (let wf = 0; wf < 8 && rem > 1e-9 && active.length > 0; wf++) {
-                const share = rem / active.length;
-                const nextActive: OutEdge[] = [];
-                let sentAny = false;
-                for (const oe of active) {
+            // Cross-floor elevator belt feeding multiple destination floors on the same vertical shaft column:
+            // Real-game StationManager (@ 0x1442aca80) + ElevatorObject::Update (@ 0x1442dff80) drains ItemColumns[i]
+            // in module registration order (earlier floor takes up to its demand first; surplus overflows to later floors).
+            const beltCap = getTierSpeed(def.tier);
+            const total = sumFlow(inFlow);
+            const capScale = total > beltCap ? beltCap / total : 1;
+            const outMaps = new Map<OutEdge, FlowMap>();
+            for (const oe of outs) outMaps.set(oe, new Map());
+            if (elevPriorityOutNodes.has(b.id)) {
+              for (const [itemId, rawRate] of inFlow.entries()) {
+                let rem = rawRate * capScale;
+                if (rem <= 1e-9) continue;
+                for (const oe of outs) {
+                  if (rem <= 1e-9) break;
                   const om = outMaps.get(oe)!;
                   const effCap = getEdgeEffectiveCap(oe, itemId);
                   const free = Math.max(0, Math.min(oe.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
                   if (free <= 1e-9) continue;
-                  const give = Math.min(share, free);
+                  const give = Math.min(rem, free);
                   addFlow(om, itemId, give);
                   rem -= give;
-                  sentAny = true;
-                  if (free - give > 1e-9) nextActive.push(oe);
                 }
-                if (!sentAny) break;
-                active = nextActive;
+              }
+            } else {
+              for (const [itemId, rawRate] of inFlow.entries()) {
+                let rem = rawRate * capScale;
+                if (rem <= 1e-9) continue;
+                let active = outs.slice();
+                for (let wf = 0; wf < 8 && rem > 1e-9 && active.length > 0; wf++) {
+                  const share = rem / active.length;
+                  const nextActive: OutEdge[] = [];
+                  let sentAny = false;
+                  for (const oe of active) {
+                    const om = outMaps.get(oe)!;
+                    const effCap = getEdgeEffectiveCap(oe, itemId);
+                    const free = Math.max(0, Math.min(oe.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
+                    if (free <= 1e-9) continue;
+                    const give = Math.min(share, free);
+                    addFlow(om, itemId, give);
+                    rem -= give;
+                    sentAny = true;
+                    if (free - give > 1e-9) nextActive.push(oe);
+                  }
+                  if (!sentAny) break;
+                  active = nextActive;
+                }
               }
             }
-          }
-          for (const oe of outs) {
-            setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), outMaps.get(oe)!);
-          }
-        }
-        continue;
-      }
-
-      if (def.kind === 'container') {
-        const inFlow = getNodeInFlow(b.id);
-        const filterSet = b.filterItems && b.filterItems.length > 0 ? new Set(b.filterItems) : null;
-        const allowed: FlowMap = new Map();
-        for (const [it, r] of inFlow.entries()) {
-          if (!filterSet || filterSet.has(it)) addFlow(allowed, it, r);
-        }
-        for (const oe of outs) {
-          const fm: FlowMap = new Map();
-          const shareScale = 1 / outs.length;
-          let sum = 0;
-          for (const [it, r] of allowed.entries()) {
-            const q = r * shareScale;
-            addFlow(fm, it, q);
-            sum += q;
-          }
-          if (sum > oe.capacity) {
-            const s = oe.capacity / sum;
-            for (const [it, r] of fm.entries()) fm.set(it, r * s);
-          }
-          setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
-        }
-        continue;
-      }
-
-      if (def.kind === 'splitter' || def.kind === 'balancer') {
-        let combinedIn: FlowMap = new Map();
-        if (def.kind === 'balancer' && b.priorityIn !== undefined) {
-          const ownDm = nodeDemand.get(b.id);
-          const maxOutCap = outs.reduce((acc, e) => acc + e.capacity, 0);
-          const prioFlow: FlowMap = new Map();
-          const secFlow: FlowMap = new Map();
-          for (const ie of inEdges.get(b.id) ?? []) {
-            for (const oe of outEdges.get(ie.fromId) ?? []) {
-              if (oe.toId !== b.id) continue;
-              const fm = edgeFlows.get(edgeKey(ie.fromId, b.id, oe.portIndex));
-              if (!fm) continue;
-              const dest = ie.portIndex === b.priorityIn ? prioFlow : secFlow;
-              for (const [it, r] of fm.entries()) addFlow(dest, it, r);
+            for (const oe of outs) {
+              setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), outMaps.get(oe)!);
             }
           }
-          let demandCap = maxOutCap;
-          if (ownDm && !ownDm.has('*')) {
-            let dmSum = 0;
-            for (const r of ownDm.values()) dmSum += r;
-            if (dmSum > 1e-9) demandCap = Math.min(maxOutCap, dmSum);
-          }
-          const prioSum = sumFlow(prioFlow);
-          const takePrio = Math.min(prioSum, demandCap);
-          const prioScale = prioSum > 1e-9 ? takePrio / prioSum : 0;
-          for (const [it, r] of prioFlow.entries()) addFlow(combinedIn, it, r * prioScale);
-          const remCap = Math.max(0, demandCap - takePrio);
-          const secSum = sumFlow(secFlow);
-          const secScale = secSum > 1e-9 ? Math.min(1, remCap / secSum) : 0;
-          for (const [it, r] of secFlow.entries()) addFlow(combinedIn, it, r * secScale);
-        } else {
-          combinedIn = getNodeInFlow(b.id);
+          continue;
         }
 
-        const outMaps = new Map<OutEdge, FlowMap>();
-        for (const oe of outs) outMaps.set(oe, new Map());
-
-        for (const [itemId, rate] of combinedIn.entries()) {
-          if (rate <= 1e-9) continue;
-          const filteredTargets = outs.filter((e) => e.filterItem === itemId);
-          const unfilteredTargets = outs.filter((e) => !e.filterItem);
-          const eligible = filteredTargets.length > 0 ? filteredTargets : unfilteredTargets;
-          if (eligible.length === 0) continue;
-
-          let remaining = rate;
-          if (b.priorityOut !== undefined) {
-            const prioEdge = eligible.find((e) => e.portIndex === b.priorityOut);
-            if (prioEdge) {
-              const om = outMaps.get(prioEdge)!;
-              const effCap = getEdgeEffectiveCap(prioEdge, itemId);
-              const free = Math.max(0, Math.min(prioEdge.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
-              const send = Math.min(remaining, free);
-              addFlow(om, itemId, send);
-              remaining -= send;
+        if (def.kind === 'container') {
+          const inFlow = getNodeInFlow(b.id);
+          const filterSet = b.filterItems && b.filterItems.length > 0 ? new Set(b.filterItems) : null;
+          const allowed: FlowMap = new Map();
+          for (const [it, r] of inFlow.entries()) {
+            if (!filterSet || filterSet.has(it)) addFlow(allowed, it, r);
+          }
+          // Demand-capped water-filling across container output ports so backed-up/low-demand ports
+          // never waste their 1/N share when sibling output ports are hungry!
+          const outMaps = new Map<OutEdge, FlowMap>();
+          for (const oe of outs) outMaps.set(oe, new Map());
+          for (const [itemId, rate] of allowed.entries()) {
+            let remaining = rate;
+            let active = outs.slice();
+            for (let wf = 0; wf < 6 && remaining > 1e-9 && active.length > 0; wf++) {
+              const share = remaining / active.length;
+              const nextActive: OutEdge[] = [];
+              let progressed = false;
+              for (const oe of active) {
+                const om = outMaps.get(oe)!;
+                const effCap = getEdgeEffectiveCap(oe, itemId);
+                const free = Math.max(0, Math.min(oe.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
+                if (free <= share + 1e-9) {
+                  addFlow(om, itemId, free);
+                  remaining -= free;
+                  if (free > 1e-9) progressed = true;
+                } else {
+                  nextActive.push(oe);
+                }
+              }
+              if (nextActive.length === active.length) {
+                for (const oe of nextActive) {
+                  addFlow(outMaps.get(oe)!, itemId, share);
+                  remaining -= share;
+                }
+                break;
+              }
+              active = nextActive;
+              if (!progressed && active.length === 0) break;
             }
           }
-          let active = eligible.filter((e) => e.portIndex !== b.priorityOut);
-          for (let wf = 0; wf < 4 && remaining > 1e-9 && active.length > 0; wf++) {
-            const share = remaining / active.length;
-            const nextActive: OutEdge[] = [];
-            let progressed = false;
-            for (const oe of active) {
-              const om = outMaps.get(oe)!;
-              const effCap = getEdgeEffectiveCap(oe, itemId);
-              const free = Math.max(0, Math.min(oe.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
-              if (free <= share + 1e-9) {
-                addFlow(om, itemId, free);
-                remaining -= free;
-                if (free > 1e-9) progressed = true;
-              } else {
-                nextActive.push(oe);
+          for (const [oe, fm] of outMaps.entries()) {
+            setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
+          }
+          continue;
+        }
+
+        if (def.kind === 'splitter' || def.kind === 'balancer') {
+          let combinedIn: FlowMap = new Map();
+          if (def.kind === 'balancer' && b.priorityIn !== undefined) {
+            const ownDm = nodeDemand.get(b.id);
+            const maxOutCap = outs.reduce((acc, e) => acc + e.capacity, 0);
+            const prioFlow: FlowMap = new Map();
+            const secFlow: FlowMap = new Map();
+            for (const ie of inEdges.get(b.id) ?? []) {
+              for (const oe of outEdges.get(ie.fromId) ?? []) {
+                if (oe.toId !== b.id) continue;
+                const fm = edgeFlows.get(edgeKey(ie.fromId, b.id, oe.portIndex));
+                if (!fm) continue;
+                const dest = ie.portIndex === b.priorityIn ? prioFlow : secFlow;
+                for (const [it, r] of fm.entries()) addFlow(dest, it, r);
               }
             }
-            if (nextActive.length === active.length) {
-              for (const oe of nextActive) {
-                addFlow(outMaps.get(oe)!, itemId, share);
-                remaining -= share;
-              }
-              break;
+            let demandCap = maxOutCap;
+            if (ownDm && !ownDm.has('*')) {
+              let dmSum = 0;
+              for (const r of ownDm.values()) dmSum += r;
+              if (dmSum > 1e-9) demandCap = Math.min(maxOutCap, dmSum);
             }
-            active = nextActive;
-            if (!progressed && active.length === 0) break;
+            const prioSum = sumFlow(prioFlow);
+            const takePrio = Math.min(prioSum, demandCap);
+            const prioScale = prioSum > 1e-9 ? takePrio / prioSum : 0;
+            for (const [it, r] of prioFlow.entries()) addFlow(combinedIn, it, r * prioScale);
+            const remCap = Math.max(0, demandCap - takePrio);
+            const secSum = sumFlow(secFlow);
+            const secScale = secSum > 1e-9 ? Math.min(1, remCap / secSum) : 0;
+            for (const [it, r] of secFlow.entries()) addFlow(combinedIn, it, r * secScale);
+          } else {
+            combinedIn = getNodeInFlow(b.id);
+          }
+
+          const outMaps = new Map<OutEdge, FlowMap>();
+          for (const oe of outs) outMaps.set(oe, new Map());
+
+          for (const [itemId, rate] of combinedIn.entries()) {
+            if (rate <= 1e-9) continue;
+            const filteredTargets = outs.filter((e) => e.filterItem === itemId);
+            const unfilteredTargets = outs.filter((e) => !e.filterItem);
+            const eligible = filteredTargets.length > 0 ? filteredTargets : unfilteredTargets;
+            if (eligible.length === 0) continue;
+
+            let remaining = rate;
+            if (b.priorityOut !== undefined) {
+              const prioEdge = eligible.find((e) => e.portIndex === b.priorityOut);
+              if (prioEdge) {
+                const om = outMaps.get(prioEdge)!;
+                const effCap = getEdgeEffectiveCap(prioEdge, itemId);
+                const free = Math.max(0, Math.min(prioEdge.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
+                const send = Math.min(remaining, free);
+                addFlow(om, itemId, send);
+                remaining -= send;
+              }
+            }
+            let active = eligible.filter((e) => e.portIndex !== b.priorityOut);
+            for (let wf = 0; wf < 4 && remaining > 1e-9 && active.length > 0; wf++) {
+              const share = remaining / active.length;
+              const nextActive: OutEdge[] = [];
+              let progressed = false;
+              for (const oe of active) {
+                const om = outMaps.get(oe)!;
+                const effCap = getEdgeEffectiveCap(oe, itemId);
+                const free = Math.max(0, Math.min(oe.capacity - sumFlow(om), effCap - (om.get(itemId) ?? 0)));
+                if (free <= share + 1e-9) {
+                  addFlow(om, itemId, free);
+                  remaining -= free;
+                  if (free > 1e-9) progressed = true;
+                } else {
+                  nextActive.push(oe);
+                }
+              }
+              if (nextActive.length === active.length) {
+                for (const oe of nextActive) {
+                  addFlow(outMaps.get(oe)!, itemId, share);
+                  remaining -= share;
+                }
+                break;
+              }
+              active = nextActive;
+              if (!progressed && active.length === 0) break;
+            }
+          }
+
+          for (const [oe, fm] of outMaps.entries()) {
+            setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
           }
         }
-
-        for (const [oe, fm] of outMaps.entries()) {
-          setEdgeFlow(edgeKey(b.id, oe.toId, oe.portIndex), fm);
-        }
       }
+
+      if ((!allowCycleSeed || iter > 4) && maxDelta < 1e-5) break;
     }
+  };
 
-    if (iter > 4 && maxDelta < 1e-5) break;
+  runForwardSolver(true);
+
+  // 6B. Mass-Conserving Non-Bottleneck Backpressure Relaxation:
+  //     In real Main Sequence physics, a crafter throttled to efficiency `eff < 1` by one bottleneck ingredient
+  //     (or by a blocked/undersized output) fills its input buffer on all OTHER surplus ingredients and ONLY
+  //     absorbs `eff * need(i)` of them — excess backs up onto upstream splitters/containers/docks instead of
+  //     being silently incinerated! Bottleneck inputs keep full rated `need(i)` so upstream pull never stalls.
+  if (!backpressureMode) {
+    for (let bpPass = 0; bpPass < 4; bpPass++) {
+      let anyDemandChanged = false;
+      for (const b of simNodes) {
+        const def = defById.get(b.id);
+        if (!def || def.kind !== 'crafter' || !b.recipeId) continue;
+        const req = crafterDemandByInput.get(b.id);
+        if (!req || req.size === 0) continue;
+        const eff = crafterEfficiency.get(b.id) ?? 0;
+        const outEff = crafterOutputEff.get(b.id) ?? 1;
+        const prevDm = nodeDemand.get(b.id);
+        const inFlow = getNodeInFlow(b.id);
+        const headSet = machineHeadInputs.get(b.id);
+        const nextDm = new Map<string, number>();
+
+        for (const [itemId, need] of req.entries()) {
+          if (eff >= 1 - 1e-6) {
+            nextDm.set(itemId, need);
+            continue;
+          }
+          let got = inFlow.get(itemId) ?? 0;
+          if (got <= 1e-4 && headSet?.has(itemId)) got = need;
+          const prevCap = prevDm?.get(itemId) ?? need;
+          const targetConsume = eff * need;
+          const isCappedSurplus = prevCap < need - 1e-5 && got >= prevCap - 1e-5;
+          const isOutputBottlenecked = outEff <= eff + 1e-5 && got > targetConsume + 1e-5;
+          const isNonBottleneckSurplus = got > targetConsume + 1e-5;
+          if (isCappedSurplus || isOutputBottlenecked || isNonBottleneckSurplus) {
+            // Keep tiny floor > 0 if targetConsume > 0, or 0 if stalled
+            if (targetConsume > 1e-9) nextDm.set(itemId, Math.min(need, targetConsume));
+          } else {
+            nextDm.set(itemId, need);
+          }
+        }
+
+        if (demandChanged(prevDm, nextDm)) {
+          nodeDemand.set(b.id, nextDm);
+          enqueuePreds(b.id);
+          anyDemandChanged = true;
+        }
+      }
+      if (!anyDemandChanged) break;
+      propagateDemandWorklist();
+      runForwardSolver(false, 10);
+    }
   }
 
   // 7. Emit yellow 'external-input-needed' warnings at EVERY external raw-material entry spot
@@ -2329,12 +2376,13 @@ export function simulateBlueprint(doc: BlueprintDocument, options?: SimulateOpti
     });
 
     if (itemId) {
+      const rateText = reqRate > 1e-4 && reqRate < 0.01 ? '<0.01' : reqRate.toFixed(2);
       const beltsText = `${(reqRate / 3.0).toFixed(2)} 满带`;
       const capWarn = bottlenecked ? `（超单带上限 ${cap.toFixed(1)}/s！）` : '';
       pushIssue(
         'warn',
         'external-input-needed',
-        `${SOURCE_KIND_ZH[sourceKind]} (${eb.x},${eb.y}) 需入「${nameZh}」· ${reqRate.toFixed(2)}/s（${beltsText}）${capWarn}`,
+        `${SOURCE_KIND_ZH[sourceKind]} (${eb.x},${eb.y}) 需入「${nameZh}」· ${rateText}/s（${beltsText}）${capWarn}`,
         eb.floor,
         eb.x,
         eb.y,
@@ -2352,10 +2400,32 @@ export function simulateBlueprint(doc: BlueprintDocument, options?: SimulateOpti
         );
       }
     } else {
+      // Distinguish downstream storage container (e.g. mall box on an unfed elevator lane) from unconfigured crafter!
+      let feedsContainer = false;
+      let feedsUnconfiguredCrafter = false;
+      const vSeen = new Set<string>([eid]);
+      const vQ = [eid];
+      while (vQ.length > 0) {
+        const cur = vQ.shift()!;
+        for (const oe of outEdges.get(cur) ?? []) {
+          const nk = defById.get(oe.toId)?.kind;
+          if (nk === 'container') feedsContainer = true;
+          else if ((nk === 'crafter' || nk === 'research') && !buildingById.get(oe.toId)?.recipeId) {
+            feedsUnconfiguredCrafter = true;
+          } else if (isLogistics(oe.toId) && !vSeen.has(oe.toId)) {
+            vSeen.add(oe.toId);
+            vQ.push(oe.toId);
+          }
+        }
+      }
+      const idleDesc =
+        feedsContainer && !feedsUnconfiguredCrafter
+          ? `${SOURCE_KIND_ZH[sourceKind]} (${eb.x},${eb.y}) 空闲未供料（通向储物箱）`
+          : `${SOURCE_KIND_ZH[sourceKind]} (${eb.x},${eb.y}) 待接入原料（下游未指定配方）`;
       pushIssue(
         'warn',
         'external-input-needed',
-        `${SOURCE_KIND_ZH[sourceKind]} (${eb.x},${eb.y}) 待接入原料（下游未指定配方）`,
+        idleDesc,
         eb.floor,
         eb.x,
         eb.y,
@@ -2699,7 +2769,7 @@ export function simulateBlueprint(doc: BlueprintDocument, options?: SimulateOpti
           b.y,
           b.id
         );
-      } else if (got <= 1e-4) {
+      } else if (got <= 1e-9) {
         // Under intentional backpressure saturation, idle crafters whose downstream is full are expected (not missing input!)
         const isIntentionallyIdle = backpressureMode && (nodeDemand.get(b.id)?.size ?? 0) === 0;
         if (!isIntentionallyIdle) {

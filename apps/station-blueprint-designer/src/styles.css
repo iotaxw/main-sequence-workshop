@@ -1198,13 +1198,13 @@ body,
   flex-shrink: 0;
 }
 
-/* Toast (Restrained Monochrome Hairline) */
+/* Toast (Restrained Monochrome Hairline — always above modals) */
 .cad-toast {
   position: absolute;
   top: 50px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 40;
+  z-index: 110;
   background: var(--bg-elevated);
   border: 1px solid var(--border-mid);
   color: var(--text-bright);
@@ -1225,17 +1225,21 @@ body,
   color: var(--text-danger);
 }
 
-/* Modals & Help Drawer */
+/* Modals & Help Drawer (strict layering: Library 70 < Help 80 < Dialogs 90 < Toast 110) */
 .cad-help-overlay,
 .cad-modal-overlay {
   position: fixed;
   inset: 0;
   background: var(--bg-scrim);
-  z-index: 60;
+  z-index: 90;
   display: flex;
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(5px);
+}
+
+.cad-help-overlay {
+  z-index: 80;
 }
 
 .cad-help-drawer {
@@ -2440,6 +2444,7 @@ body,
 .bpm-content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-canvas);
@@ -2452,6 +2457,7 @@ body,
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-hairline);
   background: var(--bg-panel);
+  flex-shrink: 0;
 }
 
 .bpm-search {
@@ -2470,10 +2476,12 @@ body,
 
 .bpm-grid {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 14px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 12px;
 }
@@ -2513,22 +2521,26 @@ body,
 
 .bpm-card-thumb {
   position: relative;
+  width: 100%;
   aspect-ratio: 5 / 3;
+  flex-shrink: 0;
   background: var(--bg-canvas);
   border-bottom: 1px solid var(--border-hairline);
   overflow: hidden;
 }
 
 .bp-thumb-img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
 .bp-thumb-placeholder {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2605,6 +2617,27 @@ body,
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+.dock-port-row {
+  display: grid;
+  grid-template-columns: 62px 46px 1fr;
+  gap: 5px;
+  align-items: center;
+}
+
+.dock-port-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.dock-mode-btn {
+  padding: 3px 4px;
+  font-size: 10px;
+  text-align: center;
 }
 
 .bpm-card-title {

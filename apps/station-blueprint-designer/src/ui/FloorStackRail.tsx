@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { getModuleDef } from '../core/catalog';
+import { formatFloorTag, useI18n } from '../core/i18n';
 import type { BlueprintDocument } from '../core/types';
 
 interface FloorStackRailProps {
@@ -11,10 +12,6 @@ interface FloorStackRailProps {
   onToggleHideAbove: () => void;
 }
 
-function formatFloorShort(floor: number): string {
-  return floor < 0 ? `B${Math.abs(floor)}` : `L${floor}`;
-}
-
 export const FloorStackRail: React.FC<FloorStackRailProps> = ({
   doc,
   focusFloor,
@@ -23,6 +20,7 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
   onSelectFloor,
   onToggleHideAbove,
 }) => {
+  const { isEn, t } = useI18n();
   const { floors, countsByFloor } = useMemo(() => {
     const map = new Map<number, { mods: number; blds: number }>();
     let minF = 0;
@@ -61,12 +59,12 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
   const canStepDown = focusFloor > -2;
 
   return (
-    <aside className={`cad-floor-rail ${shifted ? 'shifted' : ''}`} aria-label="楼层快切">
+    <aside className={`cad-floor-rail ${shifted ? 'shifted' : ''}`} aria-label={t('楼层快切', 'Floor stack')}>
       <button
         type="button"
         className={`floor-rail-eye ${hideAbove ? 'active' : ''}`}
         onClick={onToggleHideAbove}
-        title={hideAbove ? '当前：隐藏上层（点此或按 V 透视上层）' : '当前：透视上层（点此或按 V 隐藏上层）'}
+        title={hideAbove ? t('上层已隐 (V)', 'Upper hidden (V)') : t('上层透视 (V)', 'Upper visible (V)')}
       >
         {hideAbove ? (
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -87,7 +85,7 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
         className="floor-rail-step"
         disabled={!canStepUp}
         onClick={() => onSelectFloor(Math.min(8, focusFloor + 1))}
-        title="升一层 (E / Shift+上滚)"
+        title={t('升一层 (E)', 'Floor up (E)')}
       >
         ▲
       </button>
@@ -99,8 +97,10 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
           const isCurrent = f === focusFloor;
           const isHiddenAbove = hideAbove && f > focusFloor;
           const tip = hasContent
-            ? `${formatFloorShort(f)} · ${info!.mods} 模 · ${info!.blds} 建`
-            : `${formatFloorShort(f)} · 空层`;
+            ? isEn
+              ? `${formatFloorTag(f)} · ${info!.mods}M · ${info!.blds}B`
+              : `${formatFloorTag(f)} · ${info!.mods}模 · ${info!.blds}建`
+            : `${formatFloorTag(f)} · ${t('空', 'Empty')}`;
           return (
             <button
               key={f}
@@ -111,7 +111,7 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
               onClick={() => onSelectFloor(f)}
               title={tip}
             >
-              <span className="floor-rail-code">{formatFloorShort(f)}</span>
+              <span className="floor-rail-code">{formatFloorTag(f)}</span>
               <span className="floor-rail-dot" aria-hidden="true" />
             </button>
           );
@@ -123,7 +123,7 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
         className="floor-rail-step"
         disabled={!canStepDown}
         onClick={() => onSelectFloor(Math.max(-2, focusFloor - 1))}
-        title="降一层 (Q / Shift+下滚)"
+        title={t('降一层 (Q)', 'Floor down (Q)')}
       >
         ▼
       </button>
