@@ -2330,11 +2330,11 @@ export const App: React.FC = () => {
             </button>
           </div>
 
-          <div className="floor-stepper" title="焦点楼层 (Q 降 / E 升)">
+          <div className="floor-stepper" title="焦点楼层 (Q 降 / E 升 / Shift+滚轮)">
             <button type="button" className="step-btn" onClick={() => setFocusFloor((f) => Math.max(-2, f - 1))}>
               Q↓
             </button>
-            <span className="floor-readout">L{focusFloor}</span>
+            <span className="floor-readout">{focusFloor < 0 ? `B${Math.abs(focusFloor)}` : `L${focusFloor}`}</span>
             <button type="button" className="step-btn" onClick={() => setFocusFloor((f) => Math.min(8, f + 1))}>
               E↑
             </button>
@@ -2550,7 +2550,7 @@ export const App: React.FC = () => {
             <span className="hud-coord" ref={hudCoordRef}>X --  Y --</span>
             <span className="hud-sep">·</span>
             <span className="hud-grid" ref={hudGridRef}>G(-,-)</span>
-            <span className="hud-floor">L{focusFloor}</span>
+            <span className="hud-floor">{focusFloor < 0 ? `B${Math.abs(focusFloor)}` : `L${focusFloor}`}</span>
           </div>
           <div className="hud-row secondary">
             <span>{viewMode === 'station' ? '空间站' : '建筑'}</span>
@@ -2616,7 +2616,7 @@ export const App: React.FC = () => {
 
         {activeTool.kind !== 'select' && (
           <div className="cad-tool-banner">
-            {activeTool.kind === 'demolish' && '拆除刷 · Shift+拖 框选拆除 · Esc 退出'}
+            {activeTool.kind === 'demolish' && '拆除刷 · 左键点/扫拆 · Shift+拖 红框拆 · Ctrl+Z 撤销 · Esc/右键退出'}
             {activeTool.kind === 'place-module' &&
               `${getShortLabel(activeTool.moduleType, getModuleDef(activeTool.moduleType)?.nameZh)}${
                 activeTool.label ? ` [${activeTool.label}]` : ''
