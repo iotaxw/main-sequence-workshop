@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
 use crate::canonical::{BlueprintDocument, PlacedModule};
-use crate::catalog_map::catalog;
+use crate::catalog_map::{catalog, module_native_pivot_offset};
 
 pub fn rotate_xy(x: i32, y: i32, rot: u8) -> (i32, i32) {
     match rot % 4 {
@@ -27,15 +27,14 @@ pub fn module_rotated_size(module_type: &str, rot: u8) -> (i32, i32) {
 }
 
 pub fn module_to_native_transform(m: &PlacedModule) -> (i32, i32, i32, u8) {
-    let (wu, du) = module_rotated_size(&m.module_type, m.rotation);
-    let bx = 4 * m.gx + 2 * wu - 2;
-    let by = 4 * m.gy + 2 * du - 2;
-    let bh = if m.module_type == "BPO_StationArmour_01B" {
-        (m.floor + 1) * 2
-    } else {
-        m.floor * 2
-    };
-    (bx, by, bh, m.rotation % 4)
+    let rot = m.rotation % 4;
+    let (wu, du) = module_rotated_size(&m.module_type, rot);
+    let (dux, duy, z_shift) = module_native_pivot_offset(&m.module_type);
+    let (rx, ry) = rotate_xy(dux, duy, rot);
+    let bx = 4 * m.gx + 2 * wu - 2 + rx;
+    let by = 4 * m.gy + 2 * du - 2 + ry;
+    let bh = m.floor * 2 + z_shift;
+    (bx, by, bh, rot)
 }
 
 /// Synthesizes exterior connector bulkhead caps (`Connectors_0`) for exposed/open module connectors,

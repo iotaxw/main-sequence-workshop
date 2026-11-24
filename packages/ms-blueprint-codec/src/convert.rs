@@ -130,8 +130,10 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
         let tf = blk.get("Transform_0").unwrap_or(&Value::Null);
         let (bx, by, bh, rot) = read_transform(tf);
         let (wu, du) = module_rotated_size(&module_type, rot);
-        let gx_num = bx - 2 * wu + 2;
-        let gy_num = by - 2 * du + 2;
+        let (dux, duy, z_shift) = module_native_pivot_offset(&module_type);
+        let (rx, ry) = rotate_xy(dux, duy, rot);
+        let gx_num = bx - rx - 2 * wu + 2;
+        let gy_num = by - ry - 2 * du + 2;
         if gx_num.rem_euclid(4) != 0 || gy_num.rem_euclid(4) != 0 {
             warnings.push(format!(
                 "模块 `{module_type}` 原生坐标 ({bx},{by}) 非标准 16m 对齐，已向下取整。"
@@ -139,11 +141,7 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
         }
         let gx = gx_num.div_euclid(4);
         let gy = gy_num.div_euclid(4);
-        let floor = if module_type == "BPO_StationArmour_01B" {
-            bh.div_euclid(2) - 1
-        } else {
-            bh.div_euclid(2)
-        };
+        let floor = (bh - z_shift).div_euclid(2);
 
         let block_id = blk.get("BlockID_0").and_then(Value::as_i64).map(|x| x as i32);
         let palette_id = blk.get("PaletteID_0").and_then(Value::as_i64).map(|x| x as i32);

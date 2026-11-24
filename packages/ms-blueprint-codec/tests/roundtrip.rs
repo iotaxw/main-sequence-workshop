@@ -644,3 +644,110 @@ fn stateful_edits_and_clears_after_sav_import_never_leak_stale_native_meta() {
     assert_eq!((c2_lf[0].item_id.as_str(), c2_lf[0].amount, c2_lf[0].action), ("ITEM_WaterIce", 500, 1));
     assert_eq!((c2_lf[1].item_id.as_str(), c2_lf[1].amount, c2_lf[1].action), ("ITEM_TitaniumPlates", 0, 0));
 }
+
+#[test]
+fn class_level_block_bounds_pivot_aligns_asymmetric_and_ceiling_modules() {
+    use ms_blueprint_codec::connectors::{module_to_native_transform, synthesize_connectors};
+
+    let dock = PlacedModule {
+        id: "dock".to_owned(),
+        module_type: "BPO_Dock_2".to_owned(),
+        gx: -6,
+        gy: -4,
+        floor: 0,
+        rotation: 2,
+        label: None,
+        recipe_id: None,
+        dock_ports: None,
+        palette_id: None,
+        mining_item: None,
+        dock_name: None,
+        native_meta: None,
+    };
+    let adapter = PlacedModule {
+        id: "adapter".to_owned(),
+        module_type: "BPO_StationAdapter_01".to_owned(),
+        gx: -3,
+        gy: -4,
+        floor: 0,
+        rotation: 2,
+        label: None,
+        recipe_id: None,
+        dock_ports: None,
+        palette_id: None,
+        mining_item: None,
+        dock_name: None,
+        native_meta: None,
+    };
+    // BPO_Dock_2 has blockBoundsM.minX=-16, sizeUnits=[3,2,1] -> ox=+8m -> dux=-2 (rot=2 -> +2 -> bx=-18, by=-14)
+    assert_eq!(module_to_native_transform(&dock), (-18, -14, 0, 2));
+    assert_eq!(module_to_native_transform(&adapter), (-12, -14, 0, 2));
+    // Shared seam between Dock_2 East face (-14,-16/-12) and Adapter West face (-14,-16/-12) must pair flush (0 caps on x=-14)!
+    let caps = synthesize_connectors(&[dock.clone(), adapter.clone()]);
+    let seam_caps = caps
+        .iter()
+        .filter(|v| v["Transform_0"]["GridLocation_0"]["x"].as_i64() == Some(-14))
+        .count();
+    assert_eq!(seam_caps, 0, "BPO_Dock_2 and BPO_StationAdapter_01 must share flush Large connectors at x=-14");
+
+    // BPO_ShipyardCore_02 has the exact same class-level asymmetry (blockBoundsM.minX=-8, sizeUnits=[2,2,1] -> ox=+8m -> dux=-2)
+    let ship2 = PlacedModule {
+        id: "ship2".to_owned(),
+        module_type: "BPO_ShipyardCore_02".to_owned(),
+        gx: 0,
+        gy: 0,
+        floor: 0,
+        rotation: 0,
+        label: None,
+        recipe_id: None,
+        dock_ports: None,
+        palette_id: None,
+        mining_item: None,
+        dock_name: None,
+        native_meta: None,
+    };
+    assert_eq!(module_to_native_transform(&ship2), (0, 2, 0, 0));
+
+    // Ceiling-hung BPO_StationArmour_01B (maxZ=0, minZ=-4) derives z_shift=+2 directly from blockBoundsM
+    let armour = PlacedModule {
+        id: "arm".to_owned(),
+        module_type: "BPO_StationArmour_01B".to_owned(),
+        gx: 0,
+        gy: 0,
+        floor: -1,
+        rotation: 0,
+        label: None,
+        recipe_id: None,
+        dock_ports: None,
+        palette_id: None,
+        mining_item: None,
+        dock_name: None,
+        native_meta: None,
+    };
+    assert_eq!(module_to_native_transform(&armour), (0, 0, 0, 0));
+
+    // Verify lossless round-trip for all 3 classes!
+    let doc = BlueprintDocument {
+        format: CANONICAL_FORMAT.to_owned(),
+        format_version: CANONICAL_FORMAT_VERSION,
+        id: "bp_class_pivots".to_owned(),
+        name: "类级锚点往返测试".to_owned(),
+        description: None,
+        game_data: GameDataMeta {
+            build_id: GAME_BUILD_ID.to_owned(),
+            catalog_version: CATALOG_VERSION,
+        },
+        modules: vec![dock, adapter, ship2, armour],
+        buildings: vec![],
+        native_meta: None,
+        extra: Map::new(),
+    };
+    let (sav, rep) = canonical_to_sav_bytes(&doc, NativeExportMode::Station).unwrap();
+    assert!(rep.warnings.is_empty());
+    let (rt, imp) = sav_bytes_to_canonical(&sav).unwrap();
+    assert!(imp.warnings.is_empty());
+    for (orig, back) in doc.modules.iter().zip(rt.modules.iter()) {
+        assert_eq!((orig.module_type.as_str(), orig.gx, orig.gy, orig.floor, orig.rotation),
+                   (back.module_type.as_str(), back.gx, back.gy, back.floor, back.rotation));
+    }
+}

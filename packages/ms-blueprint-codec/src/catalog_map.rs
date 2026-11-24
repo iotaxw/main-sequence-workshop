@@ -16,13 +16,52 @@ pub struct CatalogConnector {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct CatalogBlockBoundsM {
+    #[serde(rename = "minX")]
+    pub min_x: f64,
+    #[serde(rename = "minY")]
+    pub min_y: f64,
+    #[serde(rename = "minZ")]
+    pub min_z: f64,
+    #[serde(rename = "maxX")]
+    pub max_x: f64,
+    #[serde(rename = "maxY")]
+    pub max_y: f64,
+    #[serde(rename = "maxZ")]
+    pub max_z: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct CatalogModule {
     pub id: String,
     #[serde(rename = "sizeUnits")]
     pub size_units: [i32; 3],
+    #[serde(rename = "blockBoundsM")]
+    pub block_bounds_m: Option<CatalogBlockBoundsM>,
     pub connectors: Vec<CatalogConnector>,
     #[serde(rename = "sourceAsset")]
     pub source_asset: String,
+}
+
+/// Class-level actor pivot offset `(dux, duy, z_shift)` in native 4m GridLocation / Height units,
+/// derived directly from `blockBoundsM` & `sizeUnits` (matching `geometry.ts::getModuleOriginOffsetM`).
+/// - Asymmetric XY modules (e.g. `BPO_Dock_2`, `BPO_ShipyardCore_02`): `ox = minX + sizeUnits[0] * 8` => `dux = -(ox / 4)`.
+/// - Ceiling-hung Z modules (e.g. `BPO_StationArmour_01B`, `maxZ <= 0.05 && minZ < -0.5`): `z_shift = +2` (1 floor = +8m).
+pub fn module_native_pivot_offset(module_type: &str) -> (i32, i32, i32) {
+    let Some(def) = catalog().modules_by_id.get(module_type) else {
+        return (0, 0, 0);
+    };
+    let Some(b) = &def.block_bounds_m else {
+        return (0, 0, 0);
+    };
+    let raw_ox = b.min_x + (def.size_units[0] as f64) * 8.0;
+    let raw_oy = b.min_y + (def.size_units[1] as f64) * 8.0;
+    let ox = if raw_ox.abs() < 0.5 { 0.0 } else { (raw_ox * 2.0).round() / 2.0 };
+    let oy = if raw_oy.abs() < 0.5 { 0.0 } else { (raw_oy * 2.0).round() / 2.0 };
+    let dux = (-ox / 4.0).round() as i32;
+    let duy = (-oy / 4.0).round() as i32;
+    let z_shift = if b.max_z <= 0.05 && b.min_z < -0.5 { 2 } else { 0 };
+    (dux, duy, z_shift)
 }
 
 #[derive(Debug, Clone, Deserialize)]

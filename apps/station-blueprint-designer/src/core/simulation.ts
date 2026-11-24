@@ -135,6 +135,16 @@ export interface BalanceHint {
   message: string;
 }
 
+export interface SimulateOptions {
+  /**
+   * Optional set of terminal sink IDs (containers, labs, or boundary exits) treated as SATURATED
+   * (full / exerting backpressure -> 0 demand).
+   * Enables deterministic Multi-Regime verification (HDVF L4): progressive saturation reveals
+   * priority-router overflow reachability and multi-output byproduct backpressure deadlocks.
+   */
+  saturatedSinkIds?: ReadonlySet<string>;
+}
+
 export interface SimulationReport {
   passed: boolean;
   errorCount: number;
@@ -349,8 +359,11 @@ interface DockPortSpec {
 
 /**
  * Build 26639889 binary-verified Dock port cells:
- * - BPO_Dock_2 (BPO_IndustrialDock::Filters[8]): 8 bidirectional ports along interior apron edge (lx=-8.5, ly=[-5.5..-2.5, +2.5..+5.5])
- * - BPO_Dock (BPO_StationBlockDock::Filters[2]): 2 bidirectional ports on West connector edge (lx=-7.5, ly=[-0.5, +0.5])
+ * Both BPO_Dock_2 (BPO_IndustrialDock) and BPO_Dock (BPO_StationBlockDock) mount their built-in Dock machine
+ * at DefaultMachines[0].GridRotation = 2 (180° flip), so local Outputs[0..N-1] (Y ascending in machine frame)
+ * map to Y descending in module frame:
+ * - BPO_Dock_2: lx=-8.5, ly=[+5.5, +4.5, +3.5, +2.5, -2.5, -3.5, -4.5, -5.5]
+ * - BPO_Dock:   lx=-7.5, ly=[+0.5, -0.5]
  */
 function collectDockPorts(doc: BlueprintDocument): {
   byPortCell: Map<string, DockPortSpec>;
@@ -358,8 +371,8 @@ function collectDockPorts(doc: BlueprintDocument): {
 } {
   const byPortCell = new Map<string, DockPortSpec>();
   const byAdjCell = new Map<string, DockPortSpec[]>();
-  const IND_LOCAL_Y = [-5.5, -4.5, -3.5, -2.5, 2.5, 3.5, 4.5, 5.5];
-  const STD_LOCAL_Y = [-0.5, 0.5];
+  const IND_LOCAL_Y = [5.5, 4.5, 3.5, 2.5, -2.5, -3.5, -4.5, -5.5];
+  const STD_LOCAL_Y = [0.5, -0.5];
 
   for (const mod of doc.modules) {
     if (mod.type !== 'BPO_Dock_2' && mod.type !== 'BPO_Dock') continue;
@@ -432,7 +445,9 @@ function isBoundaryFloorMissing(doc: BlueprintDocument, x: number, y: number, fl
  * Pure deterministic, general-purpose production-line simulator, raw-input tracer, and binary-verified power auditor.
  * Works on ANY BlueprintDocument: standalone sub-lines, single/multi-module hubs, or massive multi-deck stations.
  */
-export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
+export function simulateBlueprint(doc: BlueprintDocument, options?: SimulateOptions): SimulationReport {
+  const saturatedSinkIds = options?.saturatedSinkIds;
+  const backpressureMode = Boolean(saturatedSinkIds && saturatedSinkIds.size > 0);
   const issues: SimulationIssue[] = [];
   const issueKeys = new Set<string>();
   let issueSeq = 1;
@@ -1684,43 +1699,110 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     }
   };
 
+  const computeCrafterBackpressureDemand = (b: PlacedBuilding): Map<string, number> => {
+    const req = crafterDemandByInput.get(b.id);
+    if (!req || req.size === 0 || !b.recipeId) return new Map();
+    const rec = getRecipeDef(b.recipeId);
+    if (!rec) return new Map();
+    const dur = rec.durationSeconds && rec.durationSeconds > 0 ? rec.durationSeconds : 1;
+    const outs = outEdges.get(b.id) ?? [];
+    if (rec.outputs.length === 0) return new Map(req);
+    if (outs.length === 0) return new Map();
+
+    // Multi-output Lock Law: a crafter's sustainable output fraction is bounded by its tightest output item's
+    // downstream absorbing demand across all outgoing ports (if ANY required output backs up to 0, crafter stalls!)
+    let etaOut = 1.0;
+    const portMap = crafterPortOutputItem.get(b.id);
+    if (rec.outputs.length === 1) {
+      const oItem = rec.outputs[0].itemId;
+      const maxOut = (rec.outputs[0].quantity ?? 1) / dur;
+      let cap = 0;
+      for (const oe of outs) {
+        const childDm = nodeDemand.get(oe.toId);
+        if (!childDm) continue;
+        const cCap = childDm.has('*') ? oe.capacity : Math.min(oe.capacity, childDm.get(oItem) ?? 0);
+        cap += cCap;
+      }
+      etaOut = maxOut > 1e-9 ? Math.min(1, cap / maxOut) : 1;
+    } else if (portMap) {
+      const capByItem = new Map<string, number>();
+      for (const oe of outs) {
+        const assignedItem = portMap.get(oe.portIndex ?? -1) ?? rec.outputs[0].itemId;
+        const childDm = nodeDemand.get(oe.toId);
+        if (!childDm) continue;
+        const cCap = childDm.has('*') ? oe.capacity : Math.min(oe.capacity, childDm.get(assignedItem) ?? 0);
+        capByItem.set(assignedItem, (capByItem.get(assignedItem) ?? 0) + cCap);
+      }
+      for (const o of rec.outputs) {
+        const maxO = (o.quantity ?? 1) / dur;
+        const capO = capByItem.get(o.itemId) ?? 0;
+        if (maxO > 1e-9) etaOut = Math.min(etaOut, capO / maxO);
+      }
+    }
+    const dm = new Map<string, number>();
+    if (etaOut > 1e-6) {
+      for (const [it, r] of req.entries()) dm.set(it, r * etaOut);
+    }
+    return dm;
+  };
+
   // Seed all terminal demand sinks (crafters, research labs, sink containers, boundary exits)
   for (const b of simNodes) {
     const def = defById.get(b.id);
     if (!def) continue;
+    const isSaturated = Boolean(saturatedSinkIds?.has(b.id));
     if (def.kind === 'crafter') {
-      fixedDemandNodes.add(b.id);
-      const dm = new Map<string, number>();
-      const req = crafterDemandByInput.get(b.id);
-      if (req) {
-        for (const [it, r] of req.entries()) dm.set(it, r);
+      if (backpressureMode) {
+        // Under backpressure regime, crafter demand is derived dynamically from downstream absorbing demand!
+        if (isSaturated) {
+          fixedDemandNodes.add(b.id);
+          nodeDemand.set(b.id, new Map());
+        } else {
+          nodeDemand.set(b.id, new Map());
+        }
+      } else {
+        fixedDemandNodes.add(b.id);
+        const dm = new Map<string, number>();
+        const req = crafterDemandByInput.get(b.id);
+        if (req) {
+          for (const [it, r] of req.entries()) dm.set(it, r);
+        }
+        nodeDemand.set(b.id, dm);
+        if (dm.size > 0) enqueuePreds(b.id);
       }
-      nodeDemand.set(b.id, dm);
-      if (dm.size > 0) enqueuePreds(b.id);
     } else if (def.kind === 'research') {
       fixedDemandNodes.add(b.id);
       const dm = new Map<string, number>();
-      const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
-      if (inCap > 1e-9) dm.set('*', inCap);
+      if (!isSaturated) {
+        const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
+        if (inCap > 1e-9) dm.set('*', inCap);
+      }
       nodeDemand.set(b.id, dm);
       if (dm.size > 0) enqueuePreds(b.id);
     } else if (def.kind === 'container' && (outEdges.get(b.id) ?? []).length === 0) {
       fixedDemandNodes.add(b.id);
       const dm = new Map<string, number>();
-      const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
-      if (inCap > 1e-9) {
-        if (b.filterItems && b.filterItems.length > 0) {
-          for (const it of b.filterItems) dm.set(it, inCap);
-        } else {
-          dm.set('*', inCap);
+      if (!isSaturated) {
+        const inCap = (inEdges.get(b.id) ?? []).reduce((s, e) => s + e.capacity, 0);
+        if (inCap > 1e-9) {
+          if (b.filterItems && b.filterItems.length > 0) {
+            for (const it of b.filterItems) dm.set(it, inCap);
+          } else {
+            dm.set('*', inCap);
+          }
         }
       }
       nodeDemand.set(b.id, dm);
       if (dm.size > 0) enqueuePreds(b.id);
     } else if (boundaryExits.has(b.id)) {
-      const dm = computeRelayDemand(b, def);
-      nodeDemand.set(b.id, dm);
-      if (dm.size > 0) enqueuePreds(b.id);
+      if (isSaturated) {
+        fixedDemandNodes.add(b.id);
+        nodeDemand.set(b.id, new Map());
+      } else {
+        const dm = computeRelayDemand(b, def);
+        nodeDemand.set(b.id, dm);
+        if (dm.size > 0) enqueuePreds(b.id);
+      }
     } else {
       nodeDemand.set(b.id, new Map());
     }
@@ -1736,7 +1818,10 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     const b = buildingById.get(id);
     const def = defById.get(id);
     if (!b || !def) continue;
-    const nextDm = computeRelayDemand(b, def);
+    const nextDm =
+      backpressureMode && def.kind === 'crafter'
+        ? computeCrafterBackpressureDemand(b)
+        : computeRelayDemand(b, def);
     const prevDm = nodeDemand.get(id);
     if (demandChanged(prevDm, nextDm)) {
       nodeDemand.set(id, nextDm);
@@ -1896,23 +1981,28 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           }
         }
 
-        // 2) Scientific output-evacuation efficiency (disconnected or undersized output belt throttles steady-state eff!)
+        // 2) Scientific output-evacuation efficiency (disconnected, undersized, or backpressured output belt throttles steady-state eff!)
         let outputEff = 1.0;
         const portMap = crafterPortOutputItem.get(b.id);
         if (rec.outputs.length > 0) {
-          if (outs.length === 0) {
+          if (outs.length === 0 || (backpressureMode && saturatedSinkIds?.has(b.id))) {
             outputEff = 0.0;
           } else if (rec.outputs.length === 1) {
+            const oItem = rec.outputs[0].itemId;
             const maxOut = (rec.outputs[0].quantity ?? 1) / dur;
-            const totalOutCap = outs.reduce((s, e) => s + e.capacity, 0);
+            const totalOutCap = outs.reduce(
+              (s, e) => s + (backpressureMode ? getEdgeEffectiveCap(e, oItem) : e.capacity),
+              0
+            );
             outputEff = maxOut > 1e-9 ? Math.min(1, totalOutCap / maxOut) : 1;
           } else if (portMap) {
             const capByItem = new Map<string, number>();
             let totalOutCap = 0;
             for (const oe of outs) {
-              totalOutCap += oe.capacity;
               const assignedItem = portMap.get(oe.portIndex ?? -1) ?? rec.outputs[0].itemId;
-              capByItem.set(assignedItem, (capByItem.get(assignedItem) ?? 0) + oe.capacity);
+              const ec = backpressureMode ? getEdgeEffectiveCap(oe, assignedItem) : oe.capacity;
+              totalOutCap += ec;
+              capByItem.set(assignedItem, (capByItem.get(assignedItem) ?? 0) + ec);
             }
             let sumMaxOut = 0;
             for (const o of rec.outputs) {
@@ -2610,15 +2700,19 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           b.id
         );
       } else if (got <= 1e-4) {
-        pushIssue(
-          'warn',
-          'machine-missing-input',
-          `${def.nameZh} (${b.x},${b.y}) 缺少原料：${inp.nameZh}`,
-          b.floor,
-          b.x,
-          b.y,
-          b.id
-        );
+        // Under intentional backpressure saturation, idle crafters whose downstream is full are expected (not missing input!)
+        const isIntentionallyIdle = backpressureMode && (nodeDemand.get(b.id)?.size ?? 0) === 0;
+        if (!isIntentionallyIdle) {
+          pushIssue(
+            'warn',
+            'machine-missing-input',
+            `${def.nameZh} (${b.x},${b.y}) 缺少原料：${inp.nameZh}`,
+            b.floor,
+            b.x,
+            b.y,
+            b.id
+          );
+        }
       } else if (got > need + 0.02) {
         // Transparent deterministic hint: internal upstream supply exceeds this consumer's rated demand
         const ratio = Math.max(0, Math.min(1, need / got));
@@ -2668,10 +2762,11 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       netBalanceActiveMW >= -1e-2
         ? `（当前拓扑理论实耗 ${activeDrawMW.toFixed(1)} MW 可维持）`
         : `（连理论实耗 ${activeDrawMW.toFixed(1)} MW 也缺 ${Math.abs(netBalanceActiveMW).toFixed(1)} MW！）`;
+    const scalePct = peakDrawMW > 1e-6 ? Math.round((maxGenMW / peakDrawMW) * 100) : 100;
     pushIssue(
       'warn',
       'power-deficit',
-      `供电缺口：最大发电 ${maxGenMW.toFixed(1)} MW < 装机峰值 ${peakDrawMW.toFixed(1)} MW${activeNote}`,
+      `供电偏紧（实机无跳闸，满载时等比降速至约 ${scalePct}%）：最大发电 ${maxGenMW.toFixed(1)} MW < 装机峰值 ${peakDrawMW.toFixed(1)} MW${activeNote}`,
       anchor.floor,
       anchor.x,
       anchor.y

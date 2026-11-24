@@ -1085,8 +1085,9 @@ describe('General-purpose production-line simulation, flow rates, and zero-anoma
     let doc = createEmptyBlueprint();
     // Same exact geometry as Star-Citadel B1 West Dock -> Adapter -> Hall -> Observatory!
     doc = placeModuleCmd(doc, { type: 'BPO_Dock_2', gx: -6, gy: -4, floor: 0, rotation: 2 }).doc;
+    // Build 26639889 binary-verified BPO_IndustrialDock (rel_rot=2): at Dock rot=2, portIndex 7 sits at (-63, -43)!
     doc.modules[doc.modules.length - 1].dockPorts = [
-      { portIndex: 0, itemId: 'ITEM_StrangeMatterCrystal', mode: 'unload' },
+      { portIndex: 7, itemId: 'ITEM_StrangeMatterCrystal', mode: 'unload' },
     ];
     doc = placeModuleCmd(doc, { type: 'BPO_StationAdapter_01', gx: -3, gy: -4, floor: 0, rotation: 2 }).doc;
     doc = placeModuleCmd(doc, { type: 'BPO_Station_03', gx: -2, gy: -4, floor: 0, rotation: 0 }).doc;
