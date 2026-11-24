@@ -123,7 +123,7 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
           className={`s2-tile util ${activeTool.kind === 'demolish' ? 'active-warn' : ''}`}
           onClick={() => onSelectTool({ kind: 'demolish' })}
           onMouseEnter={() =>
-            setHoverMeta({ title: '拆除刷', en: 'Demolish', spec: 'X', hint: '按住左键扫过拆除' })
+            setHoverMeta({ title: '拆除刷', en: 'Demolish', spec: 'X', hint: '左键扫拆 · Shift+拖 框选拆除' })
           }
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">

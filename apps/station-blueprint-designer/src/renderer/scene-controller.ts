@@ -5,6 +5,8 @@ import { getBuildableDef, getItemNameZh, getModuleDef, getRecipeDef } from '../c
 import { computeStampCandidates, getBlueprintBoundsM } from '../core/commands';
 import {
   computeUndergroundLinks,
+  findBuildingAtCell,
+  findModuleAtWorldPoint,
   FLOOR_VISUAL_SPACING,
   getBuildingCenterM,
   getBuildingSizeCells,
@@ -818,7 +820,18 @@ export class CadSceneController {
       return `belt:${state.activeTool.buildingType}:${state.focusFloor}:${state.beltPreview.length}:${first.x},${first.y},${first.rotation}:${last.x},${last.y},${last.rotation}`;
     }
     const tool = state.activeTool;
-    if (!cursor || tool.kind === 'select' || tool.kind === 'demolish') return 'none';
+    if (!cursor || tool.kind === 'select') return 'none';
+    if (tool.kind === 'demolish') {
+      if (state.boxSelectRect) return 'none';
+      if (state.viewMode === 'station') {
+        const gx = Math.floor(cursor.x / STATION_UNIT_M);
+        const gy = Math.floor(cursor.y / STATION_UNIT_M);
+        return `dem:m:${state.focusFloor}:${gx},${gy}`;
+      }
+      const cx = Math.floor(cursor.x);
+      const cy = Math.floor(cursor.y);
+      return `dem:b:${state.focusFloor}:${cx},${cy}`;
+    }
     if (tool.kind === 'place-module') {
       const gx = Math.floor(cursor.x / STATION_UNIT_M);
       const gy = Math.floor(cursor.y / STATION_UNIT_M);
@@ -887,6 +900,12 @@ export class CadSceneController {
 
     this.updateRoundedGrid(effState);
     this.rebuildBoxSelect(effState, palette, mode);
+
+    const nextPrevKey = this.computePreviewKey(effState, this.liveCursorWorld);
+    if (nextPrevKey !== this.lastPreviewKey) {
+      this.lastPreviewKey = nextPrevKey;
+      this.rebuildPreview(effState, palette);
+    }
 
     const activeSel = this.livePreviewSelection ?? state.selection;
     const nextSig = this.computeSelectionSig(activeSel, mode, Boolean(rect));
@@ -1998,6 +2017,90 @@ export class CadSceneController {
 
     if (!state.cursorWorld) return;
     const baseY = state.focusFloor * FLOOR_VISUAL_SPACING;
+
+    // 1b. Demolish brush live target highlight (red footprint + subtle diagonal X on hovered target)
+    if (state.activeTool.kind === 'demolish') {
+      if (state.boxSelectRect) return;
+      const col = palette.invalidGhost;
+      if (state.viewMode === 'building') {
+        const cx = Math.floor(state.cursorWorld.x);
+        const cy = Math.floor(state.cursorWorld.y);
+        const hit = findBuildingAtCell(state.doc, cx, cy, state.focusFloor);
+        if (hit) {
+          const def = getBuildableDef(hit.type);
+          const [w, d] = def ? getBuildingSizeCells(def, hit.rotation) : [1, 1];
+          const x0 = hit.x + 0.04;
+          const z0 = hit.y + 0.04;
+          const x1 = hit.x + w - 0.04;
+          const z1 = hit.y + d - 0.04;
+          const y = baseY + 0.14;
+          const pad = new THREE.Mesh(
+            new THREE.PlaneGeometry(Math.max(0.1, x1 - x0), Math.max(0.1, z1 - z0)),
+            new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })
+          );
+          pad.rotation.x = -Math.PI / 2;
+          pad.position.set((x0 + x1) / 2, y - 0.01, (z0 + z1) / 2);
+          this.previewGroup.add(pad);
+          const inset = Math.min(0.22, Math.min(w, d) * 0.22);
+          const pts = [
+            x0, y, z0, x1, y, z0,
+            x1, y, z0, x1, y, z1,
+            x1, y, z1, x0, y, z1,
+            x0, y, z1, x0, y, z0,
+            x0 + inset, y + 0.01, z0 + inset, x1 - inset, y + 0.01, z1 - inset,
+            x1 - inset, y + 0.01, z0 + inset, x0 + inset, y + 0.01, z1 - inset,
+          ];
+          this.previewGroup.add(createCrispLineSegments(pts, { color: col, opacity: 0.98, widthPx: 2.0 }));
+        } else {
+          this.addFlatRectGhost(cx + 0.1, cy + 0.1, cx + 0.9, cy + 0.9, baseY + 0.1, col, 0.42);
+        }
+      } else {
+        const hit = findModuleAtWorldPoint(state.doc, state.cursorWorld.x, state.cursorWorld.y, state.focusFloor);
+        if (hit) {
+          const def = getModuleDef(hit.type);
+          if (def) {
+            const [minX, minY, maxX, maxY] = getModuleBoundsM(hit, def);
+            const x0 = minX + 0.18;
+            const z0 = minY + 0.18;
+            const x1 = maxX - 0.18;
+            const z1 = maxY - 0.18;
+            const y = baseY + 0.16;
+            const pad = new THREE.Mesh(
+              new THREE.PlaneGeometry(Math.max(1, x1 - x0), Math.max(1, z1 - z0)),
+              new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide })
+            );
+            pad.rotation.x = -Math.PI / 2;
+            pad.position.set((x0 + x1) / 2, y - 0.01, (z0 + z1) / 2);
+            this.previewGroup.add(pad);
+            const cxM = (x0 + x1) / 2;
+            const czM = (z0 + z1) / 2;
+            const arm = Math.min(3.2, Math.min(x1 - x0, z1 - z0) * 0.22);
+            const pts = [
+              x0, y, z0, x1, y, z0,
+              x1, y, z0, x1, y, z1,
+              x1, y, z1, x0, y, z1,
+              x0, y, z1, x0, y, z0,
+              cxM - arm, y + 0.01, czM - arm, cxM + arm, y + 0.01, czM + arm,
+              cxM + arm, y + 0.01, czM - arm, cxM - arm, y + 0.01, czM + arm,
+            ];
+            this.previewGroup.add(createCrispLineSegments(pts, { color: col, opacity: 0.98, widthPx: 2.2 }));
+          }
+        } else {
+          const gx = Math.floor(state.cursorWorld.x / STATION_UNIT_M);
+          const gy = Math.floor(state.cursorWorld.y / STATION_UNIT_M);
+          this.addFlatRectGhost(
+            gx * STATION_UNIT_M + 0.3,
+            gy * STATION_UNIT_M + 0.3,
+            (gx + 1) * STATION_UNIT_M - 0.3,
+            (gy + 1) * STATION_UNIT_M - 0.3,
+            baseY + 0.12,
+            col,
+            0.35
+          );
+        }
+      }
+      return;
+    }
 
     // 2. Single Station Module placement ghost
     if (state.activeTool.kind === 'place-module') {
