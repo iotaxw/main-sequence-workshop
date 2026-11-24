@@ -87,7 +87,7 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
         className="floor-rail-step"
         disabled={!canStepUp}
         onClick={() => onSelectFloor(Math.min(8, focusFloor + 1))}
-        title="升一层 (E)"
+        title="升一层 (E / Shift+上滚)"
       >
         ▲
       </button>
@@ -123,7 +123,7 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
         className="floor-rail-step"
         disabled={!canStepDown}
         onClick={() => onSelectFloor(Math.max(-2, focusFloor - 1))}
-        title="降一层 (Q)"
+        title="降一层 (Q / Shift+下滚)"
       >
         ▼
       </button>

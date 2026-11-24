@@ -1694,4 +1694,99 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
       '13,11:belt',
     ]);
   });
+
+  it('handles 1x1/2x2 elevator type-isolation, perpendicular side-turning exit belts, and splitter-to-elevator links', () => {
+    // Case A: Real 基本生产站.sav pattern on 1x1 elevator (0,0) L0 -> L1:
+    // L0: Refinery feeds belt (10,14) rot=0 (East) -> pushes into port (11,14) on South doorway east wall
+    // L1: Belt (10,14) rot=1 (South, PERPENDICULAR side-entry!) receives from port (11,14) -> Container!
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_ElevatorBlock_03', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_ElevatorBlock_03', gx: 0, gy: 0, floor: 1, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 0, gy: 1, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 0, gy: 1, floor: 1, rotation: 0 }).doc;
+
+    // L0: Refinery at (3, 18) -> TitaniumPlates -> belt East to (7,19) -> North to (7,14) -> East (7..10, 14) into (11,14)!
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_Refinery',
+      x: 3,
+      y: 18,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_TitaniumPlates',
+      disabledPorts: [1, 2, 3],
+    }).doc;
+    // Feed raw TitaniumOre into Refinery W port (2,19)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt2', x: 2, y: 19, floor: 0, rotation: 0 }).doc;
+    // Output from E port (6,19) -> (7,19) -> North to (7,14) -> East to (10,14)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt2', x: 6, y: 19, floor: 0, rotation: 0 }).doc;
+    for (let y = 19; y >= 15; y--) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt2', x: 7, y, floor: 0, rotation: 3 }).doc;
+    }
+    for (let x = 7; x <= 10; x++) {
+      doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt2', x, y: 14, floor: 0, rotation: 0 }).doc;
+    }
+
+    // L1: Side-turning exit belt at (10,14) facing South (rot=1!) -> (10,15) -> (10,16) -> Container at (9,17)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt2', x: 10, y: 14, floor: 1, rotation: 1 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt2', x: 10, y: 15, floor: 1, rotation: 1 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt2', x: 10, y: 16, floor: 1, rotation: 1 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_Container', x: 9, y: 17, floor: 1, rotation: 0 }).doc;
+
+    const rep = simulateBlueprint(doc);
+    expect(rep.errorCount).toBe(0);
+    expect(rep.netOutputs.find((o) => o.itemId === 'ITEM_TitaniumPlates')?.ratePerSec).toBeCloseTo(1 / 3, 2);
+
+    // Case B: Heterogenous elevator isolation — 1x1 elevator at (0,0,L2) MUST NOT bridge two 2x2 elevators at (0,0,L0) and (0,0,L3)!
+    let gapDoc = createEmptyBlueprint();
+    gapDoc = placeModuleCmd(gapDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    gapDoc = placeModuleCmd(gapDoc, { type: 'BPO_ElevatorBlock_03', gx: 0, gy: 0, floor: 2, rotation: 0 }).doc;
+    gapDoc = placeModuleCmd(gapDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 3, rotation: 0 }).doc;
+    gapDoc = placeModuleCmd(gapDoc, { type: 'BPO_Station_03', gx: -2, gy: 0, floor: 0, rotation: 0 }).doc;
+    gapDoc = placeModuleCmd(gapDoc, { type: 'BPO_Station_03', gx: -2, gy: 0, floor: 3, rotation: 0 }).doc;
+    // L0: RelicSynthesizer -> Splitter pushing directly East at (6,10) into 2x2 port (7,10)
+    gapDoc = placeBuildingCmd(gapDoc, {
+      type: 'DAT_RelicSynthesizer',
+      x: -13,
+      y: 6,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_Protomatter',
+      disabledPorts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    }).doc;
+    for (let x = -4; x <= 5; x++) {
+      gapDoc = placeBuildingCmd(gapDoc, { type: 'DAT_ConveyorBelt3', x, y: 10, floor: 0, rotation: 0 }).doc;
+    }
+    gapDoc = placeBuildingCmd(gapDoc, { type: 'DAT_Splitter_3', x: 6, y: 10, floor: 0, rotation: 0, disabledPorts: [1, 3] }).doc;
+    // L3: Belt receiving at (6,10) facing South (side-turn!) -> Container
+    gapDoc = placeBuildingCmd(gapDoc, { type: 'DAT_ConveyorBelt3', x: 6, y: 10, floor: 3, rotation: 1 }).doc;
+    gapDoc = placeBuildingCmd(gapDoc, { type: 'DAT_Container', x: 5, y: 11, floor: 3, rotation: 0 }).doc;
+    const repGap = simulateBlueprint(gapDoc);
+    // Must NOT receive Protomatter on L3 because L2 is a 1x1 elevator, NOT a 2x2 elevator!
+    expect(repGap.cellFlows['3:6,10']?.totalRate ?? 0).toBe(0);
+
+    // Replace L2 with a proper contiguous 2x2 stack (L0 + L2): now Splitter -> 2x2 Elevator -> L2 side-turning belt MUST deliver full 1.0/s Protomatter!
+    let contDoc = createEmptyBlueprint();
+    contDoc = placeModuleCmd(contDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    contDoc = placeModuleCmd(contDoc, { type: 'BPO_ElevatorBlock_02A', gx: 0, gy: 0, floor: 2, rotation: 0 }).doc;
+    contDoc = placeModuleCmd(contDoc, { type: 'BPO_Station_03', gx: -2, gy: 0, floor: 0, rotation: 0 }).doc;
+    contDoc = placeModuleCmd(contDoc, { type: 'BPO_Station_03', gx: -2, gy: 0, floor: 2, rotation: 0 }).doc;
+    contDoc = placeBuildingCmd(contDoc, {
+      type: 'DAT_RelicSynthesizer',
+      x: -13,
+      y: 6,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_Protomatter',
+      disabledPorts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    }).doc;
+    for (let x = -4; x <= 5; x++) {
+      contDoc = placeBuildingCmd(contDoc, { type: 'DAT_ConveyorBelt3', x, y: 10, floor: 0, rotation: 0 }).doc;
+    }
+    contDoc = placeBuildingCmd(contDoc, { type: 'DAT_Splitter_3', x: 6, y: 10, floor: 0, rotation: 0, disabledPorts: [1, 3] }).doc;
+    contDoc = placeBuildingCmd(contDoc, { type: 'DAT_ConveyorBelt3', x: 6, y: 10, floor: 2, rotation: 1 }).doc;
+    contDoc = placeBuildingCmd(contDoc, { type: 'DAT_Container', x: 5, y: 11, floor: 2, rotation: 0 }).doc;
+    const repCont = simulateBlueprint(contDoc);
+    expect(repCont.errorCount).toBe(0);
+    expect(repCont.cellFlows['2:6,10']?.totalRate).toBeCloseTo(1.0, 2);
+  });
 });

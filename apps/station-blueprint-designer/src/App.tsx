@@ -35,7 +35,6 @@ import {
 } from './core/commands';
 import {
   findBuildingAtCell,
-  findBuildingsInsideModule,
   findModuleAtWorldPoint,
   getBuildingSizeCells,
   getModuleBoundsM,
@@ -398,11 +397,6 @@ export const App: React.FC = () => {
     folder: string;
     name: string;
   } | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{
-    selection: SelectionState;
-    moduleCount: number;
-    insideBuildingCount: number;
-  } | null>(null);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<CadSceneController | null>(null);
@@ -450,6 +444,9 @@ export const App: React.FC = () => {
     beltReverse: boolean;
     boxModifier: BoxSelectMode;
     liveSelection: SelectionState | null;
+    sweepCommitted: boolean;
+    sweepModCount: number;
+    sweepBldCount: number;
   }>({
     kind: 'none',
     startX: 0,
@@ -465,6 +462,9 @@ export const App: React.FC = () => {
     beltReverse: false,
     boxModifier: 'replace',
     liveSelection: null,
+    sweepCommitted: false,
+    sweepModCount: 0,
+    sweepBldCount: 0,
   });
 
   const spaceHeldRef = useRef(false);
@@ -667,33 +667,23 @@ export const App: React.FC = () => {
       const curDoc = stateRef.current.doc;
       if (sel.moduleIds.length === 0 && sel.buildingIds.length === 0) return;
 
-      let insideCount = 0;
-      if (sel.moduleIds.length > 0) {
-        const bldAlready = new Set(sel.buildingIds);
-        for (const mid of sel.moduleIds) {
-          const mod = curDoc.modules.find((m) => m.id === mid);
-          if (!mod) continue;
-          for (const inside of findBuildingsInsideModule(curDoc, mod)) {
-            if (!bldAlready.has(inside.id)) {
-              insideCount++;
-              bldAlready.add(inside.id);
-            }
-          }
-        }
-      }
+      const res = deleteSelectionCmd(curDoc, sel, { cascadeBuildingsInModules: true });
+      if (!res.changed) return;
 
-      if (insideCount > 0) {
-        setDeleteConfirm({ selection: sel, moduleCount: sel.moduleIds.length, insideBuildingCount: insideCount });
-        return;
-      }
+      const removedMods = curDoc.modules.length - res.doc.modules.length;
+      const removedBlds = curDoc.buildings.length - res.doc.buildings.length;
+      commitDoc(res.doc);
+      setSelection(EMPTY_SELECTION);
 
-      const res = deleteSelectionCmd(curDoc, sel);
-      if (res.changed) {
-        commitDoc(res.doc);
-        setSelection(EMPTY_SELECTION);
+      if (removedMods > 0 && removedBlds > 0) {
+        showToast(`已拆除 ${removedMods} 个模块及内部 ${removedBlds} 台建筑（Ctrl+Z 撤销）`);
+      } else if (removedMods > 0) {
+        showToast(`已拆除 ${removedMods} 个模块（Ctrl+Z 撤销）`);
+      } else if (removedBlds > 1) {
+        showToast(`已拆除 ${removedBlds} 台建筑（Ctrl+Z 撤销）`);
       }
     },
-    [commitDoc]
+    [commitDoc, showToast]
   );
 
   useEffect(() => {
@@ -934,7 +924,6 @@ export const App: React.FC = () => {
         }
         if (ghModal && !ghModal.busy) { setGhModal(null); return; }
         if (saveDialog) { setSaveDialog(null); return; }
-        if (deleteConfirm) { setDeleteConfirm(null); return; }
         if (libraryModalOpen) { setLibraryModalOpen(false); return; }
         if (helpOpen) { setHelpOpen(false); return; }
         if (prefsMenuOpen) { setPrefsMenuOpen(false); return; }
@@ -1303,7 +1292,6 @@ export const App: React.FC = () => {
   }, [
     commitDoc,
     copySelectionToGhost,
-    deleteConfirm,
     fitAllStation,
     focusSelection,
     ghModal,
@@ -1382,6 +1370,9 @@ export const App: React.FC = () => {
           startWorld: world,
           boxModifier: 'demolish',
           liveSelection: null,
+          sweepCommitted: false,
+          sweepModCount: 0,
+          sweepBldCount: 0,
         };
         return;
       }
@@ -1393,16 +1384,34 @@ export const App: React.FC = () => {
         lastX: e.clientX,
         lastY: e.clientY,
         moved: false,
+        sweepCommitted: false,
+        sweepModCount: 0,
+        sweepBldCount: 0,
       };
       if (vm === 'building') {
         const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), fl);
         if (b) {
           const res = deleteSelectionCmd(curDoc, { moduleIds: [], buildingIds: [b.id] });
-          if (res.changed) commitDoc(res.doc);
+          if (res.changed) {
+            stateRef.current.doc = res.doc;
+            commitDoc(res.doc);
+            dragRef.current.sweepCommitted = true;
+            dragRef.current.sweepBldCount = 1;
+          }
         }
       } else {
         const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
-        if (m) requestDeleteSelection({ moduleIds: [m.id], buildingIds: [] });
+        if (m) {
+          const res = deleteSelectionCmd(curDoc, { moduleIds: [m.id], buildingIds: [] }, { cascadeBuildingsInModules: true });
+          if (res.changed) {
+            const rmBlds = curDoc.buildings.length - res.doc.buildings.length;
+            stateRef.current.doc = res.doc;
+            commitDoc(res.doc);
+            dragRef.current.sweepCommitted = true;
+            dragRef.current.sweepModCount = 1;
+            dragRef.current.sweepBldCount = rmBlds;
+          }
+        }
       }
       return;
     }
@@ -1679,12 +1688,30 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (d.kind === 'demolish' && stateRef.current.viewMode === 'building') {
-      const curDoc = stateRef.current.doc;
-      const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), stateRef.current.focusFloor);
-      if (b) {
-        const res = deleteSelectionCmd(curDoc, { moduleIds: [], buildingIds: [b.id] });
-        if (res.changed) commitDoc(res.doc);
+    if (d.kind === 'demolish') {
+      const { doc: curDoc, viewMode: vm, focusFloor: fl } = stateRef.current;
+      let res: ReturnType<typeof deleteSelectionCmd> | null = null;
+      if (vm === 'building') {
+        const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), fl);
+        if (b) res = deleteSelectionCmd(curDoc, { moduleIds: [], buildingIds: [b.id] });
+      } else {
+        const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
+        if (m) res = deleteSelectionCmd(curDoc, { moduleIds: [m.id], buildingIds: [] }, { cascadeBuildingsInModules: true });
+      }
+      if (res && res.changed) {
+        const rmMods = curDoc.modules.length - res.doc.modules.length;
+        const rmBlds = curDoc.buildings.length - res.doc.buildings.length;
+        stateRef.current.doc = res.doc;
+        if (!d.sweepCommitted) {
+          commitDoc(res.doc);
+          d.sweepCommitted = true;
+        } else {
+          // Batch entire continuous sweep stroke into ONE atomic Ctrl+Z undo step!
+          setHistory((h) => ({ ...h, present: res!.doc }));
+          setDirty(true);
+        }
+        d.sweepModCount += rmMods;
+        d.sweepBldCount += rmBlds;
       }
     }
   };
@@ -1829,7 +1856,12 @@ export const App: React.FC = () => {
         if (vm === 'building') {
           const b = clickedBld;
           if (b) {
-            if (e.shiftKey) {
+            if (e.altKey) {
+              setSelection({
+                moduleIds: prevSel.moduleIds,
+                buildingIds: prevSel.buildingIds.filter((x) => x !== b.id),
+              });
+            } else if (e.shiftKey) {
               const exists = prevSel.buildingIds.includes(b.id);
               setSelection({
                 moduleIds: prevSel.moduleIds,
@@ -1838,13 +1870,18 @@ export const App: React.FC = () => {
             } else {
               setSelection({ moduleIds: [], buildingIds: [b.id] });
             }
-          } else if (!e.shiftKey) {
+          } else if (!e.shiftKey && !e.altKey) {
             setSelection(EMPTY_SELECTION);
           }
         } else {
           const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
           if (m) {
-            if (e.shiftKey) {
+            if (e.altKey) {
+              setSelection({
+                moduleIds: prevSel.moduleIds.filter((x) => x !== m.id),
+                buildingIds: prevSel.buildingIds,
+              });
+            } else if (e.shiftKey) {
               const exists = prevSel.moduleIds.includes(m.id);
               setSelection({
                 moduleIds: exists ? prevSel.moduleIds.filter((x) => x !== m.id) : [...prevSel.moduleIds, m.id],
@@ -1853,10 +1890,18 @@ export const App: React.FC = () => {
             } else {
               setSelection({ moduleIds: [m.id], buildingIds: [] });
             }
-          } else if (!e.shiftKey) {
+          } else if (!e.shiftKey && !e.altKey) {
             setSelection(EMPTY_SELECTION);
           }
         }
+      }
+    } else if (d.kind === 'demolish') {
+      if (d.sweepModCount > 0 && d.sweepBldCount > 0) {
+        showToast(`已拆除 ${d.sweepModCount} 个模块及内部 ${d.sweepBldCount} 台建筑（Ctrl+Z 撤销）`);
+      } else if (d.sweepModCount > 0) {
+        showToast(`已拆除 ${d.sweepModCount} 个模块（Ctrl+Z 撤销）`);
+      } else if (d.sweepBldCount > 1) {
+        showToast(`已扫拆 ${d.sweepBldCount} 台建筑（Ctrl+Z 撤销）`);
       }
     } else if (d.kind === 'belt-stroke' || d.kind === 'belt-plan') {
       const tool = stateRef.current.activeTool;
@@ -1872,18 +1917,42 @@ export const App: React.FC = () => {
     dragRef.current.kind = 'none';
     dragRef.current.moved = false;
     dragRef.current.liveSelection = null;
+    dragRef.current.sweepCommitted = false;
+    dragRef.current.sweepModCount = 0;
+    dragRef.current.sweepBldCount = 0;
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+  // Native non-passive wheel handler so Shift+Wheel steps floors cleanly without triggering browser scroll!
+  const wheelFloorAccumRef = useRef(0);
+  useEffect(() => {
     const el = viewportRef.current;
-    const ctrl = sceneRef.current;
-    if (!el || !ctrl) return;
-    const rect = el.getBoundingClientRect();
-    const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    const hit = ctrl.rig.intersectFocusPlane(ndcX, ndcY);
-    ctrl.rig.zoomByWheel(e.deltaY, hit);
-  };
+    if (!el) return;
+    const onWheelNative = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.shiftKey) {
+        const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        if (delta === 0) return;
+        wheelFloorAccumRef.current += delta;
+        const threshold = e.deltaMode === 1 ? 1 : 40;
+        if (Math.abs(wheelFloorAccumRef.current) >= threshold) {
+          const step = wheelFloorAccumRef.current < 0 ? 1 : -1;
+          wheelFloorAccumRef.current = 0;
+          setFocusFloor((f) => Math.max(-2, Math.min(8, f + step)));
+        }
+        return;
+      }
+      wheelFloorAccumRef.current = 0;
+      const ctrl = sceneRef.current;
+      if (!ctrl) return;
+      const rect = el.getBoundingClientRect();
+      const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      const hit = ctrl.rig.intersectFocusPlane(ndcX, ndcY);
+      ctrl.rig.zoomByWheel(e.deltaY, hit);
+    };
+    el.addEventListener('wheel', onWheelNative, { passive: false });
+    return () => el.removeEventListener('wheel', onWheelNative);
+  }, []);
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (stateRef.current.activeTool.kind !== 'select') return;
@@ -2465,7 +2534,6 @@ export const App: React.FC = () => {
             updateLiveCursor(null);
             hideHoverTip();
           }}
-          onWheel={handleWheel}
           onDoubleClick={handleDoubleClick}
         />
 
@@ -2750,43 +2818,6 @@ export const App: React.FC = () => {
               <button type="button" className="cad-btn" onClick={() => setSaveDialog(null)}>取消</button>
               <button type="button" className="cad-btn accent" onClick={() => void executeSaveDialog()}>
                 {saveTargetLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {deleteConfirm && (
-        <div className="cad-modal-overlay" onClick={() => setDeleteConfirm(null)}>
-          <div className="cad-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="panel-header">
-              <div className="panel-title-wrap">
-                <span className="panel-tag warn">CONFIRM</span>
-                <span className="panel-title">确认删除</span>
-              </div>
-              <button type="button" className="icon-btn" onClick={() => setDeleteConfirm(null)}>×</button>
-            </div>
-            <div className="modal-body">
-              <p className="confirm-text">
-                删除 <strong>{deleteConfirm.moduleCount}</strong> 个模块及内部{' '}
-                <strong>{deleteConfirm.insideBuildingCount}</strong> 个建筑（Ctrl+Z 可撤销）。
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="cad-btn" onClick={() => setDeleteConfirm(null)}>取消</button>
-              <button
-                type="button"
-                className="cad-btn danger"
-                onClick={() => {
-                  const res = deleteSelectionCmd(doc, deleteConfirm.selection, { cascadeBuildingsInModules: true });
-                  if (res.changed) {
-                    commitDoc(res.doc);
-                    setSelection(EMPTY_SELECTION);
-                  }
-                  setDeleteConfirm(null);
-                }}
-              >
-                确认删除
               </button>
             </div>
           </div>

@@ -186,25 +186,58 @@ interface InEdge {
   capacity: number;
 }
 
+interface ElevatorPortInfo {
+  stackId: string;
+  portX: number;
+  portY: number;
+  adjX: number;
+  adjY: number;
+  /** Direction items exit FROM this elevator port INTO buildable floor cell (adjX, adjY) */
+  outDir: Rotation;
+}
+
 /**
  * Build 26639889 binary-verified ElevatorObject stack rule (MainSequence-Win64-Shipping.exe @ 0x1442e1d68):
- * Stacked elevator blocks merge into one shared ElevatorStack ONLY when XY coordinates match AND their floors
- * are vertically contiguous (next.floor === prev.floor + prev.sizeUnits[2], zero air gaps!).
- * Returns a map from world port cellKey -> continuous stackId so belts across gaps NEVER falsely link.
+ * Stacked elevator blocks merge into one shared ElevatorStack ONLY when module type AND XY coordinates match
+ * AND their floors are vertically contiguous (next.floor === prev.floor + prev.sizeUnits[2], zero air gaps!).
+ * Each port carries its exact outward face direction (`outDir`) into its adjacent buildable cell `(adjX, adjY)`,
+ * supporting both straight-out and perpendicular side-turning exit belts cleanly without wall-bleed.
  */
-function collectElevatorPortStacks(doc: BlueprintDocument): Map<string, string> {
-  const ports = new Map<string, string>();
-  const byXY = new Map<string, Array<{ mod: BlueprintDocument['modules'][number]; def: NonNullable<ReturnType<typeof getModuleDef>> }>>();
+function collectElevatorPortStacks(doc: BlueprintDocument): {
+  byPortCell: Map<string, ElevatorPortInfo>;
+  byAdjCell: Map<string, ElevatorPortInfo[]>;
+} {
+  const byPortCell = new Map<string, ElevatorPortInfo>();
+  const byAdjCell = new Map<string, ElevatorPortInfo[]>();
+  const byTypeXY = new Map<
+    string,
+    Array<{ mod: BlueprintDocument['modules'][number]; def: NonNullable<ReturnType<typeof getModuleDef>> }>
+  >();
+
   for (const mod of doc.modules) {
     const def = getModuleDef(mod.type);
     if (!def || !def.floors.some((f) => f.elevatorPorts && f.elevatorPorts.length > 0)) continue;
-    const key = `${mod.gx},${mod.gy}`;
-    const arr = byXY.get(key);
+    // Key includes mod.type so 1x1 (center shaft) and 2x2 (±9m perimeter shafts) NEVER cross-merge!
+    const key = `${mod.type}:${mod.gx},${mod.gy}`;
+    const arr = byTypeXY.get(key);
     if (arr) arr.push({ mod, def });
-    else byXY.set(key, [{ mod, def }]);
+    else byTypeXY.set(key, [{ mod, def }]);
   }
 
-  for (const [xyKey, list] of byXY.entries()) {
+  const inferLocalOutDir = (modType: string, lx: number, ly: number): Rotation => {
+    if (modType === 'BPO_ElevatorBlock_03') {
+      // 1x1 elevator ports sit on doorway side walls:
+      // |ly| > |lx| -> N/S doorway side wall (x = ±3.5 faces inward toward x=0 -> W if lx>0, E if lx<0)
+      // |lx| > |ly| -> E/W doorway side wall (y = ±3.5 faces inward toward y=0 -> N if ly>0, S if ly<0)
+      if (Math.abs(ly) > Math.abs(lx)) return lx > 0 ? 2 : 0;
+      return ly > 0 ? 3 : 1;
+    }
+    // 2x2 elevator ports sit on central shaft perimeter (±8.5) facing outward into the surrounding floor ring
+    if (Math.abs(lx) >= Math.abs(ly)) return lx < 0 ? 2 : 0;
+    return ly < 0 ? 3 : 1;
+  };
+
+  for (const [typeXyKey, list] of byTypeXY.entries()) {
     list.sort((a, b) => a.mod.floor - b.mod.floor);
     let stackSeq = 0;
     let prevTopFloor = Number.NaN;
@@ -213,55 +246,98 @@ function collectElevatorPortStacks(doc: BlueprintDocument): Map<string, string> 
         stackSeq++;
       }
       prevTopFloor = mod.floor + def.sizeUnits[2];
-      const stackId = `${xyKey}#${stackSeq}`;
+      const stackId = `${typeXyKey}#${stackSeq}`;
       const [cx, cy] = getModuleCenterM(mod, def);
       for (const fl of def.floors) {
         if (!fl.elevatorPorts) continue;
+        const portFloor = mod.floor + fl.floorOffset;
         for (const ep of fl.elevatorPorts) {
-          const [rx, ry] = rotateVec2(ep.x, ep.y, mod.rotation);
-          const wx = Math.floor(cx + rx);
-          const wy = Math.floor(cy + ry);
-          ports.set(cellKey(mod.floor + fl.floorOffset, wx, wy), stackId);
+          // Convert integer cell-corner coords (1x1 catalog) to cell centers before rotating
+          const localCenterX = Number.isInteger(ep.x) ? ep.x + 0.5 : ep.x;
+          const localCenterY = Number.isInteger(ep.y) ? ep.y + 0.5 : ep.y;
+          const localOutDir = inferLocalOutDir(mod.type, localCenterX, localCenterY);
+          const outDir = normalizeRotation(localOutDir + mod.rotation);
+          const [rx, ry] = rotateVec2(localCenterX, localCenterY, mod.rotation);
+          const portX = Math.floor(cx + rx);
+          const portY = Math.floor(cy + ry);
+          const [odx, ody] = rotationToDelta(outDir);
+          const adjX = portX + odx;
+          const adjY = portY + ody;
+          const info: ElevatorPortInfo = { stackId, portX, portY, adjX, adjY, outDir };
+          byPortCell.set(cellKey(portFloor, portX, portY), info);
+          const adjKey = cellKey(portFloor, adjX, adjY);
+          const adjArr = byAdjCell.get(adjKey);
+          if (adjArr) adjArr.push(info);
+          else byAdjCell.set(adjKey, [info]);
         }
       }
     }
   }
-  return ports;
+  return { byPortCell, byAdjCell };
 }
 
 interface DockPortSpec {
   moduleId: string;
   portIndex: number;
+  portX: number;
+  portY: number;
+  adjX: number;
+  adjY: number;
+  outDir: Rotation;
   itemId?: string;
   mode?: 'unload' | 'load';
 }
 
 /**
- * Build 26639889 binary-verified BPO_Dock_2 (BPO_IndustrialDock::Filters[8]) port cells:
- * 8 bidirectional ports along the interior docking apron edge (local lx = -8.5, ly = [-5.5..-2.5, +2.5..+5.5]).
+ * Build 26639889 binary-verified Dock port cells:
+ * - BPO_Dock_2 (BPO_IndustrialDock::Filters[8]): 8 bidirectional ports along interior apron edge (lx=-8.5, ly=[-5.5..-2.5, +2.5..+5.5])
+ * - BPO_Dock (BPO_StationBlockDock::Filters[2]): 2 bidirectional ports on West connector edge (lx=-7.5, ly=[-0.5, +0.5])
  */
-function collectIndustrialDockPorts(doc: BlueprintDocument): Map<string, DockPortSpec> {
-  const dockPorts = new Map<string, DockPortSpec>();
-  const LOCAL_Y = [-5.5, -4.5, -3.5, -2.5, 2.5, 3.5, 4.5, 5.5];
+function collectDockPorts(doc: BlueprintDocument): {
+  byPortCell: Map<string, DockPortSpec>;
+  byAdjCell: Map<string, DockPortSpec[]>;
+} {
+  const byPortCell = new Map<string, DockPortSpec>();
+  const byAdjCell = new Map<string, DockPortSpec[]>();
+  const IND_LOCAL_Y = [-5.5, -4.5, -3.5, -2.5, 2.5, 3.5, 4.5, 5.5];
+  const STD_LOCAL_Y = [-0.5, 0.5];
+
   for (const mod of doc.modules) {
-    if (mod.type !== 'BPO_Dock_2') continue;
+    if (mod.type !== 'BPO_Dock_2' && mod.type !== 'BPO_Dock') continue;
     const def = getModuleDef(mod.type);
     if (!def) continue;
     const [cx, cy] = getModuleCenterM(mod, def);
-    for (let i = 0; i < LOCAL_Y.length; i++) {
-      const [rx, ry] = rotateVec2(-8.5, LOCAL_Y[i], mod.rotation);
-      const wx = Math.floor(cx + rx);
-      const wy = Math.floor(cy + ry);
+    const localX = mod.type === 'BPO_Dock_2' ? -8.5 : -7.5;
+    const ys = mod.type === 'BPO_Dock_2' ? IND_LOCAL_Y : STD_LOCAL_Y;
+    const outDir = normalizeRotation(2 + mod.rotation); // West face at rot=0
+    const [odx, ody] = rotationToDelta(outDir);
+
+    for (let i = 0; i < ys.length; i++) {
+      const [rx, ry] = rotateVec2(localX, ys[i], mod.rotation);
+      const portX = Math.floor(cx + rx);
+      const portY = Math.floor(cy + ry);
+      const adjX = portX + odx;
+      const adjY = portY + ody;
       const cfg = mod.dockPorts?.find((p) => p.portIndex === i);
-      dockPorts.set(cellKey(mod.floor, wx, wy), {
+      const spec: DockPortSpec = {
         moduleId: mod.id,
         portIndex: i,
+        portX,
+        portY,
+        adjX,
+        adjY,
+        outDir,
         itemId: cfg?.itemId,
         mode: cfg?.mode,
-      });
+      };
+      byPortCell.set(cellKey(mod.floor, portX, portY), spec);
+      const adjKey = cellKey(mod.floor, adjX, adjY);
+      const adjArr = byAdjCell.get(adjKey);
+      if (adjArr) adjArr.push(spec);
+      else byAdjCell.set(adjKey, [spec]);
     }
   }
-  return dockPorts;
+  return { byPortCell, byAdjCell };
 }
 
 function isDoorwayThresholdCell(doc: BlueprintDocument, x: number, y: number, floor: number): boolean {
@@ -330,8 +406,8 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
   const defById = new Map<string, BuildableDef>();
   const buildingById = new Map<string, PlacedBuilding>();
   const cellMap = new Map<string, PlacedBuilding>();
-  const elevatorPorts = collectElevatorPortStacks(doc);
-  const dockPorts = collectIndustrialDockPorts(doc);
+  const { byPortCell: elevatorPorts, byAdjCell: elevatorAdjPorts } = collectElevatorPortStacks(doc);
+  const { byPortCell: dockPorts, byAdjCell: dockAdjPorts } = collectDockPorts(doc);
   const dockEntryItem = new Map<string, string>();
 
   for (const b of doc.buildings) {
@@ -559,6 +635,9 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
     bid: string;
     floor: number;
     speed: number;
+    portIndex?: number;
+    toPortIndex?: number;
+    filterItem?: string;
   }
   const elevInByCol = new Map<string, ElevTap[]>();
   const elevOutByCol = new Map<string, ElevTap[]>();
@@ -580,14 +659,19 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       const fx = b.x + dx;
       const fy = b.y + dy;
 
-      const backElevStack = elevatorPorts.get(cellKey(b.floor, bx, by));
-      const backDock = dockPorts.get(cellKey(b.floor, bx, by));
-      if (backElevStack) {
+      // Receiving from adjacent Elevator or Dock port (supports BOTH straight-out AND perpendicular side-turning belts!)
+      const adjElevHits = elevatorAdjPorts.get(cellKey(b.floor, b.x, b.y));
+      const matchedElevIn = adjElevHits?.filter((ep) => b.rotation !== oppositeRot(ep.outDir)) ?? [];
+      const adjDockHits = dockAdjPorts.get(cellKey(b.floor, b.x, b.y));
+      const matchedDockIn = adjDockHits?.find((dp) => b.rotation !== oppositeRot(dp.outDir));
+      if (matchedElevIn.length > 0) {
         entrySourceKind.set(b.id, 'elevator');
-        pushElev(elevOutByCol, `${backElevStack}:${bx},${by}`, { bid: b.id, floor: b.floor, speed });
-      } else if (backDock) {
+        for (const ep of matchedElevIn) {
+          pushElev(elevOutByCol, `${ep.stackId}:${ep.portX},${ep.portY}`, { bid: b.id, floor: b.floor, speed });
+        }
+      } else if (matchedDockIn) {
         entrySourceKind.set(b.id, 'dock');
-        if (backDock.itemId) dockEntryItem.set(b.id, backDock.itemId);
+        if (matchedDockIn.itemId) dockEntryItem.set(b.id, matchedDockIn.itemId);
       } else if (
         !virtualObsAdjCells.has(cellKey(b.floor, b.x, b.y)) &&
         isDoorwayThresholdCell(doc, b.x, b.y, b.floor) &&
@@ -596,8 +680,10 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         entrySourceKind.set(b.id, 'doorway');
       }
 
-      const frontElevStack = elevatorPorts.get(cellKey(b.floor, fx, fy));
+      const frontElev = elevatorPorts.get(cellKey(b.floor, fx, fy));
+      const frontElevMatch = frontElev && b.rotation === oppositeRot(frontElev.outDir) ? frontElev : null;
       const frontDock = dockPorts.get(cellKey(b.floor, fx, fy));
+      const frontDockMatch = frontDock && b.rotation === oppositeRot(frontDock.outDir) ? frontDock : null;
       const { target: machHit, disabledHit } = findEnabledMachinePortAccepting(b.floor, b.x, b.y, b.rotation);
       if (machHit) {
         addEdge(b.id, machHit.building.id, speed, undefined, machHit.portIndex);
@@ -613,11 +699,11 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           b.y,
           b.id
         );
-      } else if (frontElevStack) {
+      } else if (frontElevMatch) {
         exitSinkKind.set(b.id, 'elevator');
         boundaryExits.add(b.id);
-        pushElev(elevInByCol, `${frontElevStack}:${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
-      } else if (frontDock) {
+        pushElev(elevInByCol, `${frontElevMatch.stackId}:${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
+      } else if (frontDockMatch) {
         exitSinkKind.set(b.id, 'dock');
         boundaryExits.add(b.id);
       } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, fx, fy, b.floor)) {
@@ -694,11 +780,28 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       }
 
       if (b.undergroundMode === 'in') {
+        const adjElevHits = elevatorAdjPorts.get(cellKey(b.floor, b.x, b.y));
+        const matchedElevIn = adjElevHits?.filter((ep) => ep.outDir === b.rotation) ?? [];
+        const adjDockHits = dockAdjPorts.get(cellKey(b.floor, b.x, b.y));
+        const matchedDockIn = adjDockHits?.find((dp) => dp.outDir === b.rotation);
+        if (matchedElevIn.length > 0) {
+          entrySourceKind.set(b.id, 'elevator');
+          for (const ep of matchedElevIn) {
+            pushElev(elevOutByCol, `${ep.stackId}:${ep.portX},${ep.portY}`, { bid: b.id, floor: b.floor, speed });
+          }
+        } else if (matchedDockIn) {
+          entrySourceKind.set(b.id, 'dock');
+          if (matchedDockIn.itemId) dockEntryItem.set(b.id, matchedDockIn.itemId);
+        }
         const partner = ugPartnerByIn.get(b.id);
         if (partner) addEdge(b.id, partner.id, speed);
       } else {
         const fx = b.x + dx;
         const fy = b.y + dy;
+        const frontElev = elevatorPorts.get(cellKey(b.floor, fx, fy));
+        const frontElevMatch = frontElev && b.rotation === oppositeRot(frontElev.outDir) ? frontElev : null;
+        const frontDock = dockPorts.get(cellKey(b.floor, fx, fy));
+        const frontDockMatch = frontDock && b.rotation === oppositeRot(frontDock.outDir) ? frontDock : null;
         const { target: machHit, disabledHit } = findEnabledMachinePortAccepting(b.floor, b.x, b.y, b.rotation);
         if (machHit) {
           addEdge(b.id, machHit.building.id, speed, undefined, machHit.portIndex);
@@ -713,12 +816,11 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
             b.y,
             b.id
           );
-        } else if (elevatorPorts.has(cellKey(b.floor, fx, fy))) {
-          const stackId = elevatorPorts.get(cellKey(b.floor, fx, fy))!;
+        } else if (frontElevMatch) {
           exitSinkKind.set(b.id, 'elevator');
           boundaryExits.add(b.id);
-          pushElev(elevInByCol, `${stackId}:${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
-        } else if (dockPorts.has(cellKey(b.floor, fx, fy))) {
+          pushElev(elevInByCol, `${frontElevMatch.stackId}:${fx},${fy}`, { bid: b.id, floor: b.floor, speed });
+        } else if (frontDockMatch) {
           exitSinkKind.set(b.id, 'dock');
           boundaryExits.add(b.id);
         } else if (isDoorwayThresholdCell(doc, b.x, b.y, b.floor) && isBoundaryFloorMissing(doc, fx, fy, b.floor)) {
@@ -742,6 +844,22 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
         }
       }
     } else if (def.kind === 'splitter') {
+      const splAdjElev = elevatorAdjPorts.get(cellKey(b.floor, b.x, b.y))?.filter((ep) => ep.outDir === b.rotation) ?? [];
+      const splAdjDock = dockAdjPorts.get(cellKey(b.floor, b.x, b.y))?.find((dp) => dp.outDir === b.rotation);
+      if (splAdjElev.length > 0) {
+        entrySourceKind.set(b.id, 'elevator');
+        for (const ep of splAdjElev) {
+          pushElev(elevOutByCol, `${ep.stackId}:${ep.portX},${ep.portY}`, {
+            bid: b.id,
+            floor: b.floor,
+            speed,
+            toPortIndex: 0,
+          });
+        }
+      } else if (splAdjDock) {
+        entrySourceKind.set(b.id, 'dock');
+        if (splAdjDock.itemId) dockEntryItem.set(b.id, splAdjDock.itemId);
+      }
       const dis = new Set(b.disabledPorts ?? []);
       const outPortDirs: Array<[number, Rotation]> = [
         [1, ((b.rotation + 1) % 4) as Rotation],
@@ -772,7 +890,26 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           );
           continue;
         }
-        if (isBoundaryFloorMissing(doc, tx, ty, b.floor) || elevatorPorts.has(cellKey(b.floor, tx, ty))) {
+        const splElev = elevatorPorts.get(cellKey(b.floor, tx, ty));
+        if (splElev && pDir === oppositeRot(splElev.outDir)) {
+          exitSinkKind.set(b.id, 'elevator');
+          boundaryExits.add(b.id);
+          pushElev(elevInByCol, `${splElev.stackId}:${tx},${ty}`, {
+            bid: b.id,
+            floor: b.floor,
+            speed,
+            portIndex: pIdx,
+            filterItem,
+          });
+          continue;
+        }
+        const splDock = dockPorts.get(cellKey(b.floor, tx, ty));
+        if (splDock && pDir === oppositeRot(splDock.outDir)) {
+          exitSinkKind.set(b.id, 'dock');
+          boundaryExits.add(b.id);
+          continue;
+        }
+        if (isBoundaryFloorMissing(doc, tx, ty, b.floor)) {
           boundaryExits.add(b.id);
           continue;
         }
@@ -790,7 +927,28 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       const worldPorts = getBuildingWorldPorts(b, def);
       const [dx, dy] = rotationToDelta(b.rotation);
       for (const wp of worldPorts) {
-        if (wp.port.role !== 'out') continue;
+        if (wp.port.role === 'in') {
+          const ownX = Math.floor(wp.worldX + dx * 0.5);
+          const ownY = Math.floor(wp.worldY + dy * 0.5);
+          const balAdjElev =
+            elevatorAdjPorts.get(cellKey(b.floor, ownX, ownY))?.filter((ep) => ep.outDir === b.rotation) ?? [];
+          const balAdjDock = dockAdjPorts.get(cellKey(b.floor, ownX, ownY))?.find((dp) => dp.outDir === b.rotation);
+          if (balAdjElev.length > 0) {
+            entrySourceKind.set(b.id, 'elevator');
+            for (const ep of balAdjElev) {
+              pushElev(elevOutByCol, `${ep.stackId}:${ep.portX},${ep.portY}`, {
+                bid: b.id,
+                floor: b.floor,
+                speed,
+                toPortIndex: wp.port.index,
+              });
+            }
+          } else if (balAdjDock) {
+            entrySourceKind.set(b.id, 'dock');
+            if (balAdjDock.itemId) dockEntryItem.set(b.id, balAdjDock.itemId);
+          }
+          continue;
+        }
         const ownX = Math.floor(wp.worldX - dx * 0.5);
         const ownY = Math.floor(wp.worldY - dy * 0.5);
         const tx = wp.outsideCellX;
@@ -814,7 +972,26 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
           );
           continue;
         }
-        if (isBoundaryFloorMissing(doc, tx, ty, b.floor) || elevatorPorts.has(cellKey(b.floor, tx, ty))) {
+        const balElev = elevatorPorts.get(cellKey(b.floor, tx, ty));
+        if (balElev && b.rotation === oppositeRot(balElev.outDir)) {
+          exitSinkKind.set(b.id, 'elevator');
+          boundaryExits.add(b.id);
+          pushElev(elevInByCol, `${balElev.stackId}:${tx},${ty}`, {
+            bid: b.id,
+            floor: b.floor,
+            speed,
+            portIndex: wp.port.index,
+            filterItem,
+          });
+          continue;
+        }
+        const balDock = dockPorts.get(cellKey(b.floor, tx, ty));
+        if (balDock && b.rotation === oppositeRot(balDock.outDir)) {
+          exitSinkKind.set(b.id, 'dock');
+          boundaryExits.add(b.id);
+          continue;
+        }
+        if (isBoundaryFloorMissing(doc, tx, ty, b.floor)) {
           boundaryExits.add(b.id);
           continue;
         }
@@ -884,7 +1061,14 @@ export function simulateBlueprint(doc: BlueprintDocument): SimulationReport {
       let linkedAny = false;
       for (const outRec of outs) {
         if (outRec.floor === inRec.floor) continue;
-        addEdge(inRec.bid, outRec.bid, Math.min(inRec.speed, outRec.speed));
+        addEdge(
+          inRec.bid,
+          outRec.bid,
+          Math.min(inRec.speed, outRec.speed),
+          inRec.portIndex,
+          outRec.toPortIndex,
+          inRec.filterItem
+        );
         entrySourceKind.delete(outRec.bid);
         linkedAny = true;
       }
