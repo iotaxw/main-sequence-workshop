@@ -21,6 +21,7 @@ import {
   getRecipesForCrafter,
 } from './catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './codec';
+import { checkBlueprintWorkbench } from './workbench-check';
 import {
   boxSelectEntities,
   commitHistory,
@@ -2037,4 +2038,142 @@ describe('GitHubPrivateRepoDriver client-side private blueprint cloud sync', () 
     const oreIn = rep.netInputs.find((i) => i.itemId === 'ITEM_TitaniumOre');
     expect(oreIn?.ratePerSec).toBeCloseTo(2 / 3, 2);
   });
+});
+
+describe('Workbench Lightweight Checker (workbench-check.ts)', () => {
+  it('detects 3D module-overlap, building-out-of-floor, building-overlap, and invalid-recipe in both ZH and EN', () => {
+    const doc = createEmptyBlueprint('geom-faults');
+    doc.modules.push(
+      { id: 'm1', type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 },
+      { id: 'm2', type: 'BPO_Station_02A', gx: 1, gy: 0, floor: 0, rotation: 0 } // 3D overlap!
+    );
+    doc.buildings.push(
+      // Out of floor
+      { id: 'b_off', type: 'DAT_ConveyorBelt3', x: -5, y: 5, floor: 0, rotation: 0 },
+      // Overlapping pair inside floor
+      { id: 'b_ov1', type: 'DAT_ConveyorBelt3', x: 4, y: 4, floor: 0, rotation: 0 },
+      { id: 'b_ov2', type: 'DAT_ConveyorBelt3', x: 4, y: 4, floor: 0, rotation: 0 },
+      // Invalid recipe on Refinery
+      { id: 'b_badrec', type: 'DAT_Refinery', x: 8, y: 4, floor: 0, rotation: 0, recipeId: 'REC_DoesNotExist' }
+    );
+
+    const zh = checkBlueprintWorkbench(doc, 'zh');
+    expect(zh.passed).toBe(false);
+    expect(zh.faults.some((f) => f.code === 'module-overlap' && f.moduleId === 'm1')).toBe(true);
+    expect(zh.faults.some((f) => f.code === 'building-out-of-floor' && f.buildingId === 'b_off')).toBe(true);
+    expect(zh.faults.some((f) => f.code === 'building-overlap')).toBe(true);
+    expect(zh.faults.some((f) => f.code === 'invalid-recipe' && f.buildingId === 'b_badrec')).toBe(true);
+
+    const en = checkBlueprintWorkbench(doc, 'en');
+    expect(en.passed).toBe(false);
+    const modFaultEn = en.faults.find((f) => f.code === 'module-overlap');
+    expect(modFaultEn?.message).toContain('Module 3D overlap');
+    const recFaultEn = en.faults.find((f) => f.code === 'invalid-recipe');
+    expect(recFaultEn?.message).toContain('Invalid or incompatible recipe');
+  });
+
+  it('separates I/O spots from faults, computes exact full-load rated ledgers, and provides O(1) belt item hover lookup', () => {
+    let doc = createEmptyBlueprint('clean-smelt');
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_SolarPanelBlock_02', gx: -1, gy: 0, floor: 0, rotation: 0 }).doc; // 48 MW
+    // Open input belt (3,6) -> Refinery (4,5, 3x3) REC_TitaniumPlates -> output belt (7,6) -> Container (8,5)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 3, y: 6, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_Refinery',
+      x: 4,
+      y: 5,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_TitaniumPlates',
+    }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 7, y: 6, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_Container', x: 8, y: 5, floor: 0, rotation: 0 }).doc;
+
+    const rep = checkBlueprintWorkbench(doc, 'en');
+    expect(rep.passed).toBe(true);
+    expect(rep.faults.length).toBe(0);
+    // Boundary I/O spots live cleanly in ioSpots (hidden by default in UI)
+    expect(rep.inputSpotCount).toBeGreaterThanOrEqual(1);
+    expect(rep.outputSpotCount).toBeGreaterThanOrEqual(1);
+    // Exact full-load rated ledger: 1 TitaniumOre -> 1 TitaniumPlates / 3s
+    expect(rep.ratedNetInputs.find((x) => x.itemId === 'ITEM_TitaniumOre')?.ratePerSec).toBeCloseTo(1 / 3, 2);
+    expect(rep.ratedNetOutputs.find((x) => x.itemId === 'ITEM_TitaniumPlates')?.ratePerSec).toBeCloseTo(1 / 3, 2);
+    // Power ledger: 48 MW solar vs 4.5 MW refinery
+    expect(rep.power.maxGenMW).toBe(48);
+    expect(rep.power.peakDrawMW).toBe(4.5);
+    expect(rep.power.netBalanceMW).toBe(43.5);
+    // O(1) hover cell lookup: input belt carries TitaniumOre, output belt carries TitaniumPlates!
+    expect(rep.getCellItem(0, 3, 6)).toEqual({
+      items: ['ITEM_TitaniumOre'],
+      tier: 3,
+      capacity: 3,
+      mixed: false,
+    });
+    expect(rep.getCellItem(0, 7, 6)).toEqual({
+      items: ['ITEM_TitaniumPlates'],
+      tier: 3,
+      capacity: 3,
+      mixed: false,
+    });
+  });
+
+  it('respects filtered splitter exclusion and detects real mixed belts, wrong items, and elevator stack gaps', () => {
+    let doc = createEmptyBlueprint('filter-and-elev');
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    // Elevator 1x1 at L0 and L2 (missing L1 -> gap!)
+    doc = placeModuleCmd(doc, { type: 'BPO_ElevatorBlock_03', gx: 2, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_ElevatorBlock_03', gx: 2, gy: 0, floor: 2, rotation: 0 }).doc;
+
+    // Source container with [TitaniumOre, NickelOre] -> Filtered splitter (port 2 filtered TitaniumOre, port 1 unfiltered gets ONLY NickelOre!)
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_Container',
+      x: 2,
+      y: 6,
+      floor: 0,
+      rotation: 0,
+      filterItems: ['ITEM_TitaniumOre', 'ITEM_NickelOre'],
+    }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 4, y: 6, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_Splitter_3',
+      x: 5,
+      y: 6,
+      floor: 0,
+      rotation: 0,
+      portFilters: { 2: 'ITEM_TitaniumOre' },
+    }).doc;
+    // Straight east (port 2): TitaniumOre only -> Refinery REC_TitaniumPlates (no wrong item!)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 6, y: 6, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, {
+      type: 'DAT_Refinery',
+      x: 7,
+      y: 5,
+      floor: 0,
+      rotation: 0,
+      recipeId: 'REC_TitaniumPlates',
+    }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 10, y: 6, floor: 0, rotation: 0 }).doc;
+    // South (port 1, unfiltered overflow): NickelOre ONLY (TitaniumOre excluded by sibling filter!)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 5, y: 7, floor: 0, rotation: 1 }).doc;
+
+    const rep = checkBlueprintWorkbench(doc, 'zh');
+    expect(rep.faults.some((f) => f.code === 'elevator-stack-gap')).toBe(true);
+    expect(rep.faults.some((f) => f.code === 'machine-wrong-item')).toBe(false);
+    expect(rep.getCellItem(0, 6, 6)?.items).toEqual(['ITEM_TitaniumOre']);
+    expect(rep.getCellItem(0, 5, 7)?.items).toEqual(['ITEM_NickelOre']);
+  });
+
+  if (HAS_PRIVATE_PRESETS) {
+    it('verifies 02-星穹金字塔-完整带线总图.json (29k+ buildings) with 0 errors and 0 false warnings', () => {
+      const preset = DEFAULT_LIBRARY_PRESETS.find((p) => p.path.includes('02-星穹金字塔-完整带线总图'));
+      expect(preset).toBeDefined();
+      const rep = checkBlueprintWorkbench(preset!.doc, 'zh');
+      expect(rep.passed).toBe(true);
+      expect(rep.errorCount).toBe(0);
+      expect(rep.warnCount).toBe(0);
+      expect(rep.configuredMachineCount).toBeGreaterThan(300);
+      expect(rep.ratedNetInputs.length).toBeGreaterThan(10);
+      expect(rep.ratedNetOutputs.length).toBeGreaterThan(10);
+    });
+  }
 });

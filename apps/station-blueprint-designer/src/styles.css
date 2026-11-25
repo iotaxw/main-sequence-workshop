@@ -1478,6 +1478,57 @@ body,
   font-weight: 600;
 }
 
+.sim-kpi-val.ok {
+  color: var(--line-active);
+}
+
+.sim-kpi-val.warn {
+  color: #e5a93c;
+}
+
+.sim-verdict-ms {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.sim-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sim-io-toggle {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.sim-io-toggle:hover {
+  border-color: var(--border-mid);
+  color: var(--text-bright);
+}
+
+.sim-io-toggle.active {
+  border-color: #e5a93c;
+  color: #e5a93c;
+  background: rgba(229, 169, 60, 0.12);
+}
+
+.cad-shell[data-theme='stealth-cad'] .sim-io-toggle.active,
+.cad-shell[data-theme='stealth-cad'] .sim-kpi-val.warn {
+  color: #b4690e;
+  border-color: #d48308;
+}
+
 .sim-power-bar {
   background: var(--bg-surface);
   border: 1px solid var(--border-hairline);

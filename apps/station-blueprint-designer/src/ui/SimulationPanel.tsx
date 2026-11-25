@@ -1,50 +1,61 @@
 import React, { useEffect, useRef } from 'react';
 import { getItemName, getRecipeDef, getRecipeName } from '../core/catalog';
 import { formatFloorTag, useI18n } from '../core/i18n';
-import type { SimulationIssue, SimulationReport } from '../core/simulation';
+import type { WorkbenchCheckReport, WorkbenchFaultCode } from '../core/workbench-check';
+
+export interface CheckFocusTarget {
+  id: string;
+  floor: number;
+  x: number;
+  y: number;
+  buildingId?: string;
+  moduleId?: string;
+}
 
 interface SimulationPanelProps {
   open: boolean;
-  report: SimulationReport | null;
+  report: WorkbenchCheckReport | null;
   activeIssueId?: string | null;
+  showIoSpots: boolean;
+  onToggleShowIoSpots: () => void;
   onClose: () => void;
-  onFocusIssue: (issue: SimulationIssue) => void;
+  onFocusTarget: (target: CheckFocusTarget) => void;
 }
 
-const CODE_LABEL_ZH: Record<SimulationIssue['code'], string> = {
-  'external-input-needed': '首·需入原料',
-  'blueprint-output': '尾·产线出口',
-  'disabled-port-input': '禁用口进料',
-  'power-deficit': '供电偏紧',
+const CODE_LABEL_ZH: Record<WorkbenchFaultCode, string> = {
+  'invalid-catalog': '未知构件',
+  'module-overlap': '模块重叠',
+  'building-out-of-floor': '超出地板',
+  'building-overlap': '建筑重叠',
+  'invalid-recipe': '配方无效',
   'orphan-belt': '孤立废带',
   'dead-end-belt': '撞墙死路',
   'head-on-belt': '正面相撞',
   'unpaired-underground': '地下带断连',
-  'splitter-leak': '分流侧漏',
   'port-mismatch': '端口错接',
+  'disabled-port-input': '禁用口进料',
   'mixed-item-belt': '混料位',
-  'belt-overload': '传送超载',
   'elevator-stack-gap': '电梯断层',
   'elevator-rotation-mismatch': '电梯错向',
   'elevator-mixed-shaft': '井道混料',
-  'machine-missing-input': '机器缺料',
+  'machine-missing-input': '缺少原料',
   'machine-wrong-item': '机器错料',
   'machine-blocked-output': '出料未接',
 };
 
-const CODE_LABEL_EN: Record<SimulationIssue['code'], string> = {
-  'external-input-needed': 'Input Spot',
-  'blueprint-output': 'Output Spot',
-  'disabled-port-input': 'Disabled Port',
-  'power-deficit': 'Power Tight',
+const CODE_LABEL_EN: Record<WorkbenchFaultCode, string> = {
+  'invalid-catalog': 'Unknown Type',
+  'module-overlap': 'Module Overlap',
+  'building-out-of-floor': 'Off Floor',
+  'building-overlap': 'Overlap',
+  'invalid-recipe': 'Bad Recipe',
   'orphan-belt': 'Orphan Belt',
   'dead-end-belt': 'Dead End',
   'head-on-belt': 'Head-on Belt',
   'unpaired-underground': 'Unpaired UG',
-  'splitter-leak': 'Splitter Leak',
   'port-mismatch': 'Port Mismatch',
+  'disabled-port-input': 'Disabled Port',
   'mixed-item-belt': 'Mixed Belt',
-  'belt-overload': 'Belt Overload',
   'elevator-stack-gap': 'Shaft Gap',
   'elevator-rotation-mismatch': 'Shaft Twist',
   'elevator-mixed-shaft': 'Mixed Shaft',
@@ -61,8 +72,10 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
   open,
   report,
   activeIssueId,
+  showIoSpots,
+  onToggleShowIoSpots,
   onClose,
-  onFocusIssue,
+  onFocusTarget,
 }) => {
   const { lang, isEn, t } = useI18n();
   const issueRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -78,33 +91,24 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
   if (!open || !report) return null;
 
   const codeLabels = isEn ? CODE_LABEL_EN : CODE_LABEL_ZH;
-  const effText =
-    report.configuredMachineCount > 0 ? `${Math.round(report.avgEfficiency * 1000) / 10}%` : '—';
-  const inputSpotCount = report.externalInputs.length;
-  const outputSpotCount = report.externalOutputs.length;
   const p = report.power;
   const hasGen = p.maxGenMW > 0;
   const netSign = p.netBalanceMW >= 0 ? '+' : '';
+  const totalIo = report.ioSpots.length;
 
-  const ioText =
-    inputSpotCount > 0 || outputSpotCount > 0
-      ? isEn
-        ? `${inputSpotCount} In / ${outputSpotCount} Out`
-        : `${inputSpotCount} 进 / ${outputSpotCount} 出`
-      : '';
   const verdictText = !report.passed
-    ? isEn
-      ? `${report.errorCount} faults${ioText ? ` · ${ioText}` : ''}`
-      : `${report.errorCount} 处故障${ioText ? ` · ${ioText}` : ''}`
-    : report.anomalyWarnCount === 0
-      ? ioText
-        ? isEn
-          ? `0 faults · ${ioText}`
-          : `0 故障 · ${ioText}`
-        : t('0 故障 · 产线畅通', '0 faults · Clean')
+    ? report.warnCount > 0
+      ? isEn
+        ? `${report.errorCount} errors · ${report.warnCount} warnings`
+        : `${report.errorCount} 处错误 · ${report.warnCount} 项警告`
       : isEn
-        ? `0 faults · ${report.anomalyWarnCount} warnings${ioText ? ` · ${ioText}` : ''}`
-        : `0 故障 · ${report.anomalyWarnCount} 项预警${ioText ? ` · ${ioText}` : ''}`;
+        ? `${report.errorCount} errors`
+        : `${report.errorCount} 处错误`
+    : report.warnCount > 0
+      ? isEn
+        ? `0 errors · ${report.warnCount} warnings`
+        : `0 错误 · ${report.warnCount} 项警告`
+      : t('0 异常 · 图纸通过', '0 issues · Passed');
 
   const powerSubParts: string[] = [];
   if (p.crafterPeakMW > 0) powerSubParts.push(`${t('产线', 'Craft')} ${fmtMW(p.crafterPeakMW)}`);
@@ -120,11 +124,11 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
   const beltUnit = t('带', 'B');
 
   return (
-    <aside className="cad-sim-panel" aria-label={t('产线诊断', 'Line Diagnostics')}>
+    <aside className="cad-sim-panel" aria-label={t('图纸体检', 'Blueprint Check')}>
       <div className="panel-header">
         <div className="panel-title-wrap">
-          <span className="panel-tag">SIM</span>
-          <span className="panel-title">{t('产线诊断', 'Diagnostics')}</span>
+          <span className="panel-tag">CHK</span>
+          <span className="panel-title">{t('图纸体检', 'Blueprint Check')}</span>
         </div>
         <button type="button" className="icon-btn" onClick={onClose} title={t('关闭 (Esc)', 'Close (Esc)')}>
           ×
@@ -135,13 +139,10 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
         <div className={`sim-verdict ${report.passed ? 'ok' : 'err'}`}>
           <span className="sim-verdict-dot" />
           <span>{verdictText}</span>
+          <span className="sim-verdict-ms">{report.durationMs < 1 ? '<1' : Math.round(report.durationMs)}ms</span>
         </div>
 
         <div className="sim-kpi-grid">
-          <div className="sim-kpi">
-            <span className="sim-kpi-label">{t('拓扑效率', 'Efficiency')}</span>
-            <strong className="sim-kpi-val">{effText}</strong>
-          </div>
           <div className="sim-kpi">
             <span className="sim-kpi-label">{t('配置机器', 'Machines')}</span>
             <strong className="sim-kpi-val">
@@ -149,50 +150,46 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
             </strong>
           </div>
           <div className="sim-kpi">
-            <span className="sim-kpi-label">{t('首 / 尾口', 'I / O')}</span>
-            <strong className="sim-kpi-val">
-              {inputSpotCount}/{outputSpotCount}
-            </strong>
+            <span className="sim-kpi-label">{t('额定峰值', 'Peak Load')}</span>
+            <strong className="sim-kpi-val">{fmtMW(p.peakDrawMW)} MW</strong>
           </div>
-        </div>
-
-        <div className="sim-power-bar">
-          <div className="sim-power-row">
-            <span className="sim-kpi-label">{t('峰值 / 实耗', 'Peak / Active')}</span>
-            <strong className="sim-power-val">
-              {fmtMW(p.peakDrawMW)} / {fmtMW(p.activeDrawMW)} MW
-            </strong>
-          </div>
-          {powerSubParts.length > 0 && (
-            <div className="sim-power-sub">{powerSubParts.join(' · ')} MW</div>
-          )}
-          <div className="sim-power-row">
-            <span className="sim-kpi-label">
-              {t('发电量', 'Power Gen')}
-              {hasGen ? ` (${p.generatorCount})` : ''}
-            </span>
+          <div className="sim-kpi">
+            <span className="sim-kpi-label">{t('发电容量', 'Power Gen')}</span>
             <strong
-              className={`sim-power-val ${
-                !hasGen ? '' : p.netBalanceMW >= 0 ? 'ok' : 'warn'
-              }`}
+              className={`sim-kpi-val ${!hasGen ? '' : p.netBalanceMW >= 0 ? 'ok' : 'warn'}`}
             >
-              {hasGen
-                ? `${fmtMW(p.maxGenMW)} MW (${netSign}${fmtMW(p.netBalanceMW)})`
-                : '0.0 MW'}
+              {hasGen ? `${fmtMW(p.maxGenMW)} MW` : '0 MW'}
             </strong>
           </div>
-          {genSubParts.length > 0 && (
-            <div className="sim-power-sub">
-              {genSubParts.join(' + ')} MW ({t('远日保底', 'Min')} {fmtMW(p.minGenMW)} MW)
-            </div>
-          )}
         </div>
 
-        {report.netInputs.length > 0 && (
+        {(p.peakDrawMW > 0 || hasGen) && (
+          <div className="sim-power-bar">
+            {powerSubParts.length > 0 && (
+              <div className="sim-power-sub">{powerSubParts.join(' · ')} MW</div>
+            )}
+            <div className="sim-power-row">
+              <span className="sim-kpi-label">
+                {t('供电余量', 'Net Power')}
+                {hasGen ? ` (${p.generatorCount})` : ''}
+              </span>
+              <strong className={`sim-power-val ${!hasGen ? '' : p.netBalanceMW >= 0 ? 'ok' : 'warn'}`}>
+                {hasGen ? `${netSign}${fmtMW(p.netBalanceMW)} MW` : t('未配电站', 'No Gen')}
+              </strong>
+            </div>
+            {genSubParts.length > 0 && (
+              <div className="sim-power-sub">
+                {genSubParts.join(' + ')} MW ({t('远日保底', 'Min')} {fmtMW(p.minGenMW)} MW)
+              </div>
+            )}
+          </div>
+        )}
+
+        {report.ratedNetInputs.length > 0 && (
           <div className="sim-section">
-            <div className="section-label">{t('净输入', 'Net Inputs')}</div>
+            <div className="section-label">{t('满载净输入', 'Rated Net Inputs')}</div>
             <div className="sim-rate-list">
-              {report.netInputs.map((item) => (
+              {report.ratedNetInputs.map((item) => (
                 <div key={item.itemId} className="sim-rate-row">
                   <span className="sim-rate-name">{getItemName(item.itemId, lang)}</span>
                   <span className="sim-rate-num">
@@ -204,11 +201,11 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
           </div>
         )}
 
-        {report.netOutputs.length > 0 && (
+        {report.ratedNetOutputs.length > 0 && (
           <div className="sim-section">
-            <div className="section-label">{t('净输出', 'Net Outputs')}</div>
+            <div className="section-label">{t('满载净输出', 'Rated Net Outputs')}</div>
             <div className="sim-rate-list">
-              {report.netOutputs.map((item) => (
+              {report.ratedNetOutputs.map((item) => (
                 <div key={item.itemId} className="sim-rate-row">
                   <span className="sim-rate-name">{getItemName(item.itemId, lang)}</span>
                   <span className="sim-rate-num out">
@@ -220,21 +217,20 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
           </div>
         )}
 
-        {report.recipeStats.length > 0 && (
+        {report.recipeSummary.length > 0 && (
           <div className="sim-section">
-            <div className="section-label">{t('配方', 'Recipes')}</div>
+            <div className="section-label">{t('配方汇总', 'Recipes')}</div>
             <div className="sim-rate-list">
-              {report.recipeStats.map((rs) => {
+              {report.recipeSummary.map((rs) => {
                 const rec = getRecipeDef(rs.recipeId);
-                const rName = rec ? getRecipeName(rec, lang) : rs.nameZh;
+                const rName = rec ? getRecipeName(rec, lang) : rs.recipeId;
                 return (
                   <div key={rs.recipeId} className="sim-rate-row">
                     <span className="sim-rate-name">
                       {rName} ×{rs.machineCount}
                     </span>
                     <span className="sim-rate-num">
-                      {Math.round(rs.avgEfficiency * 100)}% ·{' '}
-                      {rs.actualOutputRates.map((o) => `${o.ratePerSec.toFixed(2)}/s`).join(' + ')}
+                      {rs.ratedOutputs.map((o) => `${o.ratePerSec.toFixed(2)}/s`).join(' + ')}
                     </span>
                   </div>
                 );
@@ -243,54 +239,33 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
           </div>
         )}
 
-        {report.balanceHints.length > 0 && (
-          <div className="sim-section">
-            <div className="section-label">
-              {t(`配平提示 (${report.balanceHints.length})`, `Balance Hints (${report.balanceHints.length})`)}
-            </div>
-            <div className="sim-rate-list">
-              {report.balanceHints.slice(0, 12).map((bh) => {
-                const msg = isEn
-                  ? `${getItemName(bh.itemId, 'en')} supply ${bh.supplyRatePerSec.toFixed(2)}/s > demand ${bh.demandRatePerSec.toFixed(2)}/s (~${Math.round(bh.estDutyRatio * 100)}% duty)`
-                  : bh.message;
-                return (
-                  <button
-                    key={bh.id}
-                    type="button"
-                    className="sim-issue-item warn input-spot"
-                    onClick={() =>
-                      onFocusIssue({
-                        id: bh.id,
-                        severity: 'warn',
-                        code: 'external-input-needed',
-                        message: msg,
-                        floor: bh.floor,
-                        x: bh.x,
-                        y: bh.y,
-                      })
-                    }
-                  >
-                    <span className="sim-issue-msg">{msg}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         <div className="sim-section">
-          <div className="section-label">
-            {t(`诊断项 (${report.issues.length})`, `Issues (${report.issues.length})`)}
+          <div className="sim-section-head">
+            <div className="section-label">
+              {t(`问题列表 (${report.faults.length})`, `Issues (${report.faults.length})`)}
+            </div>
+            {totalIo > 0 && (
+              <button
+                type="button"
+                className={`sim-io-toggle ${showIoSpots ? 'active' : ''}`}
+                onClick={onToggleShowIoSpots}
+                title={t('在画布与列表显示进出口点位', 'Toggle I/O boundary markers on canvas and list')}
+              >
+                {showIoSpots
+                  ? t(`隐藏进出口 (${totalIo})`, `Hide I/O (${totalIo})`)
+                  : t(`显示进出口 (${totalIo})`, `Show I/O (${totalIo})`)}
+              </button>
+            )}
           </div>
-          {report.issues.length === 0 ? (
+          {report.faults.length === 0 ? (
             <div className="sim-empty">{t('无异常', 'No issues')}</div>
           ) : (
             (() => {
-              const activeIdx = activeIssueId ? report.issues.findIndex((i) => i.id === activeIssueId) : -1;
+              const activeIdx = activeIssueId ? report.faults.findIndex((i) => i.id === activeIssueId) : -1;
               const limit = activeIdx >= 80 ? activeIdx + 5 : 80;
               return (
                 <div className="sim-issue-list">
-                  {report.issues.slice(0, limit).map((issue) => (
+                  {report.faults.slice(0, limit).map((issue) => (
                     <button
                       key={issue.id}
                       ref={(node) => {
@@ -298,10 +273,8 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
                         else issueRefs.current.delete(issue.id);
                       }}
                       type="button"
-                      className={`sim-issue-item ${issue.severity}${
-                        issue.code === 'external-input-needed' || issue.code === 'blueprint-output' ? ' input-spot' : ''
-                      }${issue.id === activeIssueId ? ' active' : ''}`}
-                      onClick={() => onFocusIssue(issue)}
+                      className={`sim-issue-item ${issue.severity}${issue.id === activeIssueId ? ' active' : ''}`}
+                      onClick={() => onFocusTarget(issue)}
                     >
                       <span className="sim-issue-badge">{codeLabels[issue.code]}</span>
                       <span className="sim-issue-msg">{issue.message}</span>
@@ -310,11 +283,11 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
                       </span>
                     </button>
                   ))}
-                  {report.issues.length > limit && (
+                  {report.faults.length > limit && (
                     <div className="sim-empty">
                       {isEn
-                        ? `${report.issues.length - limit} more folded…`
-                        : `其余 ${report.issues.length - limit} 条已折叠…`}
+                        ? `${report.faults.length - limit} more folded…`
+                        : `其余 ${report.faults.length - limit} 条已折叠…`}
                     </div>
                   )}
                 </div>
@@ -322,6 +295,45 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
             })()
           )}
         </div>
+
+        {showIoSpots && report.ioSpots.length > 0 && (
+          <div className="sim-section">
+            <div className="section-label">
+              {isEn
+                ? `I/O Spots (${report.inputSpotCount} In / ${report.outputSpotCount} Out)`
+                : `进出口点位 (${report.inputSpotCount} 进 / ${report.outputSpotCount} 出)`}
+            </div>
+            <div className="sim-issue-list">
+              {report.ioSpots.slice(0, 80).map((spot) => (
+                <button
+                  key={spot.id}
+                  ref={(node) => {
+                    if (node) issueRefs.current.set(spot.id, node);
+                    else issueRefs.current.delete(spot.id);
+                  }}
+                  type="button"
+                  className={`sim-issue-item warn input-spot${spot.id === activeIssueId ? ' active' : ''}`}
+                  onClick={() => onFocusTarget(spot)}
+                >
+                  <span className="sim-issue-badge">
+                    {spot.direction === 'in' ? t('首·入口', 'In') : t('尾·出口', 'Out')}
+                  </span>
+                  <span className="sim-issue-msg">{spot.message}</span>
+                  <span className="sim-issue-coord">
+                    {formatFloorTag(spot.floor)} ({spot.x},{spot.y})
+                  </span>
+                </button>
+              ))}
+              {report.ioSpots.length > 80 && (
+                <div className="sim-empty">
+                  {isEn
+                    ? `${report.ioSpots.length - 80} more folded…`
+                    : `其余 ${report.ioSpots.length - 80} 条已折叠…`}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   );

@@ -59,7 +59,7 @@ import {
   VirtualFolderDriver,
 } from './core/library';
 import { exportNativeSav, importNativeSav } from './core/native-codec';
-import { simulateBlueprint, type SimulationIssue } from './core/simulation';
+import { checkBlueprintWorkbench } from './core/workbench-check';
 import type {
   ActiveTool,
   BlueprintDocument,
@@ -80,7 +80,7 @@ import { HelpDrawer } from './ui/HelpDrawer';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { LibrarySidebar } from './ui/LibrarySidebar';
 import { PaletteDock } from './ui/PaletteDock';
-import { SimulationPanel } from './ui/SimulationPanel';
+import { SimulationPanel, type CheckFocusTarget } from './ui/SimulationPanel';
 
 const EMPTY_SELECTION: SelectionState = { moduleIds: [], buildingIds: [] };
 
@@ -139,6 +139,7 @@ export const App: React.FC = () => {
   const [prefsMenuOpen, setPrefsMenuOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [simOpen, setSimOpen] = useState(false);
+  const [showIoSpots, setShowIoSpots] = useState(false);
   const prefsMenuRef = useRef<HTMLDivElement | null>(null);
   const [activeSimIssueId, setActiveSimIssueId] = useState<string | null>(null);
   const [driver, setDriver] = useState<BlueprintLibraryDriver>(() => {
@@ -155,21 +156,38 @@ export const App: React.FC = () => {
     error: string | null;
   } | null>(null);
 
-  const simReport = useMemo(() => (simOpen ? simulateBlueprint(doc) : null), [doc, simOpen]);
-  const simOverlayIssues = useMemo(
-    () =>
-      simReport
-        ? simReport.issues.map((i) => ({
-            floor: i.floor,
-            x: i.x,
-            y: i.y,
-            severity: i.severity,
-            code: i.code,
-            active: i.id === activeSimIssueId,
-          }))
-        : undefined,
-    [simReport, activeSimIssueId]
-  );
+  const simReport = useMemo(() => (simOpen ? checkBlueprintWorkbench(doc, lang) : null), [doc, simOpen, lang]);
+  const simOverlayIssues = useMemo(() => {
+    if (!simReport) return undefined;
+    const markers: Array<{
+      floor: number;
+      x: number;
+      y: number;
+      severity: 'error' | 'warn';
+      code?: string;
+      active?: boolean;
+    }> = simReport.faults.map((i) => ({
+      floor: i.floor,
+      x: i.x,
+      y: i.y,
+      severity: i.severity,
+      code: i.code,
+      active: i.id === activeSimIssueId,
+    }));
+    if (showIoSpots) {
+      for (const s of simReport.ioSpots) {
+        markers.push({
+          floor: s.floor,
+          x: s.x,
+          y: s.y,
+          severity: 'warn',
+          code: s.direction === 'in' ? 'external-input-needed' : 'blueprint-output',
+          active: s.id === activeSimIssueId,
+        });
+      }
+    }
+    return markers;
+  }, [simReport, activeSimIssueId, showIoSpots]);
 
   const cursorWorldRef = useRef<{ x: number; y: number } | null>(null);
   const hudCoordRef = useRef<HTMLSpanElement | null>(null);
@@ -198,7 +216,15 @@ export const App: React.FC = () => {
     (world: { x: number; y: number } | null, clientX: number, clientY: number) => {
       const el = hoverTipRef.current;
       if (!el) return;
-      const { doc: curDoc, viewMode: vm, focusFloor: fl, activeTool: tool, simReport: curSim, lang: curLang } = stateRef.current;
+      const {
+        doc: curDoc,
+        viewMode: vm,
+        focusFloor: fl,
+        activeTool: tool,
+        simReport: curSim,
+        showIoSpots: curShowIo,
+        lang: curLang,
+      } = stateRef.current;
       if (!world || tool.kind !== 'select' || dragRef.current.kind !== 'none') {
         hideHoverTip();
         return;
@@ -208,7 +234,7 @@ export const App: React.FC = () => {
       const cy = Math.floor(world.y);
       const gx = Math.floor(world.x / STATION_UNIT_M);
       const gy = Math.floor(world.y / STATION_UNIT_M);
-      const simTag = curSim ? `${curSim.errorCount}:${curSim.warnCount}` : '0';
+      const simTag = curSim ? `${curSim.errorCount}:${curSim.warnCount}:${curShowIo ? 1 : 0}` : '0';
       const key = vm === 'building' ? `b:${curLang}:${fl}:${cx},${cy}:${simTag}` : `m:${curLang}:${fl}:${gx},${gy}`;
 
       const tipW = 264;
@@ -246,31 +272,34 @@ export const App: React.FC = () => {
         let tone: 'normal' | 'warn' | 'error' = 'normal';
 
         if (curSim) {
-          const flow = curSim.cellFlows[`${fl}:${cx},${cy}`];
-          if (flow) {
-            const entries = Object.entries(flow.items).filter(([, rate]) => rate > 0.001);
-            if (entries.length > 0) {
-              entries.sort((a, b) => b[1] - a[1]);
-              const topStr = entries
-                .slice(0, 2)
-                .map(([itemId, rate]) => `${getItemName(itemId, curLang)} ${rate.toFixed(1)}/s`)
-                .join(' + ');
-              subText = curLang === 'en' ? `${topStr} · Cap ${flow.capacity}/s` : `${topStr} · 容 ${flow.capacity}/s`;
-              if (flow.overloaded) {
-                subText += curLang === 'en' ? ' (Overload)' : ' (超载)';
-                tone = 'error';
-              }
-            } else if (def && ['belt', 'underground', 'splitter', 'balancer'].includes(def.kind)) {
-              subText = curLang === 'en' ? `Empty · 0/${flow.capacity}/s` : `空带 · 0/${flow.capacity}/s`;
+          const cellInfo = curSim.getCellItem(fl, cx, cy);
+          if (cellInfo) {
+            if (cellInfo.items.length > 0) {
+              const names =
+                cellInfo.items
+                  .slice(0, 2)
+                  .map((itemId) => getItemName(itemId, curLang))
+                  .join(' + ') + (cellInfo.items.length > 2 ? '…' : '');
+              subText = `${names} · Mk.${cellInfo.tier} (${cellInfo.capacity}/s)`;
+              if (cellInfo.mixed) tone = 'warn';
+            } else {
+              subText =
+                curLang === 'en'
+                  ? `Empty · Mk.${cellInfo.tier} (${cellInfo.capacity}/s)`
+                  : `空带 · Mk.${cellInfo.tier} (${cellInfo.capacity}/s)`;
             }
           }
-          const issue = curSim.issues.find(
+          const fault = curSim.faults.find(
             (i) => i.floor === fl && ((i.x === cx && i.y === cy) || i.buildingId === hit.id)
           );
-          if (issue) {
-            noteText = issue.message;
-            if (issue.severity === 'error') tone = 'error';
-            else if (tone !== 'error') tone = 'warn';
+          if (fault) {
+            noteText = fault.message;
+            tone = fault.severity === 'error' ? 'error' : 'warn';
+          } else if (curShowIo) {
+            const spot = curSim.ioSpots.find(
+              (s) => s.floor === fl && ((s.x === cx && s.y === cy) || s.buildingId === hit.id)
+            );
+            if (spot) noteText = spot.message;
           }
         }
 
@@ -415,6 +444,7 @@ export const App: React.FC = () => {
     lastGroupMember,
     clipboardBp,
     simReport,
+    showIoSpots,
     activeSimIssueId,
     lang,
   });
@@ -429,6 +459,7 @@ export const App: React.FC = () => {
     lastGroupMember,
     clipboardBp,
     simReport,
+    showIoSpots,
     activeSimIssueId,
     lang,
   };
@@ -1838,20 +1869,30 @@ export const App: React.FC = () => {
         const cellY = Math.floor(world.y);
         const clickedBld = findBuildingAtCell(curDoc, cellX, cellY, fl);
 
-        // Canvas -> Panel click tracking: clicking any yellow/red simulation marker (or any tile of a flagged machine)
-        // immediately tracks & scrolls to the corresponding warning/error in SimulationPanel!
+        // Canvas -> Panel click tracking: clicking any yellow/red marker tracks & scrolls to it in Blueprint Check!
         const curSim = stateRef.current.simReport;
-        if (curSim && curSim.issues.length > 0) {
-          const hits = curSim.issues.filter(
+        if (curSim) {
+          const faultHits = curSim.faults.filter(
             (i) =>
               i.floor === fl &&
               ((i.x === cellX && i.y === cellY) || (clickedBld !== null && i.buildingId === clickedBld.id))
           );
+          const ioHits = stateRef.current.showIoSpots
+            ? curSim.ioSpots.filter(
+                (s) =>
+                  s.floor === fl &&
+                  ((s.x === cellX && s.y === cellY) || (clickedBld !== null && s.buildingId === clickedBld.id))
+              )
+            : [];
+          const hits = [
+            ...faultHits.map((f) => ({ id: f.id, message: f.message, kind: f.severity as 'error' | 'warn' })),
+            ...ioHits.map((s) => ({ id: s.id, message: s.message, kind: 'info' as const })),
+          ];
           if (hits.length > 0) {
             const curIdx = hits.findIndex((i) => i.id === stateRef.current.activeSimIssueId);
             const picked = hits[(curIdx + 1) % hits.length];
             setActiveSimIssueId(picked.id);
-            showToast(picked.message, picked.severity === 'error' ? 'error' : 'warn');
+            showToast(picked.message, picked.kind);
           } else {
             setActiveSimIssueId(null);
           }
@@ -2359,13 +2400,15 @@ export const App: React.FC = () => {
             type="button"
             className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
             onClick={() => setSimOpen((v) => !v)}
-            title={t('产线诊断', 'Line diagnostics')}
+            title={t('图纸体检', 'Blueprint check')}
           >
             {simOpen
-              ? simReport?.passed
-                ? t('诊断 · 0异常', 'Sim · Clean')
-                : t(`诊断 · ${simReport?.errorCount ?? 0}异常`, `Sim · ${simReport?.errorCount ?? 0} Err`)
-              : t('产线诊断', 'Simulate')}
+              ? !simReport?.passed
+                ? t(`体检 · ${simReport?.errorCount ?? 0}错`, `Check · ${simReport?.errorCount ?? 0} Err`)
+                : (simReport?.warnCount ?? 0) > 0
+                  ? t(`体检 · ${simReport?.warnCount ?? 0}警`, `Check · ${simReport?.warnCount ?? 0} Warn`)
+                  : t('体检 · 正常', 'Check · OK')
+              : t('体检', 'Check')}
           </button>
 
           <GameInteropMenu
@@ -2617,16 +2660,23 @@ export const App: React.FC = () => {
           open={simOpen}
           report={simReport}
           activeIssueId={activeSimIssueId}
+          showIoSpots={showIoSpots}
+          onToggleShowIoSpots={() => setShowIoSpots((v) => !v)}
           onClose={() => {
             setSimOpen(false);
             setActiveSimIssueId(null);
           }}
-          onFocusIssue={(issue: SimulationIssue) => {
-            setActiveSimIssueId(issue.id);
-            setFocusFloor(issue.floor);
-            switchViewMode('building', [issue.x + 0.5, issue.y + 0.5]);
-            if (issue.buildingId) {
-              setSelection({ moduleIds: [], buildingIds: [issue.buildingId] });
+          onFocusTarget={(target: CheckFocusTarget) => {
+            setActiveSimIssueId(target.id);
+            setFocusFloor(target.floor);
+            if (target.moduleId && !target.buildingId) {
+              switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
+              setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
+            } else {
+              switchViewMode('building', [target.x + 0.5, target.y + 0.5]);
+              if (target.buildingId) {
+                setSelection({ moduleIds: [], buildingIds: [target.buildingId] });
+              }
             }
           }}
         />
