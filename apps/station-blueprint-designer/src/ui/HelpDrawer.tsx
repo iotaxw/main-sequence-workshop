@@ -21,7 +21,7 @@ const KEY_GROUPS_ZH = [
   {
     title: '选择与搬移',
     items: [
-      ['悬停实体', '查看配方、规格与实时流速'],
+      ['悬停实体', '查看物品、配方、规格与体检提示'],
       ['左键 / Shift / Alt+左键', '单选 / 加选 / 减选'],
       ['左键 / Shift / Alt+拖', '框选 / 加选 / 减选'],
       ['X（点 / 扫 / Shift+拖）', '拆除（可撤销）'],
@@ -69,7 +69,7 @@ const KEY_GROUPS_EN = [
   {
     title: 'Select & Edit',
     items: [
-      ['Hover Entity', 'Inspect recipe, specs & live flow'],
+      ['Hover Entity', 'Inspect item, recipe, specs & check notes'],
       ['LMB / Shift / Alt+Click', 'Select / Add / Subtract'],
       ['LMB / Shift / Alt+Drag', 'Box select / Add / Subtract'],
       ['X (Click / Sweep / Shift+Drag)', 'Demolish (undoable)'],

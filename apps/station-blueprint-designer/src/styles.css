@@ -2233,13 +2233,6 @@ body,
   padding: 2px 7px;
   color: var(--text-dim);
   font-size: 10px;
-  cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease;
-}
-
-.lib-source-chip:hover {
-  border-color: var(--border-mid);
-  color: var(--text-bright);
 }
 
 .lib-slim-top-actions {

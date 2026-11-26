@@ -119,19 +119,14 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
       <div className="panel-header">
         <div className="panel-title-wrap">
           <span className="panel-title">{t('蓝图', 'Blueprints')}</span>
-          <button
-            type="button"
-            className="lib-source-chip"
-            onClick={onOpenModal}
-            title={rootLabel}
-          >
+          <span className="lib-source-chip" title={rootLabel}>
             <span
               className={`status-dot ${
                 driverMode === 'fs-local' ? 'green' : driverMode === 'github-private' ? 'amber' : 'blue'
               }`}
             />
             {sourceShort}
-          </button>
+          </span>
         </div>
         <button type="button" className="icon-btn" onClick={onToggleOpen} title={t('收起侧栏', 'Collapse')}>
           ‹

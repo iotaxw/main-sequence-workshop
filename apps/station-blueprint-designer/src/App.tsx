@@ -2337,19 +2337,6 @@ export const App: React.FC = () => {
               title={t('蓝图名称', 'Blueprint name')}
             />
           </div>
-          <button
-            type="button"
-            className={`cad-btn ${libraryModalOpen ? 'accent' : ''}`}
-            onClick={() => setLibraryModalOpen((o) => !o)}
-            title={t('蓝图库 (L)', 'Library (L)')}
-          >
-            <span
-              className={`status-dot inline ${
-                driver.mode === 'fs-local' ? 'green' : driver.mode === 'github-private' ? 'amber' : 'blue'
-              }`}
-            />
-            {t('蓝图库', 'Library')}
-          </button>
           <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="Ctrl+S">
             {t('保存', 'Save')}
           </button>
@@ -2374,25 +2361,6 @@ export const App: React.FC = () => {
               {t('建筑', 'Building')}
             </button>
           </div>
-
-          <div className="floor-stepper" title={t('楼层 (Q / E / Shift+滚轮)', 'Floor (Q / E / Shift+Wheel)')}>
-            <button type="button" className="step-btn" onClick={() => setFocusFloor((f) => Math.max(-2, f - 1))}>
-              Q↓
-            </button>
-            <span className="floor-readout">{formatFloorTag(focusFloor)}</span>
-            <button type="button" className="step-btn" onClick={() => setFocusFloor((f) => Math.min(8, f + 1))}>
-              E↑
-            </button>
-          </div>
-
-          <button
-            type="button"
-            className="cad-btn"
-            onClick={() => setHideAbove((v) => !v)}
-            title={t('切换上层隐透 (V)', 'Toggle upper floors (V)')}
-          >
-            {hideAbove ? t('上层 · 隐', 'Upper · Off') : t('上层 · 透', 'Upper · On')}
-          </button>
         </div>
 
         <div className="topbar-group right-aligned">
