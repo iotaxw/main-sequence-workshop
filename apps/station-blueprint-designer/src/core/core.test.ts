@@ -1,3 +1,4 @@
+import { createCrispLineSegments, withDeferredLines } from '../renderer/crisp-lines';
 import { describe, expect, it } from 'vitest';
 import {
   applyEndRotationOverride,
@@ -33,6 +34,7 @@ import {
   createHistory,
   deleteSelectionCmd,
   extractSelectionAsBlueprint,
+  getBlueprintBoundsM,
   mirrorBlueprint,
   mirrorBlueprintX,
   mirrorSelectionInPlaceCmd,
@@ -52,6 +54,7 @@ import {
   findMatchedDockConnectors,
   getMirroredBuildingRotation,
   getMirroredModuleRotation,
+  getModuleEngineBlockBoundsM,
   getModuleFloorShift,
   getModuleOriginOffsetM,
   getModuleWorldConnectors,
@@ -2540,5 +2543,86 @@ describe('Shapez 2 F / Shift+F Mirror Symmetry (geometry + commands + camera)', 
     ];
     const overlapMatched = findMatchedDockConnectors(existingConns, existingCounts, overlappingStamp);
     expect(overlapMatched.some((c) => c.x === 16 && c.y === 8 && c.floor === 0)).toBe(false);
+  });
+
+  it('pairs 2,000 unencoded underground belts in O(U) spatial time with same-tier priority and WeakMap caching', () => {
+    const doc = createEmptyBlueprint();
+    // Same-tier priority check: Mk.2 entry at x=0 prefers Mk.2 exit at x=5 over closer Mk.1 exit at x=3
+    doc.buildings.push(
+      { id: 'u_in', type: 'DAT_UndergroundBelt_2', x: 0, y: 0, floor: 0, rotation: 0, undergroundMode: 'in' },
+      { id: 'u_mk1', type: 'DAT_UndergroundBelt', x: 3, y: 0, floor: 0, rotation: 0, undergroundMode: 'out' },
+      { id: 'u_mk2', type: 'DAT_UndergroundBelt_2', x: 5, y: 0, floor: 0, rotation: 0, undergroundMode: 'out' }
+    );
+    // Add 1,000 parallel unencoded pairs (2,000 underground entities)
+    for (let row = 1; row <= 1000; row++) {
+      doc.buildings.push(
+        { id: `p_in_${row}`, type: 'DAT_UndergroundBelt_3', x: 0, y: row, floor: 0, rotation: 0, undergroundMode: 'in' },
+        { id: `p_out_${row}`, type: 'DAT_UndergroundBelt_3', x: 6, y: row, floor: 0, rotation: 0, undergroundMode: 'out' }
+      );
+    }
+
+    const t0 = performance.now();
+    const links1 = computeUndergroundLinks(doc);
+    const dtFirst = performance.now() - t0;
+
+    expect(links1.length).toBe(1001);
+    const firstLink = links1.find((l) => l.fromId === 'u_in');
+    expect(firstLink?.toId).toBe('u_mk2');
+    expect(dtFirst).toBeLessThan(150);
+
+    // Second call hits WeakMap cache immediately (identical array reference)
+    const links2 = computeUndergroundLinks(doc);
+    expect(links2).toBe(links1);
+  });
+
+  it('settles CadCameraRig cleanly for demand-driven rendering (0% idle GPU)', () => {
+    let dirtyCount = 0;
+    const rig = new CadCameraRig(16 / 9, { onDirty: () => { dirtyCount++; } });
+
+    // Initial state is already at rest
+    expect(rig.update(0.016, 100)).toEqual({ moved: false, active: false });
+
+    // Moving target marks dirty and animates until settled
+    rig.focusPoint(120, 80, 48);
+    expect(dirtyCount).toBeGreaterThan(0);
+
+    let frames = 0;
+    let last = { moved: true, active: true };
+    for (let i = 0; i < 200; i++) {
+      last = rig.update(0.016, 100 + i * 16);
+      frames++;
+      if (!last.active) break;
+    }
+    expect(last.active).toBe(false);
+    expect(last.moved).toBe(true); // Final snapping frame still renders!
+    expect(frames).toBeLessThan(120);
+    // Subsequent idle tick reports zero movement and zero activity
+    expect(rig.update(0.016, 5000)).toEqual({ moved: false, active: false });
+  });
+
+  it('supports deferred zero-allocation line collection and WeakMap-cached blueprint bounds / engine AABB', () => {
+    const pts = [0, 0, 0, 4, 0, 4];
+    const deferred = withDeferredLines(() => createCrispLineSegments(pts, { color: 0xffffff, widthPx: 1.2 }));
+    // Deferred node has NO LineSegmentsGeometry/LineMaterial allocated, only rawPositions + lineOpts
+    expect((deferred as unknown as { geometry?: unknown }).geometry).toBeUndefined();
+    expect(deferred.userData.rawPositions).toBe(pts);
+
+    // Outside withDeferredLines, creates a real LineSegments2 with geometry & material
+    const real = createCrispLineSegments(pts, { color: 0xffffff, widthPx: 1.2 });
+    expect((real as unknown as { isLineSegments2?: boolean }).isLineSegments2).toBe(true);
+    real.geometry.dispose();
+    real.material.dispose();
+
+    // getBlueprintBoundsM & getModuleEngineBlockBoundsM
+    const doc = placeModuleCmd(createEmptyBlueprint(), { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    const b1 = getBlueprintBoundsM(doc);
+    const b2 = getBlueprintBoundsM(doc);
+    expect(b1).toEqual({ width: 32, depth: 32, floors: 1 });
+    expect(b2).toEqual(b1);
+
+    const def = getModuleDef('BPO_Station_02A')!;
+    const aabb = getModuleEngineBlockBoundsM(doc.modules[0], def);
+    expect(aabb.maxX - aabb.minX).toBeCloseTo(32, 1);
+    expect(aabb.maxY - aabb.minY).toBeCloseTo(32, 1);
   });
 });

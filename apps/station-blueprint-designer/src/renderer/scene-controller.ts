@@ -3,7 +3,7 @@ import type { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { getMatchingUndergroundType, type BeltCellSpec } from '../core/belt-router';
 import { getBuildableDef, getItemNameZh, getModuleDef, getRecipeDef } from '../core/catalog';
-import { computeStampCandidates, getBlueprintBoundsM } from '../core/commands';
+import { getBlueprintBoundsM } from '../core/commands';
 import {
   areWorldConnectorsMated,
   collectOpenGhostConnectors,
@@ -42,7 +42,12 @@ import type {
   ViewMode,
 } from '../core/types';
 import { CadCameraRig } from './camera-rig';
-import { createCrispLineSegments, setLineViewportResolution, type CrispLineOptions } from './crisp-lines';
+import {
+  createCrispLineSegments,
+  setLineViewportResolution,
+  withDeferredLines,
+  type CrispLineOptions,
+} from './crisp-lines';
 import {
   buildIndustrialDockGantryArt,
   buildMachineLineArt,
@@ -171,6 +176,84 @@ function edgesToPositions(edgeGeo: THREE.EdgesGeometry): number[] {
   }
   edgeGeo.dispose();
   return out;
+}
+
+const _scratchV3 = new THREE.Vector3();
+const _scratchInvFlat = new THREE.Matrix4();
+const _scratchInvExtrude = new THREE.Matrix4();
+const _scratchRelMat = new THREE.Matrix4();
+
+function pushFlatRectPts(out: number[], x0: number, z0: number, x1: number, z1: number, y: number): void {
+  out.push(
+    x0, y, z0, x1, y, z0,
+    x1, y, z0, x1, y, z1,
+    x1, y, z1, x0, y, z1,
+    x0, y, z1, x0, y, z0
+  );
+}
+
+function pushRotatedChevronPts(
+  out: number[],
+  cx: number,
+  y: number,
+  cz: number,
+  size: number,
+  rotation: 0 | 1 | 2 | 3
+): void {
+  const xBack = -size * 0.45;
+  const xTip = size * 0.5;
+  const zHalf = size * 0.45;
+  const toWX = (lx: number, lz: number) =>
+    cx + (rotation === 0 ? lx : rotation === 1 ? -lz : rotation === 2 ? -lx : lz);
+  const toWZ = (lx: number, lz: number) =>
+    cz + (rotation === 0 ? lz : rotation === 1 ? lx : rotation === 2 ? -lz : -lx);
+  const tipX = toWX(xTip, 0);
+  const tipZ = toWZ(xTip, 0);
+  out.push(
+    toWX(xBack, -zHalf), y, toWZ(xBack, -zHalf), tipX, y, tipZ,
+    tipX, y, tipZ, toWX(xBack, zHalf), y, toWZ(xBack, zHalf)
+  );
+}
+
+function pushStationConnectorMarkPts(
+  out: number[],
+  cx: number,
+  y: number,
+  cz: number,
+  rotation: 0 | 1 | 2 | 3,
+  span: number,
+  mode: 'open' | 'mated' | 'ghost' | 'hint-match' | 'hint-dim'
+): void {
+  const hs = span / 2;
+  const toWX = (lx: number, lz: number) =>
+    cx + (rotation === 0 ? lx : rotation === 1 ? -lz : rotation === 2 ? -lx : lz);
+  const toWZ = (lx: number, lz: number) =>
+    cz + (rotation === 0 ? lz : rotation === 1 ? lx : rotation === 2 ? -lz : -lx);
+  const seg = (x1: number, z1: number, x2: number, z2: number) => {
+    out.push(toWX(x1, z1), y, toWZ(x1, z1), toWX(x2, z2), y, toWZ(x2, z2));
+  };
+
+  if (mode === 'mated') {
+    seg(0, -hs * 0.72, 0, hs * 0.72);
+    return;
+  }
+  if (mode === 'hint-match') {
+    seg(-0.1, -hs, -0.1, hs);
+    seg(0.22, -hs, 0.22, hs);
+    seg(-0.45, -hs, 0.95, -hs);
+    seg(-0.45, hs, 0.95, hs);
+    seg(0.22, -0.85, 1.55, 0);
+    seg(1.55, 0, 0.22, 0.85);
+    seg(2.3, 0, 4.2, 0);
+    return;
+  }
+  const tickIn = 0.3;
+  const arrowOut = mode === 'ghost' ? 1.0 : mode === 'hint-dim' ? 0.5 : 0.48;
+  seg(-0.06, -hs, -0.06, hs);
+  seg(-tickIn, -hs, -0.06, -hs);
+  seg(-tickIn, hs, -0.06, hs);
+  seg(-0.06, -0.48, arrowOut, 0);
+  seg(arrowOut, 0, -0.06, 0.48);
 }
 
 function createDirectionalChevron(size: number, color: number, opacity: number): THREE.Object3D {
@@ -412,7 +495,7 @@ class FloorRenderBucket {
       this.meshAccums.set(key, acc);
     }
     const out = acc.positions;
-    const v = new THREE.Vector3();
+    const v = _scratchV3;
     const index = geo.index;
     if (index) {
       for (let i = 0; i < index.count; i++) {
@@ -428,6 +511,45 @@ class FloorRenderBucket {
     }
   }
 
+  private getOrCreateLineAccum(
+    layer: BatchLayer,
+    subMode: BatchSubMode,
+    opts: {
+      color: number;
+      widthPx?: number;
+      lodTier?: 'primary' | 'detail' | 'micro';
+      dashed?: boolean;
+      dashSize?: number;
+      gapSize?: number;
+      alphaScale?: number;
+    }
+  ): LineBucketAccum {
+    const widthPx = Math.round((opts.widthPx ?? 1.2) * 20) / 20;
+    const lodTier = opts.lodTier ?? 'primary';
+    const dashed = Boolean(opts.dashed);
+    const dashSize = opts.dashSize ?? 0.35;
+    const gapSize = opts.gapSize ?? 0.28;
+    const alphaScale = Math.round((opts.alphaScale ?? 1.0) * 100) / 100;
+    const key = `${layer}|${subMode}|${opts.color}|${widthPx}|${lodTier}|${dashed ? `${dashSize}:${gapSize}` : 'S'}|${alphaScale}`;
+    let acc = this.lineAccums.get(key);
+    if (!acc) {
+      acc = {
+        layer,
+        subMode,
+        color: opts.color,
+        widthPx,
+        lodTier,
+        dashed,
+        dashSize,
+        gapSize,
+        alphaScale,
+        positions: [],
+      };
+      this.lineAccums.set(key, acc);
+    }
+    return acc;
+  }
+
   /**
    * Flattens an entire temporary Object3D subtree (produced by line-art builders) into this floor's merged buffers
    * and disposes the temporary geometries/materials immediately!
@@ -438,10 +560,10 @@ class FloorRenderBucket {
     subMode: BatchSubMode = 'always'
   ): void {
     obj.updateMatrixWorld(true);
-    const invFlatOffset = new THREE.Matrix4().makeTranslation(0, -this.baseY, 0);
-    const invExtrudeOffset = new THREE.Matrix4().makeTranslation(0, -(this.baseY + 0.038), 0);
-    const relMat = new THREE.Matrix4();
-    const v = new THREE.Vector3();
+    const invFlatOffset = _scratchInvFlat.makeTranslation(0, -this.baseY, 0);
+    const invExtrudeOffset = _scratchInvExtrude.makeTranslation(0, -(this.baseY + 0.038), 0);
+    const relMat = _scratchRelMat;
+    const v = _scratchV3;
 
     const isInsideExtrude = (node: THREE.Object3D): boolean => {
       if (!extrudeSubtree) return false;
@@ -459,14 +581,7 @@ class FloorRenderBucket {
         const opts = (node.userData.lineOpts ?? {}) as CrispLineOptions;
         const layer: BatchLayer = isInsideExtrude(node) ? 'extruded' : 'flat';
         relMat.multiplyMatrices(layer === 'extruded' ? invExtrudeOffset : invFlatOffset, node.matrixWorld);
-        const transformed: number[] = new Array(rawPts.length);
-        for (let i = 0; i < rawPts.length; i += 3) {
-          v.set(rawPts[i], rawPts[i + 1], rawPts[i + 2]).applyMatrix4(relMat);
-          transformed[i] = v.x;
-          transformed[i + 1] = v.y;
-          transformed[i + 2] = v.z;
-        }
-        this.addLineSegments(transformed, layer, subMode, {
+        const acc = this.getOrCreateLineAccum(layer, subMode, {
           color: opts.color ?? 0xcbd8e6,
           widthPx: opts.widthPx,
           lodTier: opts.lodTier,
@@ -475,6 +590,11 @@ class FloorRenderBucket {
           gapSize: opts.gapSize,
           alphaScale: opts.opacity ?? 1.0,
         });
+        const out = acc.positions;
+        for (let i = 0; i < rawPts.length; i += 3) {
+          v.set(rawPts[i], rawPts[i + 1], rawPts[i + 2]).applyMatrix4(relMat);
+          out.push(v.x, v.y, v.z);
+        }
         return;
       }
 
@@ -672,6 +792,8 @@ export class CadSceneController {
 
   private container: HTMLElement;
   private rafId = 0;
+  private rafRunning = false;
+  private dirty = true;
   private lastTime = 0;
   private disposed = false;
 
@@ -693,6 +815,7 @@ export class CadSceneController {
   private liveBoxRect: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
   private liveBoxMode: BoxSelectMode = 'replace';
   private livePreviewSelection: SelectionState | null = null;
+  private liveBeltPreview: BeltCellSpec[] | null = null;
   private lastLiveSelSig = '';
   private lastPreviewKey = '';
   private lastDockHintKey = '';
@@ -731,7 +854,10 @@ export class CadSceneController {
     const hemi = new THREE.HemisphereLight(0xb8cade, this.activePalette.bg, 0.9);
     this.scene.add(hemi);
 
-    this.rig = new CadCameraRig(initW / Math.max(1, initH), callbacks);
+    this.rig = new CadCameraRig(initW / Math.max(1, initH), {
+      ...callbacks,
+      onDirty: () => this.requestRender(),
+    });
 
     this.roundedGrid = createRoundedGridOverlay();
     this.scene.add(this.referenceGroup);
@@ -744,7 +870,31 @@ export class CadSceneController {
 
     this.buildMinimalReferenceAxes(this.activePalette);
     this.lastTime = performance.now();
-    this.tick(this.lastTime);
+    this.requestRender();
+  }
+
+  /** Demand-driven render trigger: wakes the RAF loop only when visual state or camera actually changes. */
+  requestRender(): void {
+    if (this.disposed) return;
+    this.dirty = true;
+    if (!this.rafRunning) {
+      this.rafRunning = true;
+      this.lastTime = performance.now();
+      this.rafId = requestAnimationFrame(this.tick);
+    }
+  }
+
+  private hasMovementKeys(): boolean {
+    return (
+      this.keysDown.has('KeyD') ||
+      this.keysDown.has('ArrowRight') ||
+      this.keysDown.has('KeyA') ||
+      this.keysDown.has('ArrowLeft') ||
+      this.keysDown.has('KeyW') ||
+      this.keysDown.has('ArrowUp') ||
+      this.keysDown.has('KeyS') ||
+      this.keysDown.has('ArrowDown')
+    );
   }
 
   private buildMinimalReferenceAxes(palette: CadThemePalette): void {
@@ -789,11 +939,16 @@ export class CadSceneController {
     this.renderer.setSize(w, h);
     setLineViewportResolution(w, h);
     this.rig.setAspect(w / Math.max(1, h));
+    this.requestRender();
   }
 
   setKeyDown(code: string, down: boolean): void {
-    if (down) this.keysDown.add(code);
-    else this.keysDown.delete(code);
+    if (down) {
+      this.keysDown.add(code);
+      if (this.hasMovementKeys()) this.requestRender();
+    } else {
+      this.keysDown.delete(code);
+    }
   }
 
   clearKeys(): void {
@@ -829,13 +984,14 @@ export class CadSceneController {
 
   private computePreviewKey(state: SceneRenderState, cursor: { x: number; y: number } | null): string {
     if (state.beltPreview.length > 0 && state.activeTool.kind === 'place-building') {
-      const first = state.beltPreview[0];
-      const last = state.beltPreview[state.beltPreview.length - 1];
-      let ugCount = 0;
+      let acc = 2166136261;
       for (let i = 0; i < state.beltPreview.length; i++) {
-        if (state.beltPreview[i].kind && state.beltPreview[i].kind !== 'belt') ugCount++;
+        const s = state.beltPreview[i];
+        const kindCode = s.kind === 'underground-in' ? 1 : s.kind === 'underground-out' ? 2 : 0;
+        const mix = (s.x * 73856093) ^ (s.y * 19349663) ^ (s.rotation << 3) ^ (kindCode << 6) ^ (s.isWaypoint ? 512 : 0);
+        acc = Math.imul(acc ^ mix, 16777619) >>> 0;
       }
-      return `belt:${state.activeTool.buildingType}:${state.focusFloor}:${state.beltPreview.length}:${ugCount}:${first.x},${first.y},${first.rotation},${first.kind ?? 'b'}:${last.x},${last.y},${last.rotation},${last.kind ?? 'b'}`;
+      return `belt:${state.activeTool.buildingType}:${state.focusFloor}:${state.beltPreview.length}:${acc}`;
     }
     const tool = state.activeTool;
     if (!cursor) return 'none';
@@ -927,6 +1083,7 @@ export class CadSceneController {
       ...state,
       cursorWorld: this.liveCursorWorld,
       boxSelectRect: rect,
+      beltPreview: this.liveBeltPreview ?? state.beltPreview,
     };
 
     this.updateRoundedGrid(effState);
@@ -944,6 +1101,30 @@ export class CadSceneController {
       this.lastLiveSelSig = nextSig;
       this.rebuildSelectionOverlay(effState, palette);
     }
+    this.requestRender();
+  }
+
+  /**
+   * Direct high-frequency belt routing preview update WITHOUT triggering React re-renders!
+   */
+  setLiveBeltPreview(specs: BeltCellSpec[]): void {
+    this.liveBeltPreview = specs.length > 0 ? specs : null;
+    const state = this.lastState;
+    if (!state) return;
+    const effState: SceneRenderState = {
+      ...state,
+      cursorWorld: this.liveCursorWorld,
+      boxSelectRect: this.liveBoxRect,
+      beltPreview: specs,
+    };
+    this.updateRoundedGrid(effState);
+    const palette = CAD_THEMES[state.theme];
+    const nextPrevKey = this.computePreviewKey(effState, this.liveCursorWorld);
+    if (nextPrevKey !== this.lastPreviewKey) {
+      this.lastPreviewKey = nextPrevKey;
+      this.rebuildPreview(effState, palette);
+    }
+    this.requestRender();
   }
 
   /**
@@ -951,10 +1132,18 @@ export class CadSceneController {
    * Updates GPU rounded-grid uniform continuously and only rebuilds ghost/dock hints when snapped grid cell changes.
    */
   setCursorWorld(world: { x: number; y: number } | null): void {
+    const prev = this.liveCursorWorld;
+    if (prev === null && world === null) return;
+    if (prev && world && prev.x === world.x && prev.y === world.y) return;
     this.liveCursorWorld = world;
     const state = this.lastState;
     if (!state) return;
-    const effState: SceneRenderState = { ...state, cursorWorld: world, boxSelectRect: this.liveBoxRect };
+    const effState: SceneRenderState = {
+      ...state,
+      cursorWorld: world,
+      boxSelectRect: this.liveBoxRect,
+      beltPreview: this.liveBeltPreview ?? state.beltPreview,
+    };
     this.updateRoundedGrid(effState);
 
     const palette = CAD_THEMES[state.theme];
@@ -969,13 +1158,23 @@ export class CadSceneController {
       this.lastPreviewKey = nextPrevKey;
       this.rebuildPreview(effState, palette);
     }
+    this.requestRender();
   }
 
   syncState(state: SceneRenderState): void {
     const prev = this.lastState;
+    if (state.activeTool.kind !== 'place-building') {
+      this.liveBeltPreview = null;
+    }
     const effCursor = state.cursorWorld ?? this.liveCursorWorld;
     const effBox = state.boxSelectRect ?? this.liveBoxRect;
-    const effState: SceneRenderState = { ...state, cursorWorld: effCursor, boxSelectRect: effBox };
+    const effBelt = state.beltPreview.length > 0 ? state.beltPreview : (this.liveBeltPreview ?? state.beltPreview);
+    const effState: SceneRenderState = {
+      ...state,
+      cursorWorld: effCursor,
+      boxSelectRect: effBox,
+      beltPreview: effBelt,
+    };
     this.lastState = effState;
 
     const palette = CAD_THEMES[effState.theme];
@@ -987,8 +1186,10 @@ export class CadSceneController {
     this.rig.setFocusFloor(effState.focusFloor);
     this.referenceGroup.position.y = effState.focusFloor * FLOOR_VISUAL_SPACING - 0.06;
 
-    // Incremental per-floor world batch rebuild: ONLY dirty floors rebuild when doc edits occur!
-    const docOrThemeChanged = themeChanged || !prev || prev.doc !== effState.doc;
+    // Incremental per-floor world batch rebuild: skip completely when only metadata (e.g. doc.name) changed!
+    const geometryDocChanged =
+      !prev || prev.doc.modules !== effState.doc.modules || prev.doc.buildings !== effState.doc.buildings;
+    const docOrThemeChanged = themeChanged || geometryDocChanged;
     if (docOrThemeChanged) {
       this.rebuildWorldBatches(effState.doc, palette, themeChanged ? null : prev?.doc ?? null);
     }
@@ -1030,6 +1231,7 @@ export class CadSceneController {
     if (!prev || prev.boxSelectRect !== effState.boxSelectRect || prev.selectionLayerMode !== effState.selectionLayerMode || prev.focusFloor !== effState.focusFloor) {
       this.rebuildBoxSelect(effState, palette, this.liveBoxMode);
     }
+    this.requestRender();
   }
 
   private clearGroup(group: THREE.Group): void {
@@ -1179,84 +1381,88 @@ export class CadSceneController {
 
     const drawnMated = new Set<string>();
 
-    // 2. Batch station modules intersecting dirty floors
-    for (const mod of doc.modules) {
-      const def = getModuleDef(mod.type);
-      if (!def) continue;
-      let touchesDirty = false;
-      for (let df = 0; df < def.sizeUnits[2]; df++) {
-        if (floorsToBuild.has(mod.floor + df)) {
-          touchesDirty = true;
-          break;
-        }
-      }
-      if (!touchesDirty) {
-        for (const c of def.connectors) {
-          if (floorsToBuild.has(mod.floor + c.floorOffset)) {
+    // 2 & 3. Collect all dirty floor geometry in deferred-line mode (ZERO throwaway LineSegmentsGeometry/LineMaterial!)
+    withDeferredLines(() => {
+      // 2. Batch station modules intersecting dirty floors
+      for (const mod of doc.modules) {
+        const def = getModuleDef(mod.type);
+        if (!def) continue;
+        let touchesDirty = false;
+        for (let df = 0; df < def.sizeUnits[2]; df++) {
+          if (floorsToBuild.has(mod.floor + df)) {
             touchesDirty = true;
             break;
           }
         }
+        if (!touchesDirty) {
+          for (const c of def.connectors) {
+            if (floorsToBuild.has(mod.floor + c.floorOffset)) {
+              touchesDirty = true;
+              break;
+            }
+          }
+        }
+        if (!touchesDirty) continue;
+        this.ingestStationModule(mod, def, palette, connCounts, drawnMated, floorsToBuild);
       }
-      if (!touchesDirty) continue;
-      this.ingestStationModule(mod, def, palette, connCounts, drawnMated, floorsToBuild);
-    }
 
-    // 3. Batch interior buildings & belts per dirty floor (zero-allocation direct belt emitter!)
-    for (const floor of floorsToBuild) {
-      const floorBlds = idx.buildingsByFloor.get(floor);
-      if (!floorBlds || floorBlds.length === 0) continue;
-      const bucket = this.getOrCreateFloorBucket(floor);
-      const baseY = floor * FLOOR_VISUAL_SPACING;
+      // 3. Batch interior buildings & belts per dirty floor (zero-allocation direct belt emitter!)
+      for (const floor of floorsToBuild) {
+        const floorBlds = idx.buildingsByFloor.get(floor);
+        if (!floorBlds || floorBlds.length === 0) continue;
+        const floorCellMap = idx.buildingCellByFloor.get(floor);
+        const bucket = this.getOrCreateFloorBucket(floor);
+        const baseY = floor * FLOOR_VISUAL_SPACING;
 
-      const beltBedTris: number[] = [];
-      const beltRailsMk1: number[] = [];
-      const beltRailsMk2: number[] = [];
-      const beltRailsMk3: number[] = [];
-      const beltChevs: number[] = [];
+        const beltBedTris: number[] = [];
+        const beltRailsMk1: number[] = [];
+        const beltRailsMk2: number[] = [];
+        const beltRailsMk3: number[] = [];
+        const beltChevs: number[] = [];
 
-      for (let i = 0; i < floorBlds.length; i++) {
-        const b = floorBlds[i];
-        const def = getBuildableDef(b.type);
-        if (!def) continue;
+        for (let i = 0; i < floorBlds.length; i++) {
+          const b = floorBlds[i];
+          const def = getBuildableDef(b.type);
+          if (!def) continue;
 
-        if (def.kind === 'belt') {
-          const railTarget = def.tier === 3 ? beltRailsMk3 : def.tier === 2 ? beltRailsMk2 : beltRailsMk1;
-          emitBeltDirectToBuffers(doc, b, def, beltBedTris, railTarget, beltChevs);
-          continue;
+          if (def.kind === 'belt') {
+            const railTarget = def.tier === 3 ? beltRailsMk3 : def.tier === 2 ? beltRailsMk2 : beltRailsMk1;
+            emitBeltDirectToBuffers(doc, b, def, beltBedTris, railTarget, beltChevs, floorCellMap);
+            continue;
+          }
+
+          const { root, extrudeGroup, roofHeight } = buildMachineLineArt(b, def, baseY, 1.0, false, palette);
+          bucket.ingestObject(root, extrudeGroup, 'always');
+
+          const recipe = b.recipeId ? getRecipeDef(b.recipeId) : null;
+          const firstFilter = b.filterItems && b.filterItems.length > 0 ? getItemNameZh(b.filterItems[0]) : null;
+          const caption = b.label || recipe?.nameZh || firstFilter || null;
+          const [w, d] = getBuildingSizeCells(def, b.rotation);
+          if (caption && (Math.min(w, d) >= 2 || def.kind === 'sign')) {
+            const [cx, cz] = getBuildingCenterM(b, def);
+            const tex = getLabelTexture(caption, null, palette, this.maxAniso);
+            const labelW = def.kind === 'sign' ? 1.4 : Math.min(w - 0.35, 3.8);
+            bucket.addLabel('building', tex, labelW, cx, cz, 0.09, roofHeight, 0.94);
+          }
         }
 
-        const { root, extrudeGroup, roofHeight } = buildMachineLineArt(b, def, baseY, 1.0, false, palette);
-        bucket.ingestObject(root, extrudeGroup, 'always');
-
-        const recipe = b.recipeId ? getRecipeDef(b.recipeId) : null;
-        const firstFilter = b.filterItems && b.filterItems.length > 0 ? getItemNameZh(b.filterItems[0]) : null;
-        const caption = b.label || recipe?.nameZh || firstFilter || null;
-        const [w, d] = getBuildingSizeCells(def, b.rotation);
-        if (caption && (Math.min(w, d) >= 2 || def.kind === 'sign')) {
-          const [cx, cz] = getBuildingCenterM(b, def);
-          const tex = getLabelTexture(caption, null, palette, this.maxAniso);
-          const labelW = def.kind === 'sign' ? 1.4 : Math.min(w - 0.35, 3.8);
-          bucket.addLabel('building', tex, labelW, cx, cz, 0.09, roofHeight, 0.94);
+        if (beltBedTris.length >= 9) {
+          bucket.addRawTriangles(beltBedTris, 'flat', 'always', palette.beltTrackFill, 0.92, true, false);
+        }
+        if (beltRailsMk1.length >= 6) {
+          bucket.addLineSegments(beltRailsMk1, 'flat', 'always', { color: palette.beltRailMk1, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
+        }
+        if (beltRailsMk2.length >= 6) {
+          bucket.addLineSegments(beltRailsMk2, 'flat', 'always', { color: palette.beltRailMk2, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
+        }
+        if (beltRailsMk3.length >= 6) {
+          bucket.addLineSegments(beltRailsMk3, 'flat', 'always', { color: palette.beltRailMk3, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
+        }
+        if (beltChevs.length >= 6) {
+          bucket.addLineSegments(beltChevs, 'flat', 'always', { color: palette.beltArrow, alphaScale: 1.0, widthPx: 0.9, lodTier: 'micro' });
         }
       }
-
-      if (beltBedTris.length >= 9) {
-        bucket.addRawTriangles(beltBedTris, 'flat', 'always', palette.beltTrackFill, 0.92, true, false);
-      }
-      if (beltRailsMk1.length >= 6) {
-        bucket.addLineSegments(beltRailsMk1, 'flat', 'always', { color: palette.beltRailMk1, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
-      }
-      if (beltRailsMk2.length >= 6) {
-        bucket.addLineSegments(beltRailsMk2, 'flat', 'always', { color: palette.beltRailMk2, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
-      }
-      if (beltRailsMk3.length >= 6) {
-        bucket.addLineSegments(beltRailsMk3, 'flat', 'always', { color: palette.beltRailMk3, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
-      }
-      if (beltChevs.length >= 6) {
-        bucket.addLineSegments(beltChevs, 'flat', 'always', { color: palette.beltArrow, alphaScale: 1.0, widthPx: 0.9, lodTier: 'micro' });
-      }
-    }
+    });
 
     // 4. Batch underground belt dashed links on dirty floors
     for (const link of computeUndergroundLinks(doc)) {
@@ -1795,6 +2001,11 @@ export class CadSceneController {
     }
 
     const matchSealsPts: number[] = [];
+    const vertFocusPts: number[] = [];
+    const vertAdjPts: number[] = [];
+    const xlMatchPts: number[] = [];
+    const largeMatchPts: number[] = [];
+    const dimHintPts: number[] = [];
 
     for (const c of this.cachedAllConnectors) {
       const isVertical = c.type.startsWith('Vertical');
@@ -1831,18 +2042,12 @@ export class CadSceneController {
         }
         if (!compatible) continue;
         const r = c.type === 'Vertical2x2' ? 3.7 : 2.1;
-        const pts = [
+        const dst = c.floor === state.focusFloor ? vertFocusPts : vertAdjPts;
+        dst.push(
           c.x, cyWorld, c.y - r, c.x + r, cyWorld, c.y,
           c.x + r, cyWorld, c.y, c.x, cyWorld, c.y + r,
           c.x, cyWorld, c.y + r, c.x - r, cyWorld, c.y,
-          c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r,
-        ];
-        this.dockHintsGroup.add(
-          createCrispLineSegments(pts, {
-            color: palette.connVertical,
-            opacity: c.floor === state.focusFloor ? 0.95 : 0.45,
-            widthPx: 1.5,
-          })
+          c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r
         );
         continue;
       }
@@ -1876,18 +2081,28 @@ export class CadSceneController {
 
       const isXL = c.type === 'XLarge';
       const span = isXL ? 18 : 5.2;
-      const col = compatible ? (isXL ? palette.connXLarge : palette.validGhost) : palette.connLarge;
-      const mark = createStationConnectorMark(
-        span,
-        col,
-        compatible ? 0.92 : 0.32,
-        compatible ? 'hint-match' : 'hint-dim'
-      );
-      mark.position.set(c.x, cyWorld, c.y);
-      mark.rotation.y = -c.rotation * (Math.PI / 2);
-      this.dockHintsGroup.add(mark);
+      if (compatible) {
+        pushStationConnectorMarkPts(isXL ? xlMatchPts : largeMatchPts, c.x, cyWorld, c.y, c.rotation, span, 'hint-match');
+      } else {
+        pushStationConnectorMarkPts(dimHintPts, c.x, cyWorld, c.y, c.rotation, span, 'hint-dim');
+      }
     }
 
+    if (vertFocusPts.length >= 6) {
+      this.dockHintsGroup.add(createCrispLineSegments(vertFocusPts, { color: palette.connVertical, opacity: 0.95, widthPx: 1.5 }));
+    }
+    if (vertAdjPts.length >= 6) {
+      this.dockHintsGroup.add(createCrispLineSegments(vertAdjPts, { color: palette.connVertical, opacity: 0.45, widthPx: 1.5 }));
+    }
+    if (xlMatchPts.length >= 6) {
+      this.dockHintsGroup.add(createCrispLineSegments(xlMatchPts, { color: palette.connXLarge, opacity: 0.92, widthPx: 1.45 }));
+    }
+    if (largeMatchPts.length >= 6) {
+      this.dockHintsGroup.add(createCrispLineSegments(largeMatchPts, { color: palette.validGhost, opacity: 0.92, widthPx: 1.45 }));
+    }
+    if (dimHintPts.length >= 6) {
+      this.dockHintsGroup.add(createCrispLineSegments(dimHintPts, { color: palette.connLarge, opacity: 0.32, widthPx: 1.08 }));
+    }
     if (matchSealsPts.length >= 6) {
       this.dockHintsGroup.add(
         createCrispLineSegments(matchSealsPts, {
@@ -1906,26 +2121,29 @@ export class CadSceneController {
     palette: CadThemePalette,
     ghostColor: number
   ): void {
+    const ghostPts: number[] = [];
+    const xlPts: number[] = [];
     for (const c of getModuleWorldConnectors(mod, def)) {
       const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.1;
       if (c.type.startsWith('Vertical')) {
         const r = c.type === 'Vertical2x2' ? 3.2 : 1.7;
-        const pts = [
+        ghostPts.push(
           c.x, cyWorld, c.y - r, c.x + r, cyWorld, c.y,
           c.x + r, cyWorld, c.y, c.x, cyWorld, c.y + r,
           c.x, cyWorld, c.y + r, c.x - r, cyWorld, c.y,
-          c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r,
-        ];
-        target.add(createCrispLineSegments(pts, { color: ghostColor, opacity: 0.96, widthPx: 1.4 }));
+          c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r
+        );
       } else {
         const isXL = c.type === 'XLarge';
         const span = isXL ? 18 : 5.2;
-        const col = isXL ? palette.connXLarge : ghostColor;
-        const mark = createStationConnectorMark(span, col, 0.96, 'ghost');
-        mark.position.set(c.x, cyWorld, c.y);
-        mark.rotation.y = -c.rotation * (Math.PI / 2);
-        target.add(mark);
+        pushStationConnectorMarkPts(isXL ? xlPts : ghostPts, c.x, cyWorld, c.y, c.rotation, span, 'ghost');
       }
+    }
+    if (ghostPts.length >= 6) {
+      target.add(createCrispLineSegments(ghostPts, { color: ghostColor, opacity: 0.96, widthPx: 1.4 }));
+    }
+    if (xlPts.length >= 6) {
+      target.add(createCrispLineSegments(xlPts, { color: palette.connXLarge, opacity: 0.96, widthPx: 1.4 }));
     }
   }
 
@@ -2065,29 +2283,43 @@ export class CadSceneController {
       const baseY = state.focusFloor * FLOOR_VISUAL_SPACING + 0.07;
       const pairEndpoints = new Map<number, { inSeg?: BeltCellSpec; outSeg?: BeltCellSpec; valid: boolean }>();
 
-      for (const seg of state.beltPreview) {
+      // Batched geometry accumulators (reduces 200+ LineSegments2 draw calls per cursor cell to ~4!)
+      const validBeltBoxPts: number[] = [];
+      const invalidBeltBoxPts: number[] = [];
+      const validChevPts: number[] = [];
+      const invalidChevPts: number[] = [];
+      const validUgFramePts: number[] = [];
+      const invalidUgFramePts: number[] = [];
+      const validUgPadTris: number[] = [];
+      const invalidUgPadTris: number[] = [];
+      const validDashPts: number[] = [];
+      const invalidDashPts: number[] = [];
+      const waypointPts: number[] = [];
+
+      for (let i = 0; i < state.beltPreview.length; i++) {
+        const seg = state.beltPreview[i];
         const isUg = seg.kind === 'underground-in' || seg.kind === 'underground-out';
         const issue = validateBuildingPlacement(
           state.doc,
           { type: isUg ? ugType : beltType, x: seg.x, y: seg.y, floor: state.focusFloor, rotation: seg.rotation },
           { allowBeltReplace: true }
         );
-        const col = issue ? palette.invalidGhost : palette.validGhost;
+        const isBad = Boolean(issue);
         if (isUg) {
-          // Crisp double-framed underground hood preview (IN / OUT)
-          this.addFlatRectGhost(seg.x + 0.06, seg.y + 0.06, seg.x + 0.94, seg.y + 0.94, baseY + 0.02, col, 0.96);
-          this.addFlatRectGhost(seg.x + 0.2, seg.y + 0.2, seg.x + 0.8, seg.y + 0.8, baseY + 0.02, col, 0.72);
-          const pad = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.84, 0.84),
-            new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })
+          const frameDst = isBad ? invalidUgFramePts : validUgFramePts;
+          pushFlatRectPts(frameDst, seg.x + 0.06, seg.y + 0.06, seg.x + 0.94, seg.y + 0.94, baseY + 0.02);
+          pushFlatRectPts(frameDst, seg.x + 0.2, seg.y + 0.2, seg.x + 0.8, seg.y + 0.8, baseY + 0.02);
+          const padDst = isBad ? invalidUgPadTris : validUgPadTris;
+          const px0 = seg.x + 0.08;
+          const pz0 = seg.y + 0.08;
+          const px1 = seg.x + 0.92;
+          const pz1 = seg.y + 0.92;
+          const py = baseY + 0.01;
+          padDst.push(
+            px0, py, pz0, px0, py, pz1, px1, py, pz1,
+            px0, py, pz0, px1, py, pz1, px1, py, pz0
           );
-          pad.rotation.x = -Math.PI / 2;
-          pad.position.set(seg.x + 0.5, baseY + 0.01, seg.y + 0.5);
-          this.previewGroup.add(pad);
-          const chev = createDirectionalChevron(0.32, col, 0.98);
-          chev.position.set(seg.x + 0.5, baseY + 0.03, seg.y + 0.5);
-          chev.rotation.y = -seg.rotation * (Math.PI / 2);
-          this.previewGroup.add(chev);
+          pushRotatedChevronPts(isBad ? invalidChevPts : validChevPts, seg.x + 0.5, baseY + 0.03, seg.y + 0.5, 0.32, seg.rotation);
 
           if (seg.pairIndex !== undefined) {
             const p = pairEndpoints.get(seg.pairIndex) ?? { valid: true };
@@ -2096,22 +2328,17 @@ export class CadSceneController {
             if (issue) p.valid = false;
             pairEndpoints.set(seg.pairIndex, p);
           } else if (seg.kind === 'underground-in') {
-            // Armed underground dive (distance 0): draw dashed reach guide ray forward up to 8 cells
             const dx = seg.rotation === 0 ? 1 : seg.rotation === 2 ? -1 : 0;
             const dy = seg.rotation === 1 ? 1 : seg.rotation === 3 ? -1 : 0;
-            this.previewGroup.add(
-              createCrispLineSegments(
-                [seg.x + 0.5, baseY + 0.04, seg.y + 0.5, seg.x + 0.5 + dx * 8, baseY + 0.04, seg.y + 0.5 + dy * 8],
-                { color: col, opacity: 0.85, widthPx: 1.4, dashed: true, dashSize: 0.35, gapSize: 0.24 }
-              )
+            const dashDst = isBad ? invalidDashPts : validDashPts;
+            dashDst.push(
+              seg.x + 0.5, baseY + 0.04, seg.y + 0.5,
+              seg.x + 0.5 + dx * 8, baseY + 0.04, seg.y + 0.5 + dy * 8
             );
           }
         } else {
-          this.addFlatRectGhost(seg.x + 0.14, seg.y + 0.14, seg.x + 0.86, seg.y + 0.86, baseY, col, 0.6);
-          const chev = createDirectionalChevron(0.28, col, 0.94);
-          chev.position.set(seg.x + 0.5, baseY + 0.01, seg.y + 0.5);
-          chev.rotation.y = -seg.rotation * (Math.PI / 2);
-          this.previewGroup.add(chev);
+          pushFlatRectPts(isBad ? invalidBeltBoxPts : validBeltBoxPts, seg.x + 0.14, seg.y + 0.14, seg.x + 0.86, seg.y + 0.86, baseY);
+          pushRotatedChevronPts(isBad ? invalidChevPts : validChevPts, seg.x + 0.5, baseY + 0.01, seg.y + 0.5, 0.28, seg.rotation);
         }
 
         if (seg.isWaypoint) {
@@ -2119,33 +2346,71 @@ export class CadSceneController {
           const cz = seg.y + 0.5;
           const r = 0.44;
           const wy = baseY + 0.045;
-          this.previewGroup.add(
-            createCrispLineSegments(
-              [
-                cx, wy, cz - r, cx + r, wy, cz,
-                cx + r, wy, cz, cx, wy, cz + r,
-                cx, wy, cz + r, cx - r, wy, cz,
-                cx - r, wy, cz, cx, wy, cz - r,
-              ],
-              { color: palette.selectOutline, opacity: 0.98, widthPx: 1.8 }
-            )
+          waypointPts.push(
+            cx, wy, cz - r, cx + r, wy, cz,
+            cx + r, wy, cz, cx, wy, cz + r,
+            cx, wy, cz + r, cx - r, wy, cz,
+            cx - r, wy, cz, cx, wy, cz - r
           );
         }
       }
 
-      // Draw crisp dashed underground tunnel bridges between each matched IN/OUT pair
       for (const pair of pairEndpoints.values()) {
         if (!pair.inSeg || !pair.outSeg) continue;
-        const linkCol = pair.valid ? palette.validGhost : palette.invalidGhost;
-        this.previewGroup.add(
-          createCrispLineSegments(
-            [
-              pair.inSeg.x + 0.5, baseY + 0.04, pair.inSeg.y + 0.5,
-              pair.outSeg.x + 0.5, baseY + 0.04, pair.outSeg.y + 0.5,
-            ],
-            { color: linkCol, opacity: 0.94, widthPx: 1.7, dashed: true, dashSize: 0.34, gapSize: 0.22 }
-          )
+        const dashDst = pair.valid ? validDashPts : invalidDashPts;
+        dashDst.push(
+          pair.inSeg.x + 0.5, baseY + 0.04, pair.inSeg.y + 0.5,
+          pair.outSeg.x + 0.5, baseY + 0.04, pair.outSeg.y + 0.5
         );
+      }
+
+      const emitMergedPads = (tris: number[], color: number) => {
+        if (tris.length < 9) return;
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(tris, 3));
+        const mat = new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.22,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        });
+        this.previewGroup.add(new THREE.Mesh(geo, mat));
+      };
+
+      emitMergedPads(validUgPadTris, palette.validGhost);
+      emitMergedPads(invalidUgPadTris, palette.invalidGhost);
+
+      if (validBeltBoxPts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(validBeltBoxPts, { color: palette.validGhost, opacity: 0.6, widthPx: 1.3 }));
+      }
+      if (invalidBeltBoxPts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(invalidBeltBoxPts, { color: palette.invalidGhost, opacity: 0.6, widthPx: 1.3 }));
+      }
+      if (validUgFramePts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(validUgFramePts, { color: palette.validGhost, opacity: 0.92, widthPx: 1.3 }));
+      }
+      if (invalidUgFramePts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(invalidUgFramePts, { color: palette.invalidGhost, opacity: 0.92, widthPx: 1.3 }));
+      }
+      if (validChevPts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(validChevPts, { color: palette.validGhost, opacity: 0.96, widthPx: 1.25 }));
+      }
+      if (invalidChevPts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(invalidChevPts, { color: palette.invalidGhost, opacity: 0.96, widthPx: 1.25 }));
+      }
+      if (validDashPts.length >= 6) {
+        this.previewGroup.add(
+          createCrispLineSegments(validDashPts, { color: palette.validGhost, opacity: 0.92, widthPx: 1.65, dashed: true, dashSize: 0.34, gapSize: 0.22 })
+        );
+      }
+      if (invalidDashPts.length >= 6) {
+        this.previewGroup.add(
+          createCrispLineSegments(invalidDashPts, { color: palette.invalidGhost, opacity: 0.92, widthPx: 1.65, dashed: true, dashSize: 0.34, gapSize: 0.22 })
+        );
+      }
+      if (waypointPts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(waypointPts, { color: palette.selectOutline, opacity: 0.98, widthPx: 1.8 }));
       }
       return;
     }
@@ -2411,67 +2676,90 @@ export class CadSceneController {
       return;
     }
 
-    // 4. Blueprint Stamp Ghost (O(1) spatial-indexed conflict check; zero cloning of doc.buildings!)
+    // 4. Blueprint Stamp Ghost (ZERO entity cloning, ZERO spatial re-indexing — hits WeakMap caches in O(1)!)
     if (state.activeTool.kind === 'stamp-blueprint') {
+      const bp = state.activeTool.blueprint;
       const anchorX = Math.floor(state.cursorWorld.x);
       const anchorY = Math.floor(state.cursorWorld.y);
       const anchorFloor = state.focusFloor + state.activeTool.floorOffset;
-      const { modules, buildings } = computeStampCandidates(state.activeTool.blueprint, {
-        x: anchorX,
-        y: anchorY,
-        floor: anchorFloor,
-      });
+      const hasModules = bp.modules.length > 0;
+      const shiftGx = hasModules ? Math.floor(anchorX / STATION_UNIT_M) : 0;
+      const shiftGy = hasModules ? Math.floor(anchorY / STATION_UNIT_M) : 0;
+      const shiftX = hasModules ? shiftGx * STATION_UNIT_M : anchorX;
+      const shiftY = hasModules ? shiftGy * STATION_UNIT_M : anchorY;
 
-      // Tiny module-only doc so we NEVER miss state.doc's WeakMap spatial index!
-      const stampModDoc: BlueprintDocument | null =
-        modules.length > 0 ? { ...state.doc, modules, buildings: [] } : null;
       const baseIdx = getDocSpatialIndex(state.doc);
 
       const validPts: number[] = [];
       const invalidPts: number[] = [];
+      const ghostConnValidPts: number[] = [];
+      const ghostConnInvalidPts: number[] = [];
+      const ghostConnXlPts: number[] = [];
+      const showGhostConns = bp.modules.length <= 24;
 
-      for (const m of modules) {
-        const def = getModuleDef(m.type);
+      for (let i = 0; i < bp.modules.length; i++) {
+        const src = bp.modules[i];
+        const def = getModuleDef(src.type);
         if (!def) continue;
+        const m: PlacedModule = {
+          ...src,
+          gx: src.gx + shiftGx,
+          gy: src.gy + shiftGy,
+          floor: src.floor + anchorFloor,
+        };
         const issue = validateModulePlacement(state.doc, m);
         const isBad = Boolean(issue && !state.forceReplaceHeld);
         const [minX, minY, maxX, maxY] = getModuleBoundsM(m, def);
         const y = m.floor * FLOOR_VISUAL_SPACING + 0.08;
-        const dst = isBad ? invalidPts : validPts;
-        dst.push(
-          minX + 0.15, y, minY + 0.15, maxX - 0.15, y, minY + 0.15,
-          maxX - 0.15, y, minY + 0.15, maxX - 0.15, y, maxY - 0.15,
-          maxX - 0.15, y, maxY - 0.15, minX + 0.15, y, maxY - 0.15,
-          minX + 0.15, y, maxY - 0.15, minX + 0.15, y, minY + 0.15
-        );
-        if (modules.length <= 24) {
-          this.addGhostConnectors(this.previewGroup, m, def, palette, isBad ? palette.invalidGhost : palette.validGhost);
+        pushFlatRectPts(isBad ? invalidPts : validPts, minX + 0.15, minY + 0.15, maxX - 0.15, maxY - 0.15, y);
+
+        if (showGhostConns) {
+          const dst = isBad ? ghostConnInvalidPts : ghostConnValidPts;
+          for (const c of getModuleWorldConnectors(m, def)) {
+            const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.1;
+            if (c.type.startsWith('Vertical')) {
+              const r = c.type === 'Vertical2x2' ? 3.2 : 1.7;
+              dst.push(
+                c.x, cyWorld, c.y - r, c.x + r, cyWorld, c.y,
+                c.x + r, cyWorld, c.y, c.x, cyWorld, c.y + r,
+                c.x, cyWorld, c.y + r, c.x - r, cyWorld, c.y,
+                c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r
+              );
+            } else {
+              const isXL = c.type === 'XLarge';
+              const span = isXL ? 18 : 5.2;
+              pushStationConnectorMarkPts(isXL ? ghostConnXlPts : dst, c.x, cyWorld, c.y, c.rotation, span, 'ghost');
+            }
+          }
         }
       }
 
       const maxGhostBlds = 2500;
-      const stepBld = buildings.length > maxGhostBlds ? Math.ceil(buildings.length / maxGhostBlds) : 1;
-      for (let i = 0; i < buildings.length; i += stepBld) {
-        const b = buildings[i];
+      const stepBld = bp.buildings.length > maxGhostBlds ? Math.ceil(bp.buildings.length / maxGhostBlds) : 1;
+      for (let i = 0; i < bp.buildings.length; i += stepBld) {
+        const b = bp.buildings[i];
         const def = getBuildableDef(b.type);
         if (!def) continue;
         const [w, d] = getBuildingSizeCells(def, b.rotation);
+        const bx = b.x + shiftX;
+        const by = b.y + shiftY;
+        const bf = b.floor + anchorFloor;
+        const cellMap = !state.forceReplaceHeld ? baseIdx.buildingCellByFloor.get(bf) : undefined;
         let isBad = false;
-        // O(w*d) floor + overlap check against cached spatial index
+        // O(w*d) floor + overlap check against WeakMap-cached spatial indexes (state.doc + bp.modules directly!)
         for (let dx = 0; dx < w && !isBad; dx++) {
           for (let dy = 0; dy < d; dy++) {
-            const cx = b.x + dx;
-            const cy = b.y + dy;
+            const cx = bx + dx;
+            const cy = by + dy;
             const onFloor =
-              Boolean(isCellBuildable(state.doc, cx, cy, b.floor)) ||
-              Boolean(stampModDoc && isCellBuildable(stampModDoc, cx, cy, b.floor));
+              (hasModules && isCellBuildable(bp, b.x + dx, b.y + dy, b.floor)) ||
+              isCellBuildable(state.doc, cx, cy, bf);
             if (!onFloor) {
               isBad = true;
               break;
             }
-            if (!state.forceReplaceHeld) {
-              const cellMap = baseIdx.buildingCellByFloor.get(b.floor);
-              const hit = cellMap?.get(packCellKey(cx, cy));
+            if (cellMap) {
+              const hit = cellMap.get(packCellKey(cx, cy));
               if (hit) {
                 if (Array.isArray(hit)) {
                   for (let k = 0; k < hit.length; k++) {
@@ -2492,14 +2780,8 @@ export class CadSceneController {
             }
           }
         }
-        const y = b.floor * FLOOR_VISUAL_SPACING + 0.09;
-        const dst = isBad ? invalidPts : validPts;
-        dst.push(
-          b.x + 0.1, y, b.y + 0.1, b.x + w - 0.1, y, b.y + 0.1,
-          b.x + w - 0.1, y, b.y + 0.1, b.x + w - 0.1, y, b.y + d - 0.1,
-          b.x + w - 0.1, y, b.y + d - 0.1, b.x + 0.1, y, b.y + d - 0.1,
-          b.x + 0.1, y, b.y + d - 0.1, b.x + 0.1, y, b.y + 0.1
-        );
+        const y = bf * FLOOR_VISUAL_SPACING + 0.09;
+        pushFlatRectPts(isBad ? invalidPts : validPts, bx + 0.1, by + 0.1, bx + w - 0.1, by + d - 0.1, y);
       }
 
       if (validPts.length >= 6) {
@@ -2507,6 +2789,15 @@ export class CadSceneController {
       }
       if (invalidPts.length >= 6) {
         this.previewGroup.add(createCrispLineSegments(invalidPts, { color: palette.invalidGhost, opacity: 0.9, widthPx: 1.35 }));
+      }
+      if (ghostConnValidPts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(ghostConnValidPts, { color: palette.validGhost, opacity: 0.96, widthPx: 1.4 }));
+      }
+      if (ghostConnInvalidPts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(ghostConnInvalidPts, { color: palette.invalidGhost, opacity: 0.96, widthPx: 1.4 }));
+      }
+      if (ghostConnXlPts.length >= 6) {
+        this.previewGroup.add(createCrispLineSegments(ghostConnXlPts, { color: palette.connXLarge, opacity: 0.96, widthPx: 1.4 }));
       }
     }
   }
@@ -2564,9 +2855,11 @@ export class CadSceneController {
   }
 
   private tick = (now: number): void => {
+    this.rafRunning = false;
+    this.rafId = 0;
     if (this.disposed) return;
-    this.rafId = requestAnimationFrame(this.tick);
-    const dt = Math.min(0.05, (now - this.lastTime) / 1000);
+
+    const dt = Math.min(0.05, Math.max(0, (now - this.lastTime) / 1000));
     this.lastTime = now;
 
     let right = 0;
@@ -2575,23 +2868,39 @@ export class CadSceneController {
     if (this.keysDown.has('KeyA') || this.keysDown.has('ArrowLeft')) right -= 1;
     if (this.keysDown.has('KeyW') || this.keysDown.has('ArrowUp')) forward += 1;
     if (this.keysDown.has('KeyS') || this.keysDown.has('ArrowDown')) forward -= 1;
-    if (right !== 0 || forward !== 0) {
+    const movingByKeys = right !== 0 || forward !== 0;
+    if (movingByKeys) {
       this.rig.panByAxes(right, forward, dt);
     }
 
-    this.rig.update(dt, now);
+    const cam = this.rig.update(dt, now);
     const yScale = this.getCurrentExtrusionScale();
     if (Math.abs(yScale - this.lastExtrusionScale) > 1e-4) {
       this.lastExtrusionScale = yScale;
       this.applyExtrusionScale(yScale);
+      this.dirty = true;
     }
     this.applyDistanceLodAndFog();
-    this.renderer.render(this.scene, this.rig.camera);
+
+    if (this.dirty || cam.moved || movingByKeys) {
+      this.dirty = false;
+      this.renderer.render(this.scene, this.rig.camera);
+    }
+
+    // Demand-driven scheduling: stop RAF completely once camera settles and scene is clean (0% idle GPU!)
+    if (cam.active || movingByKeys || this.dirty) {
+      this.rafRunning = true;
+      this.rafId = requestAnimationFrame(this.tick);
+    }
   };
 
   dispose(): void {
     this.disposed = true;
-    cancelAnimationFrame(this.rafId);
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = 0;
+    }
+    this.rafRunning = false;
     this.clearFloorBuckets();
     this.clearGroup(this.referenceGroup);
     this.clearGroup(this.selectionGroup);

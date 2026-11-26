@@ -12,7 +12,7 @@ interface FloorStackRailProps {
   onToggleHideAbove: () => void;
 }
 
-export const FloorStackRail: React.FC<FloorStackRailProps> = ({
+export const FloorStackRail: React.FC<FloorStackRailProps> = React.memo(({
   doc,
   focusFloor,
   hideAbove,
@@ -21,14 +21,14 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
   onToggleHideAbove,
 }) => {
   const { isEn, t } = useI18n();
-  const { floors, countsByFloor } = useMemo(() => {
+  const { minF, maxF, countsByFloor } = useMemo(() => {
     const map = new Map<number, { mods: number; blds: number }>();
-    let minF = 0;
-    let maxF = 1;
+    let minFloor = 0;
+    let maxFloor = 1;
 
     const bump = (f: number, kind: 'mods' | 'blds') => {
-      if (f < minF) minF = f;
-      if (f > maxF) maxF = f;
+      if (f < minFloor) minFloor = f;
+      if (f > maxFloor) maxFloor = f;
       const entry = map.get(f) ?? { mods: 0, blds: 0 };
       entry[kind] += 1;
       map.set(f, entry);
@@ -46,14 +46,18 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
       bump(doc.buildings[i].floor, 'blds');
     }
 
+    return { minF: minFloor, maxF: maxFloor, countsByFloor: map };
+  }, [doc.modules, doc.buildings]);
+
+  const floors = useMemo(() => {
     const low = Math.max(-2, Math.min(minF, focusFloor, 0));
     const high = Math.min(8, Math.max(maxF, focusFloor, 1));
     const list: number[] = [];
     for (let f = high; f >= low; f--) {
       list.push(f);
     }
-    return { floors: list, countsByFloor: map };
-  }, [doc, focusFloor]);
+    return list;
+  }, [minF, maxF, focusFloor]);
 
   const canStepUp = focusFloor < 8;
   const canStepDown = focusFloor > -2;
@@ -129,4 +133,4 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
       </button>
     </aside>
   );
-};
+});

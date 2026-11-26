@@ -30,7 +30,7 @@ interface ToolActionBarProps {
   hints: KeyHintItem[];
 }
 
-export const ToolActionBar: React.FC<ToolActionBarProps> = ({
+export const ToolActionBar: React.FC<ToolActionBarProps> = React.memo(({
   mode,
   badge,
   tone = 'default',
@@ -49,4 +49,4 @@ export const ToolActionBar: React.FC<ToolActionBarProps> = ({
       </>
     )}
   </div>
-);
+));

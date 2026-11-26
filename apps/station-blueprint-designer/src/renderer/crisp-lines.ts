@@ -24,6 +24,22 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 
 const GLOBAL_LINE_RESOLUTION = new THREE.Vector2(1280, 720);
 
+let deferredLineDepth = 0;
+
+/**
+ * Execute `fn` in deferred line-collection mode: `createCrispLineSegments` returns lightweight
+ * `THREE.Object3D` carriers holding `rawPositions` & `lineOpts` WITHOUT allocating throwaway
+ * `LineSegmentsGeometry` or `LineMaterial` instances before `FloorRenderBucket.ingestObject`.
+ */
+export function withDeferredLines<T>(fn: () => T): T {
+  deferredLineDepth++;
+  try {
+    return fn();
+  } finally {
+    deferredLineDepth--;
+  }
+}
+
 export function setLineViewportResolution(width: number, height: number): void {
   GLOBAL_LINE_RESOLUTION.set(Math.max(1, width), Math.max(1, height));
 }
@@ -117,6 +133,12 @@ export function createCrispLineMaterial(opts: CrispLineOptions): LineMaterial {
 }
 
 export function createCrispLineSegments(pts: number[], opts: CrispLineOptions): LineSegments2 {
+  if (deferredLineDepth > 0) {
+    const stub = new THREE.Object3D();
+    stub.userData.rawPositions = pts;
+    stub.userData.lineOpts = opts;
+    return stub as unknown as LineSegments2;
+  }
   const geo = new LineSegmentsGeometry();
   if (pts.length >= 6) {
     geo.setPositions(pts);

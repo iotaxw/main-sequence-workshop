@@ -8,6 +8,7 @@ import {
   getModuleCenterM,
   getModuleFloorShift,
   isPortToggleable,
+  packCellKey,
   rotationToDelta,
   STATION_UNIT_M,
 } from './../core/geometry';
@@ -489,6 +490,10 @@ export function buildLogisticsCellMap(doc: BlueprintDocument): Map<string, Place
   return map;
 }
 
+function isLogisticsKind(kind: BuildableDef['kind']): boolean {
+  return kind === 'belt' || kind === 'splitter' || kind === 'balancer' || kind === 'underground';
+}
+
 /** Check whether a neighbor cell outputs logistics flow into `(targetX, targetY)` */
 function doesNeighborFeedCell(
   doc: BlueprintDocument,
@@ -497,12 +502,21 @@ function doesNeighborFeedCell(
   floor: number,
   dxFromTarget: number,
   dyFromTarget: number,
-  cellMap?: Map<string, PlacedBuilding>
+  cellMap?: Map<string, PlacedBuilding>,
+  floorCellMap?: Map<number, PlacedBuilding | PlacedBuilding[]>
 ): boolean {
-  const nb = cellMap ? cellMap.get(`${floor}:${nbX},${nbY}`) : findBuildingAtCell(doc, nbX, nbY, floor);
+  let nb: PlacedBuilding | null | undefined;
+  if (floorCellMap) {
+    const hit = floorCellMap.get(packCellKey(nbX, nbY));
+    nb = Array.isArray(hit) ? hit[0] : hit;
+  } else if (cellMap) {
+    nb = cellMap.get(`${floor}:${nbX},${nbY}`);
+  } else {
+    nb = findBuildingAtCell(doc, nbX, nbY, floor);
+  }
   if (!nb) return false;
   const nbDef = getBuildableDef(nb.type);
-  if (!nbDef || !['belt', 'splitter', 'balancer', 'underground'].includes(nbDef.kind)) return false;
+  if (!nbDef || !isLogisticsKind(nbDef.kind)) return false;
   // Underground IN swallows items underground -> never feeds forward onto the surface tile!
   if (nbDef.kind === 'underground' && nb.undergroundMode !== 'out') return false;
   const [nbOutDx, nbOutDy] = rotationToDelta(nb.rotation);
@@ -652,7 +666,8 @@ export function emitBeltDirectToBuffers(
   def: BuildableDef,
   bedTrisOut: number[],
   railPtsOut: number[],
-  chevPtsOut: number[]
+  chevPtsOut: number[],
+  floorCellMap?: Map<number, PlacedBuilding | PlacedBuilding[]>
 ): void {
   const cx = b.x + 0.5;
   const cz = b.y + 0.5;
@@ -663,17 +678,17 @@ export function emitBeltDirectToBuffers(
   const [outDx, outDy] = rotationToDelta(b.rotation);
 
   let inDir: [number, number] | null = null;
-  if (doesNeighborFeedCell(doc, b.x - outDx, b.y - outDy, b.floor, -outDx, -outDy)) {
+  if (doesNeighborFeedCell(doc, b.x - outDx, b.y - outDy, b.floor, -outDx, -outDy, undefined, floorCellMap)) {
     inDir = [outDx, outDy];
   } else {
     const px1 = -outDy;
     const py1 = outDx;
-    if (doesNeighborFeedCell(doc, b.x + px1, b.y + py1, b.floor, px1, py1)) {
+    if (doesNeighborFeedCell(doc, b.x + px1, b.y + py1, b.floor, px1, py1, undefined, floorCellMap)) {
       inDir = [-px1, -py1];
     } else {
       const px2 = outDy;
       const py2 = -outDx;
-      if (doesNeighborFeedCell(doc, b.x + px2, b.y + py2, b.floor, px2, py2)) {
+      if (doesNeighborFeedCell(doc, b.x + px2, b.y + py2, b.floor, px2, py2, undefined, floorCellMap)) {
         inDir = [-px2, -py2];
       }
     }

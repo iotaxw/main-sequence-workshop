@@ -22,12 +22,11 @@
 
 import { getBuildableDef, getModuleDef, getRecipeDef } from './catalog';
 import {
-  FLOOR_HEIGHT_M,
   STATION_UNIT_M,
+  type Aabb3,
   getBuildingSizeCells,
   getModuleCenterM,
-  getModuleFloorShift,
-  getModuleOriginOffsetM,
+  getModuleEngineBlockBoundsM,
   getModuleSizeUnits,
   getModuleWorldConnectors,
   isCellBuildable,
@@ -35,6 +34,7 @@ import {
   rotateVec2,
   rotationToDelta,
 } from './geometry';
+export { getModuleEngineBlockBoundsM } from './geometry';
 import { simulateBlueprint } from './simulation';
 import type { SimulationReport } from './simulation';
 import type { BlueprintDocument, PlacedBuilding, PlacedModule, Rotation, StationModuleDef } from './types';
@@ -247,51 +247,6 @@ export interface HierarchicalVerificationReport {
 }
 
 /* ===================== Exact Geometry Helpers ===================== */
-
-interface Aabb3 {
-  minX: number;
-  minY: number;
-  minZ: number;
-  maxX: number;
-  maxY: number;
-  maxZ: number;
-}
-
-/**
- * Exact replica of BuildBlueprintUtil::CheckOverlap (0x1443146f0) world-space 3D BlockBounds AABB,
- * using the unified class-level actor pivot offset derived from `blockBoundsM` & `sizeUnits`.
- */
-export function getModuleEngineBlockBoundsM(mod: PlacedModule, def: StationModuleDef): Aabb3 {
-  const [cx, cy] = getModuleCenterM(mod, def);
-  const [ox, oy] = getModuleOriginOffsetM(def);
-  const [pox, poy] = rotateVec2(-ox, -oy, mod.rotation);
-  const px = cx + pox;
-  const py = cy + poy;
-  const b = def.blockBoundsM;
-  if (!b) {
-    const [wu, du, hu] = getModuleSizeUnits(def, mod.rotation);
-    return {
-      minX: mod.gx * STATION_UNIT_M,
-      minY: mod.gy * STATION_UNIT_M,
-      minZ: mod.floor * FLOOR_HEIGHT_M,
-      maxX: (mod.gx + wu) * STATION_UNIT_M,
-      maxY: (mod.gy + du) * STATION_UNIT_M,
-      maxZ: (mod.floor + hu) * FLOOR_HEIGHT_M,
-    };
-  }
-  const zShiftFloors = getModuleFloorShift(def);
-  const pz = (mod.floor + zShiftFloors) * FLOOR_HEIGHT_M;
-  const [x1, y1] = rotateVec2(b.minX, b.minY, mod.rotation);
-  const [x2, y2] = rotateVec2(b.maxX, b.maxY, mod.rotation);
-  return {
-    minX: px + Math.min(x1, x2),
-    maxX: px + Math.max(x1, x2),
-    minY: py + Math.min(y1, y2),
-    maxY: py + Math.max(y1, y2),
-    minZ: pz + b.minZ,
-    maxZ: pz + b.maxZ,
-  };
-}
 
 function aabbStrictIntersects(a: Aabb3, b: Aabb3, eps = 0.02): boolean {
   return (

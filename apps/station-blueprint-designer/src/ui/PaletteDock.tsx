@@ -27,7 +27,7 @@ interface HoverMeta {
   hints?: KeyHintItem[];
 }
 
-export const PaletteDock: React.FC<PaletteDockProps> = ({
+export const PaletteDock: React.FC<PaletteDockProps> = React.memo(({
   viewMode,
   activeTool,
   lastGroupMember,
@@ -214,4 +214,4 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
       </div>
     </div>
   );
-};
+});

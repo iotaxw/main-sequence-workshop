@@ -18,6 +18,7 @@ import {
   getBuildingWorldPorts,
   getModuleBoundsM,
   getModuleCenterM,
+  getModuleEngineBlockBoundsM,
   getModuleWorldDockPorts,
   isCellBuildable,
   normalizeRotation,
@@ -35,7 +36,6 @@ import type {
   Rotation,
   StationModuleDef,
 } from './types';
-import { getModuleEngineBlockBoundsM } from './verifier';
 
 /* ===================== Public Types ===================== */
 

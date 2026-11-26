@@ -247,24 +247,32 @@ export function placeBuildingCmd(
     };
 
     let matchedPartnerId: string | undefined;
-    if (spec.undergroundPartnerId) {
-      const pref = remaining.find((b) => b.id === spec.undergroundPartnerId);
+    const baseIdx = getBuildingSpatialIndex(doc.buildings);
+    if (spec.undergroundPartnerId && !removeIds.has(spec.undergroundPartnerId)) {
+      const pref = baseIdx.buildingById.get(spec.undergroundPartnerId);
       if (pref && !pref.undergroundPartnerId && isPartnerInline(pref)) {
         matchedPartnerId = pref.id;
       }
     }
     if (!matchedPartnerId) {
-      // Auto-bind nearest compatible unpaired same-tier partner inline within maxLength
-      let bestDist = maxLen + 1;
-      for (const cand of remaining) {
-        if (cand.undergroundPartnerId) continue;
-        const cDef = getBuildableDef(cand.type);
-        if (!cDef || cDef.tier !== def.tier) continue;
-        if (!isPartnerInline(cand)) continue;
-        const dist = Math.abs(cand.x - building.x) + Math.abs(cand.y - building.y);
-        if (dist < bestDist) {
-          bestDist = dist;
-          matchedPartnerId = cand.id;
+      // O(maxLen) spatial walk to bind nearest compatible unpaired same-tier partner inline
+      const floorCellMap = baseIdx.buildingCellByFloor.get(building.floor);
+      if (floorCellMap) {
+        const dirSign = mode === 'in' ? 1 : -1;
+        for (let dist = 1; dist <= maxLen && !matchedPartnerId; dist++) {
+          const hit = floorCellMap.get(packCellKey(building.x + dx * dirSign * dist, building.y + dy * dirSign * dist));
+          if (!hit) continue;
+          const checkCand = (cand: PlacedBuilding) => {
+            if (matchedPartnerId || removeIds.has(cand.id) || cand.undergroundPartnerId) return;
+            const cDef = getBuildableDef(cand.type);
+            if (!cDef || cDef.tier !== def.tier) return;
+            if (isPartnerInline(cand)) matchedPartnerId = cand.id;
+          };
+          if (Array.isArray(hit)) {
+            for (let j = 0; j < hit.length; j++) checkCand(hit[j]);
+          } else {
+            checkCand(hit);
+          }
         }
       }
     }
@@ -1031,26 +1039,51 @@ export function extractSelectionAsBlueprint(
   };
 }
 
-/** Get bounding box of a blueprint in 1m units (for rotation/mirroring/preview) */
+const blueprintBoundsCache = new WeakMap<
+  BlueprintDocument,
+  { width: number; depth: number; floors: number; modRef: PlacedModule[]; bldRef: PlacedBuilding[] }
+>();
+
+/** Get bounding box of a blueprint in 1m units (WeakMap-cached by document + entity array identities) */
 export function getBlueprintBoundsM(bp: BlueprintDocument): { width: number; depth: number; floors: number } {
+  const cached = blueprintBoundsCache.get(bp);
+  if (cached && cached.modRef === bp.modules && cached.bldRef === bp.buildings) {
+    return { width: cached.width, depth: cached.depth, floors: cached.floors };
+  }
   let maxX = 0;
   let maxY = 0;
   let maxF = 1;
-  for (const m of bp.modules) {
+  for (let i = 0; i < bp.modules.length; i++) {
+    const m = bp.modules[i];
     const def = getModuleDef(m.type);
     const [wu, du, hu] = def ? getModuleSizeUnits(def, m.rotation) : [1, 1, 1];
-    maxX = Math.max(maxX, (m.gx + wu) * STATION_UNIT_M);
-    maxY = Math.max(maxY, (m.gy + du) * STATION_UNIT_M);
-    maxF = Math.max(maxF, m.floor + hu);
+    const rx = (m.gx + wu) * STATION_UNIT_M;
+    const ry = (m.gy + du) * STATION_UNIT_M;
+    const rf = m.floor + hu;
+    if (rx > maxX) maxX = rx;
+    if (ry > maxY) maxY = ry;
+    if (rf > maxF) maxF = rf;
   }
-  for (const b of bp.buildings) {
+  for (let i = 0; i < bp.buildings.length; i++) {
+    const b = bp.buildings[i];
     const def = getBuildableDef(b.type);
     const [w, d] = def ? getBuildingSizeCells(def, b.rotation) : [1, 1];
-    maxX = Math.max(maxX, b.x + w);
-    maxY = Math.max(maxY, b.y + d);
-    maxF = Math.max(maxF, b.floor + 1);
+    const rx = b.x + w;
+    const ry = b.y + d;
+    const rf = b.floor + 1;
+    if (rx > maxX) maxX = rx;
+    if (ry > maxY) maxY = ry;
+    if (rf > maxF) maxF = rf;
   }
-  return { width: Math.max(1, maxX), depth: Math.max(1, maxY), floors: maxF };
+  const res = {
+    width: Math.max(1, maxX),
+    depth: Math.max(1, maxY),
+    floors: maxF,
+    modRef: bp.modules,
+    bldRef: bp.buildings,
+  };
+  blueprintBoundsCache.set(bp, res);
+  return { width: res.width, depth: res.depth, floors: res.floors };
 }
 
 /** Rotate an entire blueprint 90° CW (`delta=1`) or CCW (`delta=-1`), preserving relative positions */
