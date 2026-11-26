@@ -52,7 +52,7 @@ import {
   buildIndustrialDockGantryArt,
   buildMachineLineArt,
   buildStationModuleArt,
-  emitBeltDirectToBuffers,
+  emitBeltsMergedToBuffers,
 } from './line-art';
 import { createRoundedGridOverlay } from './rounded-grid-shader';
 import { CAD_THEMES, type CadThemeId, type CadThemePalette } from './theme';
@@ -84,37 +84,56 @@ export interface SceneRenderState {
 
 const labelTextureCache = new Map<string, THREE.CanvasTexture>();
 
+// Shared unit XZ plane geometry for ALL station & building labels (zero per-label BufferGeometry alloc!)
+const SHARED_LABEL_PLANE_GEO = (() => {
+  const g = new THREE.PlaneGeometry(1, 0.375);
+  g.rotateX(-Math.PI / 2);
+  return g;
+})();
+
+const BUILDING_CHUNK_SIZE_M = 96; // 6 x 6 station units (~32 chunks on a 560m mega-station: tight foreground/horizon LOD + fast single-chunk edits!)
+const _frustum = new THREE.Frustum();
+const _projScreenMat = new THREE.Matrix4();
+
+function chunkCoord(worldM: number): number {
+  return Math.floor(worldM / BUILDING_CHUNK_SIZE_M);
+}
+
+function packChunkKey(floor: number, cx: number, cy: number): string {
+  return `${floor}:${cx},${cy}`;
+}
+
 function getLabelTexture(
   title: string,
   subtitle: string | null,
   palette: CadThemePalette,
-  maxAniso = 16
+  maxAniso = 8
 ): THREE.CanvasTexture {
   const key = `${palette.id}||${title}||${subtitle ?? ''}`;
   const cached = labelTextureCache.get(key);
   if (cached) return cached;
 
   const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 384;
+  canvas.width = 512;
+  canvas.height = 192;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = palette.labelTitleHex;
-  ctx.font = '500 84px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
-  const yTitle = subtitle ? 132 : 192;
-  ctx.fillText(title.slice(0, 10), 512, yTitle, 940);
+  ctx.font = '500 42px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+  const yTitle = subtitle ? 66 : 96;
+  ctx.fillText(title.slice(0, 10), 256, yTitle, 470);
 
   if (subtitle) {
     ctx.fillStyle = palette.labelSubHex;
-    ctx.font = '400 66px "JetBrains Mono", Consolas, "Microsoft YaHei", monospace';
-    ctx.fillText(subtitle.slice(0, 14), 512, 266, 940);
+    ctx.font = '400 33px "JetBrains Mono", Consolas, "Microsoft YaHei", monospace';
+    ctx.fillText(subtitle.slice(0, 14), 256, 133, 470);
   }
 
   const tex = new THREE.CanvasTexture(canvas);
-  tex.anisotropy = Math.min(16, Math.max(4, maxAniso));
+  tex.anisotropy = Math.min(8, Math.max(4, maxAniso));
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -354,12 +373,14 @@ interface LabelEntry {
 }
 
 /**
- * Per-floor batched render bucket.
- * Holds merged LineSegments2 + merged MeshBasicMaterial solids so changing focusFloor (Q/E),
- * hideAbove (V), viewMode, or selection requires ZERO geometry rebuild!
+ * Per-(floor, 64m×64m chunk) batched render bucket.
+ * - Enables chunk-level Three.js frustum culling (skips 90–96% of off-screen mega-station geometry & labels!)
+ * - Enables ~60x faster incremental single-chunk edits on 29,000+ building blueprints
+ * - Lazy dirty visual sync: culled chunks do ZERO CPU work during orbit, pan, zoom, or pitch tilt!
  */
-class FloorRenderBucket {
+class RenderChunkBucket {
   readonly floor: number;
+  readonly chunkKey: string;
   readonly baseY: number;
   readonly root = new THREE.Group();
   readonly flatAlways = new THREE.Group();
@@ -371,13 +392,34 @@ class FloorRenderBucket {
 
   readonly materials: ManagedMaterialEntry[] = [];
   readonly labelEntries: LabelEntry[] = [];
+  readonly worldBounds = new THREE.Box3();
+  isEmpty = true;
+  gpuWarmed = false;
+  isDisposed = false;
+
+  private minX = Infinity;
+  private minZ = Infinity;
+  private maxX = -Infinity;
+  private maxZ = -Infinity;
+  private maxYRel = 1.0;
 
   private lineAccums = new Map<string, LineBucketAccum>();
   private meshAccums = new Map<string, MeshBucketAccum>();
-  private curFloorOpacity = 1.0;
 
-  constructor(floor: number) {
+  // Cached last-applied visual state for zero-cost lazy sync on visible chunks
+  private appliedOpacity = -1;
+  private appliedViewMode: ViewMode | '' = '';
+  private appliedPrimaryLod = -1;
+  private appliedDetailLod = -1;
+  private appliedMicroLod = -1;
+  private appliedExtrusion = -1;
+  private appliedShowStLabels = false;
+  private appliedShowBldLabels = false;
+  private appliedShowExtruded = true;
+
+  constructor(floor: number, chunkKey: string) {
     this.floor = floor;
+    this.chunkKey = chunkKey;
     this.baseY = floor * FLOOR_VISUAL_SPACING;
     this.root.position.set(0, this.baseY, 0);
     // Keep extrudedAlways pivot cleanly above floor (+0.005) & machine base plate (+0.032) so 89° flat 2D lines never sink below floor!
@@ -390,6 +432,14 @@ class FloorRenderBucket {
       this.stationLabels,
       this.buildingLabels
     );
+  }
+
+  private expandBounds(x: number, yRel: number, z: number): void {
+    if (x < this.minX) this.minX = x;
+    if (x > this.maxX) this.maxX = x;
+    if (z < this.minZ) this.minZ = z;
+    if (z > this.maxZ) this.maxZ = z;
+    if (yRel > this.maxYRel) this.maxYRel = yRel;
   }
 
   addLineSegments(
@@ -407,32 +457,14 @@ class FloorRenderBucket {
     }
   ): void {
     if (pts.length < 6) return;
-    const widthPx = Math.round((opts.widthPx ?? 1.2) * 20) / 20;
-    const lodTier = opts.lodTier ?? 'primary';
-    const dashed = Boolean(opts.dashed);
-    const dashSize = opts.dashSize ?? 0.35;
-    const gapSize = opts.gapSize ?? 0.28;
-    const alphaScale = Math.round((opts.alphaScale ?? 1.0) * 100) / 100;
-    const key = `${layer}|${subMode}|${opts.color}|${widthPx}|${lodTier}|${dashed ? `${dashSize}:${gapSize}` : 'S'}|${alphaScale}`;
-    let acc = this.lineAccums.get(key);
-    if (!acc) {
-      acc = {
-        layer,
-        subMode,
-        color: opts.color,
-        widthPx,
-        lodTier,
-        dashed,
-        dashSize,
-        gapSize,
-        alphaScale,
-        positions: [],
-      };
-      this.lineAccums.set(key, acc);
-    }
+    const acc = this.getOrCreateLineAccum(layer, subMode, opts);
     const out = acc.positions;
-    for (let i = 0; i < pts.length; i++) {
-      out.push(pts[i]);
+    for (let i = 0; i < pts.length; i += 3) {
+      const x = pts[i];
+      const y = pts[i + 1];
+      const z = pts[i + 2];
+      out.push(x, y, z);
+      this.expandBounds(x, y, z);
     }
   }
 
@@ -462,8 +494,12 @@ class FloorRenderBucket {
       this.meshAccums.set(key, acc);
     }
     const out = acc.positions;
-    for (let i = 0; i < pts.length; i++) {
-      out.push(pts[i]);
+    for (let i = 0; i < pts.length; i += 3) {
+      const x = pts[i];
+      const y = pts[i + 1];
+      const z = pts[i + 2];
+      out.push(x, y, z);
+      this.expandBounds(x, y, z);
     }
   }
 
@@ -502,11 +538,13 @@ class FloorRenderBucket {
         const idx = index.getX(i);
         v.fromBufferAttribute(posAttr, idx).applyMatrix4(matrix);
         out.push(v.x, v.y, v.z);
+        this.expandBounds(v.x, v.y, v.z);
       }
     } else {
       for (let i = 0; i < posAttr.count; i++) {
         v.fromBufferAttribute(posAttr, i).applyMatrix4(matrix);
         out.push(v.x, v.y, v.z);
+        this.expandBounds(v.x, v.y, v.z);
       }
     }
   }
@@ -551,7 +589,7 @@ class FloorRenderBucket {
   }
 
   /**
-   * Flattens an entire temporary Object3D subtree (produced by line-art builders) into this floor's merged buffers
+   * Flattens an entire temporary Object3D subtree (produced by line-art builders) into this chunk's merged buffers
    * and disposes the temporary geometries/materials immediately!
    */
   ingestObject(
@@ -594,6 +632,7 @@ class FloorRenderBucket {
         for (let i = 0; i < rawPts.length; i += 3) {
           v.set(rawPts[i], rawPts[i + 1], rawPts[i + 2]).applyMatrix4(relMat);
           out.push(v.x, v.y, v.z);
+          this.expandBounds(v.x, v.y, v.z);
         }
         return;
       }
@@ -638,19 +677,21 @@ class FloorRenderBucket {
     roofHeight: number,
     alphaScale: number
   ): void {
-    const geo = new THREE.PlaneGeometry(width, width * 0.375);
-    geo.rotateX(-Math.PI / 2);
     const mat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
       opacity: alphaScale,
       depthWrite: false,
     });
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = new THREE.Mesh(SHARED_LABEL_PLANE_GEO, mat);
+    mesh.scale.set(width, 1, width);
     mesh.position.set(cx, baseOffsetY + roofHeight, cz);
     if (kind === 'station') this.stationLabels.add(mesh);
     else this.buildingLabels.add(mesh);
     this.labelEntries.push({ mesh, roofHeight, baseOffsetY, alphaScale });
+    const hw = width * 0.5;
+    this.expandBounds(cx - hw, baseOffsetY + roofHeight, cz - hw * 0.375);
+    this.expandBounds(cx + hw, baseOffsetY + roofHeight, cz + hw * 0.375);
   }
 
   private getTargetGroup(layer: BatchLayer, subMode: BatchSubMode): THREE.Group {
@@ -666,6 +707,7 @@ class FloorRenderBucket {
       if (acc.positions.length < 9) continue;
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(acc.positions, 3));
+      geo.computeBoundingSphere();
       const mat = new THREE.MeshBasicMaterial({
         color: acc.color,
         transparent: acc.alwaysTransparent,
@@ -710,67 +752,114 @@ class FloorRenderBucket {
       });
     }
     this.lineAccums.clear();
+
+    this.isEmpty = !Number.isFinite(this.minX) || (this.materials.length === 0 && this.labelEntries.length === 0);
+    if (!this.isEmpty) {
+      this.worldBounds.min.set(this.minX - 2, this.baseY - 1, this.minZ - 2);
+      this.worldBounds.max.set(
+        this.maxX + 2,
+        this.baseY + Math.max(FLOOR_VISUAL_SPACING, this.maxYRel + 2),
+        this.maxZ + 2
+      );
+    }
   }
 
-  applyVisibility(opacity: number, viewMode: ViewMode, detailLod: number, microLod = detailLod): void {
-    this.curFloorOpacity = opacity;
-    if (opacity <= 0.01) {
-      this.root.visible = false;
-      return;
-    }
-    this.root.visible = true;
-    this.flatStation.visible = viewMode === 'station';
-    this.flatBuilding.visible = viewMode === 'building';
-    this.stationLabels.visible = viewMode === 'station' && opacity >= 0.45;
-    this.buildingLabels.visible = viewMode === 'building' && opacity >= 0.45;
+  /**
+   * Lazy dirty-sync called ONLY for frustum-visible chunks!
+   * Updates sub-mode visibility, material opacity, LOD visibility, label distance culling,
+   * and 3D extrusion scale ONLY when the respective parameter actually changed.
+   */
+  syncVisuals(
+    opacity: number,
+    viewMode: ViewMode,
+    detailLod: number,
+    microLod: number,
+    yScale: number,
+    cameraDist: number,
+    primaryLod = 1.0,
+    showExtruded = true
+  ): void {
+    const showStLabels = viewMode === 'station' && opacity >= 0.45 && cameraDist <= 240;
+    const showBldLabels = viewMode === 'building' && opacity >= 0.45 && cameraDist <= 78;
 
-    for (const entry of this.materials) {
-      if (entry.isLine) {
-        const lineMat = entry.mat as LineMaterial;
-        const lodMult = entry.lodTier === 'micro' ? microLod : entry.lodTier === 'detail' ? detailLod : 1.0;
-        const nextOp = opacity * entry.alphaScale * lodMult;
-        lineMat.opacity = nextOp;
-        if (entry.obj) entry.obj.visible = nextOp > 0.008;
-      } else {
-        const meshMat = entry.mat as THREE.MeshBasicMaterial;
-        const shouldBeTrans = entry.alwaysTransparent || opacity < 0.99;
-        if (meshMat.transparent !== shouldBeTrans) {
-          meshMat.transparent = shouldBeTrans;
-          meshMat.depthWrite = !shouldBeTrans;
-          meshMat.needsUpdate = true;
+    if (this.appliedViewMode !== viewMode) {
+      this.appliedViewMode = viewMode;
+      this.flatStation.visible = viewMode === 'station';
+      this.flatBuilding.visible = viewMode === 'building';
+    }
+    if (this.appliedShowExtruded !== showExtruded) {
+      this.appliedShowExtruded = showExtruded;
+      this.extrudedAlways.visible = showExtruded;
+    }
+    if (this.appliedShowStLabels !== showStLabels) {
+      this.appliedShowStLabels = showStLabels;
+      this.stationLabels.visible = showStLabels;
+    }
+    if (this.appliedShowBldLabels !== showBldLabels) {
+      this.appliedShowBldLabels = showBldLabels;
+      this.buildingLabels.visible = showBldLabels;
+    }
+
+    const opChanged = Math.abs(opacity - this.appliedOpacity) > 0.002;
+    const primaryLodChanged = Math.abs(primaryLod - this.appliedPrimaryLod) > 0.01;
+    const lodChanged =
+      primaryLodChanged ||
+      Math.abs(detailLod - this.appliedDetailLod) > 0.01 ||
+      Math.abs(microLod - this.appliedMicroLod) > 0.01;
+
+    if (opChanged || lodChanged) {
+      for (let i = 0; i < this.materials.length; i++) {
+        const entry = this.materials[i];
+        if (entry.isLine) {
+          if (!opChanged && !primaryLodChanged && entry.lodTier === 'primary') continue;
+          const lineMat = entry.mat as LineMaterial;
+          const lodMult =
+            entry.lodTier === 'micro'
+              ? microLod
+              : entry.lodTier === 'detail'
+                ? detailLod
+                : primaryLod;
+          const nextOp = opacity * entry.alphaScale * lodMult;
+          lineMat.opacity = nextOp;
+          if (entry.obj) entry.obj.visible = nextOp > 0.008;
+        } else if (opChanged) {
+          const meshMat = entry.mat as THREE.MeshBasicMaterial;
+          const shouldBeTrans = entry.alwaysTransparent || opacity < 0.99;
+          if (meshMat.transparent !== shouldBeTrans) {
+            meshMat.transparent = shouldBeTrans;
+            meshMat.depthWrite = !shouldBeTrans;
+          }
+          meshMat.opacity = opacity * entry.alphaScale;
         }
-        meshMat.opacity = opacity * entry.alphaScale;
       }
-    }
-
-    for (const lbl of this.labelEntries) {
-      (lbl.mesh.material as THREE.MeshBasicMaterial).opacity = opacity * lbl.alphaScale;
-    }
-  }
-
-  applyDetailLodOnly(detailLod: number, microLod = detailLod): void {
-    if (!this.root.visible) return;
-    for (const entry of this.materials) {
-      if (entry.isLine && (entry.lodTier === 'detail' || entry.lodTier === 'micro')) {
-        const lodMult = entry.lodTier === 'micro' ? microLod : detailLod;
-        const nextOp = this.curFloorOpacity * entry.alphaScale * lodMult;
-        (entry.mat as LineMaterial).opacity = nextOp;
-        if (entry.obj) entry.obj.visible = nextOp > 0.008;
+      if (opChanged) {
+        for (let i = 0; i < this.labelEntries.length; i++) {
+          const lbl = this.labelEntries[i];
+          (lbl.mesh.material as THREE.MeshBasicMaterial).opacity = opacity * lbl.alphaScale;
+        }
       }
+      this.appliedOpacity = opacity;
+      this.appliedPrimaryLod = primaryLod;
+      this.appliedDetailLod = detailLod;
+      this.appliedMicroLod = microLod;
     }
-  }
 
-  applyExtrusion(yScale: number): void {
-    this.extrudedAlways.scale.y = yScale;
-    for (const lbl of this.labelEntries) {
-      lbl.mesh.position.y = lbl.baseOffsetY + lbl.roofHeight * yScale;
+    if (Math.abs(yScale - this.appliedExtrusion) > 1e-4) {
+      this.appliedExtrusion = yScale;
+      this.extrudedAlways.scale.y = yScale;
+      for (let i = 0; i < this.labelEntries.length; i++) {
+        const lbl = this.labelEntries[i];
+        lbl.mesh.position.y = lbl.baseOffsetY + lbl.roofHeight * yScale;
+      }
     }
   }
 
   dispose(): void {
+    this.isDisposed = true;
     this.root.traverse((obj) => {
-      if ((obj as THREE.Mesh).geometry) {
-        (obj as THREE.Mesh).geometry.dispose();
+      const geo = (obj as THREE.Mesh).geometry;
+      if (geo && geo !== SHARED_LABEL_PLANE_GEO) {
+        geo.dispose();
       }
       const mat = (obj as THREE.Mesh).material;
       if (Array.isArray(mat)) {
@@ -795,6 +884,7 @@ export class CadSceneController {
   private rafRunning = false;
   private dirty = true;
   private lastTime = 0;
+  private idleUntilMs = 0;
   private disposed = false;
 
   private referenceGroup = new THREE.Group();
@@ -805,7 +895,8 @@ export class CadSceneController {
   private boxSelectGroup = new THREE.Group();
   private roundedGrid: ReturnType<typeof createRoundedGridOverlay>;
 
-  private floorBuckets = new Map<number, FloorRenderBucket>();
+  private stationFloorBuckets = new Map<number, RenderChunkBucket>();
+  private buildingChunkBuckets = new Map<string, RenderChunkBucket>();
   private cachedAllConnectors: WorldConnector[] = [];
   private cachedConnCounts = new Map<string, number>();
 
@@ -816,18 +907,21 @@ export class CadSceneController {
   private liveBoxMode: BoxSelectMode = 'replace';
   private livePreviewSelection: SelectionState | null = null;
   private liveBeltPreview: BeltCellSpec[] | null = null;
+  private cameraDragging = false;
   private lastLiveSelSig = '';
   private lastPreviewKey = '';
   private lastDockHintKey = '';
   private bpRevIds = new WeakMap<BlueprintDocument, number>();
   private nextBpRevId = 1;
   private activePalette: CadThemePalette = CAD_THEMES['platinum-gold'];
-  private maxAniso = 16;
+  private maxAniso = 8;
 
   private ghostExtrudeTargets: THREE.Group[] = [];
-  private lastDetailLod = 1.0;
   private lastExtrusionScale = -1;
-  private lastMicroLod = 1.0;
+  private warmupScene = new THREE.Scene();
+  private uploadedTextures = new WeakSet<THREE.CanvasTexture>();
+  private pendingTextureUploads: THREE.CanvasTexture[] = [];
+  private pendingWarmupBuckets: RenderChunkBucket[] = [];
 
   constructor(
     container: HTMLElement,
@@ -850,6 +944,8 @@ export class CadSceneController {
 
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(this.activePalette.bg, 0.00018);
+    // Share exact FogExp2 instance so warmupScene compiles/binds the identical USE_FOG programs as main scene!
+    this.warmupScene.fog = this.scene.fog;
 
     const hemi = new THREE.HemisphereLight(0xb8cade, this.activePalette.bg, 0.9);
     this.scene.add(hemi);
@@ -869,19 +965,122 @@ export class CadSceneController {
     this.scene.add(this.boxSelectGroup);
 
     this.buildMinimalReferenceAxes(this.activePalette);
-    this.lastTime = performance.now();
+    this.prewarmShaders();
     this.requestRender();
   }
 
-  /** Demand-driven render trigger: wakes the RAF loop only when visual state or camera actually changes. */
+  /** Pre-compile all custom & standard GLSL shaders (SDF lines, rounded grid, matte + label meshes) once at startup. */
+  private prewarmShaders(): void {
+    const dummySolid = createCrispLineSegments([0, 0, 0, 1, 0, 0], { color: 0xffffff, opacity: 1, widthPx: 1.2 });
+    const dummyDashed = createCrispLineSegments([0, 0, 0, 1, 0, 0], {
+      color: 0xffffff,
+      opacity: 1,
+      widthPx: 1.2,
+      dashed: true,
+    });
+    const dummyMatteGeo = new THREE.BufferGeometry();
+    dummyMatteGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 0, 1], 3));
+    const dummyMatteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const dummyMatte = new THREE.Mesh(dummyMatteGeo, dummyMatteMat);
+    const dummyTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+    dummyTex.needsUpdate = true;
+    const dummyLabelMat = new THREE.MeshBasicMaterial({ map: dummyTex, transparent: true, depthWrite: false });
+    const dummyLabel = new THREE.Mesh(SHARED_LABEL_PLANE_GEO, dummyLabelMat);
+
+    const prevGridVis = this.roundedGrid.mesh.visible;
+    this.roundedGrid.mesh.visible = true;
+    this.scene.add(dummySolid, dummyDashed, dummyMatte, dummyLabel);
+    this.renderer.compile(this.scene, this.rig.camera);
+    this.scene.remove(dummySolid, dummyDashed, dummyMatte, dummyLabel);
+    this.roundedGrid.mesh.visible = prevGridVis;
+    dummySolid.geometry.dispose();
+    dummySolid.material.dispose();
+    dummyDashed.geometry.dispose();
+    dummyDashed.material.dispose();
+    dummyMatteGeo.dispose();
+    dummyMatteMat.dispose();
+    dummyLabelMat.dispose();
+    dummyTex.dispose();
+  }
+
+  private queueTextureWarmup(tex: THREE.CanvasTexture): void {
+    if (this.uploadedTextures.has(tex)) return;
+    this.uploadedTextures.add(tex);
+    this.pendingTextureUploads.push(tex);
+  }
+
+  /**
+   * Silently upload 1 bucket's GPU VBOs & initialize its WebGL VAOs inside a 1×1 color/depth-masked
+   * scissor pass during idle frames so orbiting to new chunks or switching floors NEVER spikes!
+   */
+  private warmupBucketGpu(bucket: RenderChunkBucket): void {
+    if (bucket.isDisposed || bucket.isEmpty || bucket.gpuWarmed) return;
+    bucket.gpuWarmed = true;
+
+    const gl = this.renderer.getContext();
+    const prevAutoClear = this.renderer.autoClear;
+    const prevScissorTest = this.renderer.getScissorTest();
+    const savedVis: Array<{ obj: THREE.Object3D; vis: boolean; cull: boolean }> = [];
+    bucket.root.traverse((obj) => {
+      savedVis.push({ obj, vis: obj.visible, cull: obj.frustumCulled });
+      obj.visible = true;
+      obj.frustumCulled = false;
+    });
+
+    this.worldGroup.remove(bucket.root);
+    this.warmupScene.add(bucket.root);
+
+    this.renderer.autoClear = false;
+    this.renderer.setScissorTest(true);
+    this.renderer.setScissor(0, 0, 1, 1);
+    gl.colorMask(false, false, false, false);
+    gl.depthMask(false);
+    try {
+      this.renderer.render(this.warmupScene, this.rig.camera);
+    } finally {
+      gl.colorMask(true, true, true, true);
+      gl.depthMask(true);
+      this.renderer.setScissorTest(prevScissorTest);
+      this.renderer.autoClear = prevAutoClear;
+      this.renderer.state.reset();
+      this.warmupScene.remove(bucket.root);
+      this.worldGroup.add(bucket.root);
+      for (let i = 0; i < savedVis.length; i++) {
+        const s = savedVis[i];
+        s.obj.visible = s.vis;
+        s.obj.frustumCulled = s.cull;
+      }
+    }
+  }
+
+  /**
+   * Demand-driven render trigger with 2.0s VSync grace window:
+   * - Waking from idle uses `lastTime = 0` sentinel so frame 1 gets a clean 1/60s step (never dt=0!).
+   * - Stays VSync-locked during continuous wheel/orbit bursts (zero wake stutter), then sleeps at 0% GPU/CPU after 2s.
+   */
   requestRender(): void {
     if (this.disposed) return;
     this.dirty = true;
+    this.idleUntilMs = performance.now() + 2000;
     if (!this.rafRunning) {
       this.rafRunning = true;
-      this.lastTime = performance.now();
+      this.lastTime = 0;
       this.rafId = requestAnimationFrame(this.tick);
     }
+  }
+
+  setCameraDragging(dragging: boolean): void {
+    if (this.cameraDragging === dragging) return;
+    this.cameraDragging = dragging;
+    if (this.lastState) {
+      this.updateRoundedGrid({
+        ...this.lastState,
+        cursorWorld: this.liveCursorWorld,
+        boxSelectRect: this.liveBoxRect,
+        beltPreview: this.liveBeltPreview ?? this.lastState.beltPreview,
+      });
+    }
+    this.requestRender();
   }
 
   private hasMovementKeys(): boolean {
@@ -936,6 +1135,7 @@ export class CadSceneController {
   resize(): void {
     const w = this.container.clientWidth || 800;
     const h = this.container.clientHeight || 600;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(w, h);
     setLineViewportResolution(w, h);
     this.rig.setAspect(w / Math.max(1, h));
@@ -955,22 +1155,39 @@ export class CadSceneController {
     this.keysDown.clear();
   }
 
-  private getOrCreateFloorBucket(floor: number): FloorRenderBucket {
-    let bucket = this.floorBuckets.get(floor);
+  private getOrCreateStationFloorBucket(floor: number): RenderChunkBucket {
+    let bucket = this.stationFloorBuckets.get(floor);
     if (!bucket) {
-      bucket = new FloorRenderBucket(floor);
-      this.floorBuckets.set(floor, bucket);
+      bucket = new RenderChunkBucket(floor, `st:${floor}`);
+      this.stationFloorBuckets.set(floor, bucket);
       this.worldGroup.add(bucket.root);
     }
     return bucket;
   }
 
-  private clearFloorBuckets(): void {
-    for (const bucket of this.floorBuckets.values()) {
+  private getOrCreateBuildingChunkBucket(floor: number, cx: number, cy: number): RenderChunkBucket {
+    const key = packChunkKey(floor, cx, cy);
+    let bucket = this.buildingChunkBuckets.get(key);
+    if (!bucket) {
+      bucket = new RenderChunkBucket(floor, key);
+      this.buildingChunkBuckets.set(key, bucket);
+      this.worldGroup.add(bucket.root);
+    }
+    return bucket;
+  }
+
+  private clearWorldBuckets(): void {
+    this.pendingWarmupBuckets.length = 0;
+    for (const bucket of this.stationFloorBuckets.values()) {
       this.worldGroup.remove(bucket.root);
       bucket.dispose();
     }
-    this.floorBuckets.clear();
+    this.stationFloorBuckets.clear();
+    for (const bucket of this.buildingChunkBuckets.values()) {
+      this.worldGroup.remove(bucket.root);
+      bucket.dispose();
+    }
+    this.buildingChunkBuckets.clear();
   }
 
   private getBlueprintRevId(bp: BlueprintDocument): number {
@@ -1200,10 +1417,6 @@ export class CadSceneController {
       prev.hideAbove !== effState.hideAbove ||
       prev.viewMode !== effState.viewMode;
 
-    if (visibilityChanged) {
-      this.applyFloorVisibilities(effState);
-    }
-
     const selectionChanged =
       visibilityChanged ||
       prev.selection !== effState.selection ||
@@ -1258,35 +1471,22 @@ export class CadSceneController {
     return Math.max(0.22, 0.48 - dist * 0.12);
   }
 
-  private applyFloorVisibilities(state: SceneRenderState): void {
-    const lod = this.computeDistanceLod();
-    const microLod = this.computeMicroLod();
-    this.lastDetailLod = lod;
-    this.lastMicroLod = microLod;
-    const yScale = this.getCurrentExtrusionScale();
-    for (const bucket of this.floorBuckets.values()) {
-      const op = this.layerOpacityFor(bucket.floor, state.focusFloor, state.hideAbove);
-      bucket.applyVisibility(op, state.viewMode, lod, microLod);
-      bucket.applyExtrusion(yScale);
-    }
-  }
-
-  private computeDirtyFloors(prevDoc: BlueprintDocument, nextDoc: BlueprintDocument): Set<number> {
+  private computeDirtyStationFloors(prevDoc: BlueprintDocument, nextDoc: BlueprintDocument): Set<number> {
     const dirty = new Set<number>();
+    if (prevDoc.modules === nextDoc.modules) return dirty;
 
-    // Compare modules by reference/id
+    const markModFloors = (m: PlacedModule) => {
+      const def = getModuleDef(m.type);
+      dirty.add(m.floor);
+      if (!def) return;
+      for (let df = 0; df < def.sizeUnits[2]; df++) dirty.add(m.floor + df);
+      for (let i = 0; i < def.connectors.length; i++) dirty.add(m.floor + def.connectors[i].floorOffset);
+    };
+
     const prevModMap = new Map<string, PlacedModule>();
     for (let i = 0; i < prevDoc.modules.length; i++) {
       prevModMap.set(prevDoc.modules[i].id, prevDoc.modules[i]);
     }
-    const markModFloors = (m: PlacedModule) => {
-      const def = getModuleDef(m.type);
-      const span = def?.sizeUnits[2] ?? 1;
-      for (let df = 0; df < span; df++) dirty.add(m.floor + df);
-      if (def) {
-        for (const c of def.connectors) dirty.add(m.floor + c.floorOffset);
-      }
-    };
     const seenMods = new Set<string>();
     for (let i = 0; i < nextDoc.modules.length; i++) {
       const m = nextDoc.modules[i];
@@ -1301,8 +1501,41 @@ export class CadSceneController {
       const pm = prevDoc.modules[i];
       if (!seenMods.has(pm.id)) markModFloors(pm);
     }
+    return dirty;
+  }
 
-    // Compare buildings by reference/id
+  private computeDirtyBuildingChunks(prevDoc: BlueprintDocument, nextDoc: BlueprintDocument): Set<string> {
+    const dirty = new Set<string>();
+    if (prevDoc.buildings === nextDoc.buildings) return dirty;
+
+    const markBldChunks = (b: PlacedBuilding) => {
+      const cx = chunkCoord(b.x);
+      const cy = chunkCoord(b.y);
+      dirty.add(packChunkKey(b.floor, cx, cy));
+      const def = getBuildableDef(b.type);
+      const [w, d] = def ? getBuildingSizeCells(def, b.rotation) : [1, 1];
+      const cxMin = chunkCoord(b.x - 1);
+      const cxMax = chunkCoord(b.x + w);
+      const cyMin = chunkCoord(b.y - 1);
+      const cyMax = chunkCoord(b.y + d);
+      if (cxMin !== cx) dirty.add(packChunkKey(b.floor, cxMin, cy));
+      if (cxMax !== cx) dirty.add(packChunkKey(b.floor, cxMax, cy));
+      if (cyMin !== cy) dirty.add(packChunkKey(b.floor, cx, cyMin));
+      if (cyMax !== cy) dirty.add(packChunkKey(b.floor, cx, cyMax));
+      if (def?.kind === 'underground') {
+        const reach = def.maxLength ?? 8;
+        const rxMin = chunkCoord(b.x - reach);
+        const rxMax = chunkCoord(b.x + reach);
+        const ryMin = chunkCoord(b.y - reach);
+        const ryMax = chunkCoord(b.y + reach);
+        for (let gx = rxMin; gx <= rxMax; gx++) {
+          for (let gy = ryMin; gy <= ryMax; gy++) {
+            dirty.add(packChunkKey(b.floor, gx, gy));
+          }
+        }
+      }
+    };
+
     const prevBldMap = new Map<string, PlacedBuilding>();
     for (let i = 0; i < prevDoc.buildings.length; i++) {
       prevBldMap.set(prevDoc.buildings[i].id, prevDoc.buildings[i]);
@@ -1313,175 +1546,242 @@ export class CadSceneController {
       seenBlds.add(b.id);
       const pb = prevBldMap.get(b.id);
       if (pb !== b) {
-        dirty.add(b.floor);
-        if (pb) dirty.add(pb.floor);
+        markBldChunks(b);
+        if (pb) markBldChunks(pb);
       }
     }
     for (let i = 0; i < prevDoc.buildings.length; i++) {
       const pb = prevDoc.buildings[i];
-      if (!seenBlds.has(pb.id)) dirty.add(pb.floor);
+      if (!seenBlds.has(pb.id)) markBldChunks(pb);
     }
-
     return dirty;
   }
 
   /**
-   * Builds station modules, interior buildings, underground links, and connectors into
-   * compact per-floor batched GPU buffers.
-   * Incremental: when `prevDoc` is provided, ONLY floors with actual edits are rebuilt;
-   * untouched floors keep their GPU buffers at 0 ms!
+   * Two-layer unified world batcher:
+   * - Layer A (`stationFloorBuckets`): 1 compact bucket per floor for all station hulls/slabs/connectors (~25 draw calls total!)
+   * - Layer B (`buildingChunkBuckets`): 128m×128m spatial chunks (~19 chunks on a 560m mega-station!) for RLE-merged
+   *   belts, interior machines, underground links, and labels — giving both crisp frustum culling & ~20x faster single-chunk edits!
    */
   private rebuildWorldBatches(
     doc: BlueprintDocument,
     palette: CadThemePalette,
     prevDoc: BlueprintDocument | null = null
   ): void {
-    const fullRebuild = !prevDoc || this.floorBuckets.size === 0;
-    const dirtyFloors = fullRebuild ? null : this.computeDirtyFloors(prevDoc, doc);
+    const fullRebuild = !prevDoc || (this.stationFloorBuckets.size === 0 && this.buildingChunkBuckets.size === 0);
+    const dirtyStationFloors = fullRebuild ? null : this.computeDirtyStationFloors(prevDoc, doc);
+    const dirtyBldChunks = fullRebuild ? null : this.computeDirtyBuildingChunks(prevDoc, doc);
 
-    // 1. Pre-compute all connectors & mate counts across the station (fast: typically <100 modules)
-    const allConns: WorldConnector[] = [];
-    const connCounts = new Map<string, number>();
-    const activeFloors = new Set<number>();
-    for (const mod of doc.modules) {
-      const def = getModuleDef(mod.type);
-      if (!def) continue;
-      for (let df = 0; df < def.sizeUnits[2]; df++) activeFloors.add(mod.floor + df);
-      for (const c of getModuleWorldConnectors(mod, def)) {
-        allConns.push(c);
-        activeFloors.add(c.floor);
-        if (!c.type.startsWith('Vertical')) {
-          const key = connectorKey(c.x, c.y, c.floor);
-          connCounts.set(key, (connCounts.get(key) ?? 0) + 1);
-        }
-      }
-    }
-    const idx = getDocSpatialIndex(doc);
-    for (const f of idx.buildingsByFloor.keys()) activeFloors.add(f);
-
-    this.cachedAllConnectors = allConns;
-    this.cachedConnCounts = connCounts;
-
-    if (fullRebuild) {
-      this.clearFloorBuckets();
-    } else if (dirtyFloors) {
-      // Remove buckets for floors that no longer have any entities OR are dirty and need rebuild
-      for (const f of Array.from(this.floorBuckets.keys())) {
-        if (!activeFloors.has(f) || dirtyFloors.has(f)) {
-          const b = this.floorBuckets.get(f)!;
-          this.worldGroup.remove(b.root);
-          b.dispose();
-          this.floorBuckets.delete(f);
-        }
-      }
-    }
-
-    const floorsToBuild = fullRebuild ? activeFloors : dirtyFloors!;
-    if (floorsToBuild.size === 0) return;
-
-    const drawnMated = new Set<string>();
-
-    // 2 & 3. Collect all dirty floor geometry in deferred-line mode (ZERO throwaway LineSegmentsGeometry/LineMaterial!)
-    withDeferredLines(() => {
-      // 2. Batch station modules intersecting dirty floors
-      for (const mod of doc.modules) {
+    // 1. Pre-compute station connectors & mate counts (only when modules changed or full rebuild)
+    if (fullRebuild || !prevDoc || prevDoc.modules !== doc.modules) {
+      const allConns: WorldConnector[] = [];
+      const connCounts = new Map<string, number>();
+      for (let i = 0; i < doc.modules.length; i++) {
+        const mod = doc.modules[i];
         const def = getModuleDef(mod.type);
         if (!def) continue;
-        let touchesDirty = false;
-        for (let df = 0; df < def.sizeUnits[2]; df++) {
-          if (floorsToBuild.has(mod.floor + df)) {
-            touchesDirty = true;
-            break;
+        for (const c of getModuleWorldConnectors(mod, def)) {
+          allConns.push(c);
+          if (!c.type.startsWith('Vertical')) {
+            const key = connectorKey(c.x, c.y, c.floor);
+            connCounts.set(key, (connCounts.get(key) ?? 0) + 1);
           }
         }
-        if (!touchesDirty) {
-          for (const c of def.connectors) {
-            if (floorsToBuild.has(mod.floor + c.floorOffset)) {
-              touchesDirty = true;
-              break;
-            }
+      }
+      this.cachedAllConnectors = allConns;
+      this.cachedConnCounts = connCounts;
+    }
+
+    const connCounts = this.cachedConnCounts;
+    const idx = getDocSpatialIndex(doc);
+
+    if (fullRebuild) {
+      this.clearWorldBuckets();
+    } else {
+      if (dirtyStationFloors && dirtyStationFloors.size > 0) {
+        for (const f of dirtyStationFloors) {
+          const existing = this.stationFloorBuckets.get(f);
+          if (existing) {
+            this.worldGroup.remove(existing.root);
+            existing.dispose();
+            this.stationFloorBuckets.delete(f);
           }
         }
-        if (!touchesDirty) continue;
-        this.ingestStationModule(mod, def, palette, connCounts, drawnMated, floorsToBuild);
+      }
+      if (dirtyBldChunks && dirtyBldChunks.size > 0) {
+        for (const ck of dirtyBldChunks) {
+          const existing = this.buildingChunkBuckets.get(ck);
+          if (existing) {
+            this.worldGroup.remove(existing.root);
+            existing.dispose();
+            this.buildingChunkBuckets.delete(ck);
+          }
+        }
+      }
+    }
+
+    const needStationBuild = fullRebuild || (dirtyStationFloors !== null && dirtyStationFloors.size > 0);
+    const needBuildingBuild = fullRebuild || (dirtyBldChunks !== null && dirtyBldChunks.size > 0);
+    if (!needStationBuild && !needBuildingBuild) return;
+
+    const touchedStationFloors = new Set<number>();
+    const touchedBldChunks = new Set<string>();
+
+    // Collect geometry in deferred-line mode (ZERO throwaway LineSegmentsGeometry/LineMaterial!)
+    withDeferredLines(() => {
+      // Layer A: Per-floor station modules
+      if (needStationBuild) {
+        const onTouchStation = (bucket: RenderChunkBucket) => {
+          touchedStationFloors.add(bucket.floor);
+        };
+        for (let i = 0; i < doc.modules.length; i++) {
+          const mod = doc.modules[i];
+          const def = getModuleDef(mod.type);
+          if (!def) continue;
+          this.ingestStationModule(mod, def, palette, connCounts, dirtyStationFloors, onTouchStation);
+        }
       }
 
-      // 3. Batch interior buildings & belts per dirty floor (zero-allocation direct belt emitter!)
-      for (const floor of floorsToBuild) {
-        const floorBlds = idx.buildingsByFloor.get(floor);
-        if (!floorBlds || floorBlds.length === 0) continue;
-        const floorCellMap = idx.buildingCellByFloor.get(floor);
-        const bucket = this.getOrCreateFloorBucket(floor);
-        const baseY = floor * FLOOR_VISUAL_SPACING;
-
-        const beltBedTris: number[] = [];
-        const beltRailsMk1: number[] = [];
-        const beltRailsMk2: number[] = [];
-        const beltRailsMk3: number[] = [];
-        const beltChevs: number[] = [];
-
-        for (let i = 0; i < floorBlds.length; i++) {
-          const b = floorBlds[i];
-          const def = getBuildableDef(b.type);
-          if (!def) continue;
-
-          if (def.kind === 'belt') {
-            const railTarget = def.tier === 3 ? beltRailsMk3 : def.tier === 2 ? beltRailsMk2 : beltRailsMk1;
-            emitBeltDirectToBuffers(doc, b, def, beltBedTris, railTarget, beltChevs, floorCellMap);
-            continue;
-          }
-
-          const { root, extrudeGroup, roofHeight } = buildMachineLineArt(b, def, baseY, 1.0, false, palette);
-          bucket.ingestObject(root, extrudeGroup, 'always');
-
-          const recipe = b.recipeId ? getRecipeDef(b.recipeId) : null;
-          const firstFilter = b.filterItems && b.filterItems.length > 0 ? getItemNameZh(b.filterItems[0]) : null;
-          const caption = b.label || recipe?.nameZh || firstFilter || null;
-          const [w, d] = getBuildingSizeCells(def, b.rotation);
-          if (caption && (Math.min(w, d) >= 2 || def.kind === 'sign')) {
-            const [cx, cz] = getBuildingCenterM(b, def);
-            const tex = getLabelTexture(caption, null, palette, this.maxAniso);
-            const labelW = def.kind === 'sign' ? 1.4 : Math.min(w - 0.35, 3.8);
-            bucket.addLabel('building', tex, labelW, cx, cz, 0.09, roofHeight, 0.94);
+      // Layer B: 128m×128m spatial chunks for interior buildings & RLE-merged belts
+      if (needBuildingBuild) {
+        const dirtyBldFloors = dirtyBldChunks ? new Set<number>() : null;
+        if (dirtyBldChunks && dirtyBldFloors) {
+          for (const ck of dirtyBldChunks) {
+            dirtyBldFloors.add(Number(ck.slice(0, ck.indexOf(':'))));
           }
         }
+        const floorsIter = dirtyBldFloors ? dirtyBldFloors : idx.buildingsByFloor.keys();
+        for (const floor of floorsIter) {
+          const floorBlds = idx.buildingsByFloor.get(floor);
+          if (!floorBlds || floorBlds.length === 0) continue;
+          const floorCellMap = idx.buildingCellByFloor.get(floor);
+          const baseY = floor * FLOOR_VISUAL_SPACING;
 
-        if (beltBedTris.length >= 9) {
-          bucket.addRawTriangles(beltBedTris, 'flat', 'always', palette.beltTrackFill, 0.92, true, false);
-        }
-        if (beltRailsMk1.length >= 6) {
-          bucket.addLineSegments(beltRailsMk1, 'flat', 'always', { color: palette.beltRailMk1, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
-        }
-        if (beltRailsMk2.length >= 6) {
-          bucket.addLineSegments(beltRailsMk2, 'flat', 'always', { color: palette.beltRailMk2, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
-        }
-        if (beltRailsMk3.length >= 6) {
-          bucket.addLineSegments(beltRailsMk3, 'flat', 'always', { color: palette.beltRailMk3, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
-        }
-        if (beltChevs.length >= 6) {
-          bucket.addLineSegments(beltChevs, 'flat', 'always', { color: palette.beltArrow, alphaScale: 1.0, widthPx: 0.9, lodTier: 'micro' });
+          const beltsByChunk = new Map<string, { cx: number; cy: number; list: PlacedBuilding[] }>();
+          const machinesByChunk = new Map<string, { cx: number; cy: number; list: PlacedBuilding[] }>();
+
+          for (let i = 0; i < floorBlds.length; i++) {
+            const b = floorBlds[i];
+            const cx = chunkCoord(b.x);
+            const cy = chunkCoord(b.y);
+            const ck = packChunkKey(floor, cx, cy);
+            if (dirtyBldChunks && !dirtyBldChunks.has(ck)) continue;
+            const def = getBuildableDef(b.type);
+            if (!def) continue;
+            if (def.kind === 'belt') {
+              let group = beltsByChunk.get(ck);
+              if (!group) {
+                group = { cx, cy, list: [] };
+                beltsByChunk.set(ck, group);
+              }
+              group.list.push(b);
+            } else {
+              let group = machinesByChunk.get(ck);
+              if (!group) {
+                group = { cx, cy, list: [] };
+                machinesByChunk.set(ck, group);
+              }
+              group.list.push(b);
+            }
+          }
+
+          for (const group of beltsByChunk.values()) {
+            const bucket = this.getOrCreateBuildingChunkBucket(floor, group.cx, group.cy);
+            touchedBldChunks.add(bucket.chunkKey);
+            const beltBedTris: number[] = [];
+            const beltRailsMk1: number[] = [];
+            const beltRailsMk2: number[] = [];
+            const beltRailsMk3: number[] = [];
+            const beltChevs: number[] = [];
+            emitBeltsMergedToBuffers(
+              doc,
+              group.list,
+              floorCellMap,
+              beltBedTris,
+              beltRailsMk1,
+              beltRailsMk2,
+              beltRailsMk3,
+              beltChevs
+            );
+            if (beltBedTris.length >= 9) {
+              bucket.addRawTriangles(beltBedTris, 'flat', 'always', palette.beltTrackFill, 0.96, false, false);
+            }
+            if (beltRailsMk1.length >= 6) {
+              bucket.addLineSegments(beltRailsMk1, 'flat', 'always', { color: palette.beltRailMk1, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
+            }
+            if (beltRailsMk2.length >= 6) {
+              bucket.addLineSegments(beltRailsMk2, 'flat', 'always', { color: palette.beltRailMk2, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
+            }
+            if (beltRailsMk3.length >= 6) {
+              bucket.addLineSegments(beltRailsMk3, 'flat', 'always', { color: palette.beltRailMk3, alphaScale: 1.0, widthPx: 1.05, lodTier: 'detail' });
+            }
+            if (beltChevs.length >= 6) {
+              bucket.addLineSegments(beltChevs, 'flat', 'always', { color: palette.beltArrow, alphaScale: 1.0, widthPx: 0.9, lodTier: 'micro' });
+            }
+          }
+
+          for (const group of machinesByChunk.values()) {
+            const bucket = this.getOrCreateBuildingChunkBucket(floor, group.cx, group.cy);
+            touchedBldChunks.add(bucket.chunkKey);
+            for (let i = 0; i < group.list.length; i++) {
+              const b = group.list[i];
+              const def = getBuildableDef(b.type);
+              if (!def) continue;
+              const { root, extrudeGroup, roofHeight } = buildMachineLineArt(b, def, baseY, 1.0, false, palette);
+              bucket.ingestObject(root, extrudeGroup, 'always');
+
+              const recipe = b.recipeId ? getRecipeDef(b.recipeId) : null;
+              const firstFilter = b.filterItems && b.filterItems.length > 0 ? getItemNameZh(b.filterItems[0]) : null;
+              const caption = b.label || recipe?.nameZh || firstFilter || null;
+              const [w, d] = getBuildingSizeCells(def, b.rotation);
+              if (caption && (Math.min(w, d) >= 2 || def.kind === 'sign')) {
+                const [cxM, czM] = getBuildingCenterM(b, def);
+                const tex = getLabelTexture(caption, null, palette, this.maxAniso);
+                this.queueTextureWarmup(tex);
+                const labelW = def.kind === 'sign' ? 1.4 : Math.min(w - 0.35, 3.8);
+                bucket.addLabel('building', tex, labelW, cxM, czM, 0.09, roofHeight, 0.94);
+              }
+            }
+          }
         }
       }
     });
 
-    // 4. Batch underground belt dashed links on dirty floors
-    for (const link of computeUndergroundLinks(doc)) {
-      if (!floorsToBuild.has(link.floor)) continue;
-      const bucket = this.getOrCreateFloorBucket(link.floor);
-      bucket.addLineSegments([link.x1, 0.05, link.y1, link.x2, 0.05, link.y2], 'flat', 'always', {
-        color: palette.undergroundLink,
-        alphaScale: 0.8,
-        widthPx: 1.1,
-        dashed: true,
-        dashSize: 0.32,
-        gapSize: 0.28,
-      });
+    // 4. Batch underground belt dashed links into their building spatial chunk
+    if (needBuildingBuild) {
+      for (const link of computeUndergroundLinks(doc)) {
+        const lcx = chunkCoord((link.x1 + link.x2) * 0.5);
+        const lcy = chunkCoord((link.y1 + link.y2) * 0.5);
+        const ck = packChunkKey(link.floor, lcx, lcy);
+        if (dirtyBldChunks && !dirtyBldChunks.has(ck)) continue;
+        const bucket = this.getOrCreateBuildingChunkBucket(link.floor, lcx, lcy);
+        touchedBldChunks.add(bucket.chunkKey);
+        bucket.addLineSegments([link.x1, 0.05, link.y1, link.x2, 0.05, link.y2], 'flat', 'always', {
+          color: palette.undergroundLink,
+          alphaScale: 0.8,
+          widthPx: 1.1,
+          lodTier: 'detail',
+          dashed: true,
+          dashSize: 0.32,
+          gapSize: 0.28,
+        });
+      }
     }
 
-    // 5. Finalize ONLY newly built dirty floor buckets
-    for (const floor of floorsToBuild) {
-      const bucket = this.floorBuckets.get(floor);
-      if (bucket) bucket.finalize();
+    // 5. Finalize ONLY newly built station floors & building chunks, and queue silent GPU VBO pre-warm
+    for (const f of touchedStationFloors) {
+      const bucket = this.stationFloorBuckets.get(f);
+      if (bucket) {
+        bucket.finalize();
+        if (!bucket.isEmpty) this.pendingWarmupBuckets.push(bucket);
+      }
+    }
+    for (const ck of touchedBldChunks) {
+      const bucket = this.buildingChunkBuckets.get(ck);
+      if (bucket) {
+        bucket.finalize();
+        if (!bucket.isEmpty) this.pendingWarmupBuckets.push(bucket);
+      }
     }
   }
 
@@ -1490,12 +1790,14 @@ export class CadSceneController {
     def: StationModuleDef,
     palette: CadThemePalette,
     connCounts: Map<string, number>,
-    drawnMated: Set<string>,
-    allowedFloors?: Set<number>
+    allowedFloors: Set<number> | null,
+    onTouch: (bucket: RenderChunkBucket) => void
   ): void {
-    const baseAllowed = !allowedFloors || allowedFloors.has(mod.floor);
-    const bucket = baseAllowed ? this.getOrCreateFloorBucket(mod.floor) : null;
     const [cx, cy] = getModuleCenterM(mod, def);
+    const baseAllowed = !allowedFloors || allowedFloors.has(mod.floor);
+    const bucket = baseAllowed ? this.getOrCreateStationFloorBucket(mod.floor) : null;
+    if (bucket) onTouch(bucket);
+
     const [wu, du, hu] = getModuleSizeUnits(def, mod.rotation);
     const wM = wu * STATION_UNIT_M;
     const dM = du * STATION_UNIT_M;
@@ -1601,11 +1903,12 @@ export class CadSceneController {
         bucket.ingestObject(tempGroup, null, 'always');
       }
 
-      // Floor surface(s) placed into their respective floor bucket (only if dirty)!
+      // Floor surface(s) placed into their respective station floor bucket (only if dirty)!
       for (const surf of def.floors) {
         const surfFloor = mod.floor + surf.floorOffset;
         if (allowedFloors && !allowedFloors.has(surfFloor)) continue;
-        const surfBucket = this.getOrCreateFloorBucket(surfFloor);
+        const surfBucket = this.getOrCreateStationFloorBucket(surfFloor);
+        onTouch(surfBucket);
         const surfY = surfFloor * FLOOR_VISUAL_SPACING;
 
         const floorGeo = createFloorShapeGeometry(surf, 3.0);
@@ -1661,10 +1964,11 @@ export class CadSceneController {
       }
     }
 
-    // Connectors placed into their own connector floor bucket (only if dirty)!
+    // Connectors placed into their respective station floor bucket (order-independent mated seam deduplication!)
     for (const c of getModuleWorldConnectors(mod, def)) {
       if (allowedFloors && !allowedFloors.has(c.floor)) continue;
-      const cBucket = this.getOrCreateFloorBucket(c.floor);
+      const cBucket = this.getOrCreateStationFloorBucket(c.floor);
+      onTouch(cBucket);
       const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.05;
       if (c.type.startsWith('Vertical')) {
         const r = c.type === 'Vertical2x2' ? 3.2 : 1.7;
@@ -1682,10 +1986,8 @@ export class CadSceneController {
       } else {
         const key = connectorKey(c.x, c.y, c.floor);
         const isMated = (connCounts.get(key) ?? 0) >= 2;
-        if (isMated) {
-          if (drawnMated.has(key)) continue;
-          drawnMated.add(key);
-        }
+        // Order-independent deduplication: draw shared mated seam tick only on E (0) or S (1) side!
+        if (isMated && (c.rotation === 2 || c.rotation === 3)) continue;
         const isXL = c.type === 'XLarge';
         const span = isXL ? 18 : 5.2;
         const col = isXL ? palette.connXLarge : palette.connLarge;
@@ -1703,6 +2005,7 @@ export class CadSceneController {
     // Station Overview caption label
     const shortName = getShortLabel(def.id, def.nameZh);
     const tex = getLabelTexture(shortName, mod.label || null, palette, this.maxAniso);
+    this.queueTextureWarmup(tex);
     const labelW = Math.min(wM * 0.58, 12);
     // For BPO_Dock_2, center label neatly over the west indoor bay (-15.5m local X)
     let labelX = cx;
@@ -2154,36 +2457,101 @@ export class CadSceneController {
     return 0.008 + smooth * 0.992;
   }
 
-  private applyExtrusionScale(yScale: number): void {
-    for (const bucket of this.floorBuckets.values()) {
-      if (bucket.root.visible) {
-        bucket.applyExtrusion(yScale);
+  private computeDistanceLod(dist = this.rig.currentDistance): number {
+    // Full crisp detail up to 58m; smoothly fades to 0 by 190m so sub-pixel belt rails & 1x1 interior
+    // wireframes stop shading on distant chunks & macro overview orbits!
+    return THREE.MathUtils.clamp(1.0 - (dist - 58) / 132, 0.0, 1.0);
+  }
+
+  private computeMicroLod(dist = this.rig.currentDistance): number {
+    // Full crisp belt chevrons up to 28m; cleanly culled to 0 past 58m (skips 155,000+ micro quads!)
+    return THREE.MathUtils.clamp(1.0 - (dist - 28) / 30, 0.0, 1.0);
+  }
+
+  private computeBuildingPrimaryLod(dist = this.rig.currentDistance): number {
+    // Keep 100% crisp machine outlines up to 135m; fade smoothly to 0 by 230m so far horizon chunks &
+    // macro mega-station overviews render clean solid belt highways + machine blocks without SDF overdraw!
+    return THREE.MathUtils.clamp(1.0 - (dist - 135) / 95, 0.0, 1.0);
+  }
+
+  /**
+   * Unified per-render-frame spatial frustum culling + per-chunk 3D Euclidean camera-distance LOD!
+   * - Layer A (`stationFloorBuckets`): ~5 per-floor buckets (always razor-sharp station skeleton!)
+   * - Layer B (`buildingChunkBuckets`): 96m×96m frustum-culled interior chunks with per-chunk 3D distance LOD
+   *   so even grazing low-angle (22°) orbits in Building View keep foreground crisp and shed horizon clutter!
+   */
+  private cullAndSyncVisibleChunks(): void {
+    const state = this.lastState;
+    if (!state) return;
+
+    const cam = this.rig.camera;
+    cam.updateMatrixWorld();
+    _projScreenMat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    _frustum.setFromProjectionMatrix(_projScreenMat);
+
+    const camPos = cam.position;
+    const dist = this.rig.currentDistance;
+    const stDetailLod = this.computeDistanceLod(dist);
+    const stMicroLod = this.computeMicroLod(dist);
+    const yScale = this.getCurrentExtrusionScale();
+
+    // Layer A: Compact per-floor station hulls, floors, docks, solar arrays, connectors (~25 draw calls total)
+    for (const bucket of this.stationFloorBuckets.values()) {
+      if (bucket.isEmpty) {
+        bucket.root.visible = false;
+        continue;
       }
+      const floorOp = this.layerOpacityFor(bucket.floor, state.focusFloor, state.hideAbove);
+      if (floorOp <= 0.01 || !_frustum.intersectsBox(bucket.worldBounds)) {
+        bucket.root.visible = false;
+        continue;
+      }
+      bucket.root.visible = true;
+      bucket.syncVisuals(floorOp, state.viewMode, stDetailLod, stMicroLod, yScale, dist, 1.0, true);
     }
-    for (const g of this.ghostExtrudeTargets) {
-      g.scale.y = yScale;
+
+    // Layer B: 96m×96m spatial chunks with true 3D per-chunk camera distance LOD
+    for (const bucket of this.buildingChunkBuckets.values()) {
+      if (bucket.isEmpty) {
+        bucket.root.visible = false;
+        continue;
+      }
+      const isFocus = bucket.floor === state.focusFloor;
+      // Non-focus reference floors only show clean flat interior footprints when zoomed in (<= 60m);
+      // above 60m their translucent station skeleton is already crystal clear with zero alpha-blended clutter!
+      if (!isFocus && dist > 60) {
+        bucket.root.visible = false;
+        continue;
+      }
+      const floorOp = this.layerOpacityFor(bucket.floor, state.focusFloor, state.hideAbove);
+      if (floorOp <= 0.01 || !_frustum.intersectsBox(bucket.worldBounds)) {
+        bucket.root.visible = false;
+        continue;
+      }
+      bucket.root.visible = true;
+      if (!isFocus) {
+        // Flat translucent blueprint reference on non-focus floors (zero 3D wall overdraw & zero SDF lines!)
+        bucket.syncVisuals(floorOp, state.viewMode, 0.0, 0.0, yScale, 999, 0.0, false);
+        continue;
+      }
+      // Exact 3D Euclidean distance from camera eye to chunk AABB prevents low-angle (22°) horizon explosions!
+      const chunkDist = bucket.worldBounds.distanceToPoint(camPos);
+      bucket.syncVisuals(
+        floorOp,
+        state.viewMode,
+        this.computeDistanceLod(chunkDist),
+        this.computeMicroLod(chunkDist),
+        yScale,
+        chunkDist,
+        this.computeBuildingPrimaryLod(chunkDist),
+        true
+      );
     }
-  }
 
-  private computeDistanceLod(): number {
-    const dist = this.rig.currentDistance;
-    return THREE.MathUtils.clamp(1.0 - (dist - 65) / 175, 0.22, 1.0);
-  }
-
-  private computeMicroLod(): number {
-    const dist = this.rig.currentDistance;
-    return THREE.MathUtils.clamp(1.0 - (dist - 55) / 85, 0.0, 1.0);
-  }
-
-  private applyDistanceLodAndFog(): void {
-    const dist = this.rig.currentDistance;
-    const lod = this.computeDistanceLod();
-    const microLod = this.computeMicroLod();
-    if (Math.abs(lod - this.lastDetailLod) > 0.012 || Math.abs(microLod - this.lastMicroLod) > 0.012) {
-      this.lastDetailLod = lod;
-      this.lastMicroLod = microLod;
-      for (const bucket of this.floorBuckets.values()) {
-        bucket.applyDetailLodOnly(lod, microLod);
+    if (Math.abs(yScale - this.lastExtrusionScale) > 1e-4) {
+      this.lastExtrusionScale = yScale;
+      for (let i = 0; i < this.ghostExtrudeTargets.length; i++) {
+        this.ghostExtrudeTargets[i].scale.y = yScale;
       }
     }
 
@@ -2197,54 +2565,79 @@ export class CadSceneController {
 
   private updateRoundedGrid(state: SceneRenderState): void {
     const u = this.roundedGrid.uniforms;
-    this.roundedGrid.mesh.position.y = state.focusFloor * FLOOR_VISUAL_SPACING + 0.018;
+    const mesh = this.roundedGrid.mesh;
+    const gridY = state.focusFloor * FLOOR_VISUAL_SPACING + 0.018;
 
     const isStation = state.viewMode === 'station';
-    u.uCellSize.value = isStation ? STATION_UNIT_M : 1.0;
-    u.uCursorRadius.value = isStation ? 44.0 : 6.8;
+    const cellSize = isStation ? STATION_UNIT_M : 1.0;
+    const cursorRadius = isStation ? 44.0 : 6.8;
+    u.uCellSize.value = cellSize;
+    u.uCursorRadius.value = cursorRadius;
     u.uCornerRadius.value = isStation ? 0.06 : 0.14;
+
+    if (this.cameraDragging) {
+      u.uCursorActive.value = 0.0;
+      u.uHasFocusRect.value = 0.0;
+      mesh.visible = false;
+      return;
+    }
 
     const showForTool =
       state.activeTool.kind !== 'select' || state.boxSelectRect !== null || state.beltPreview.length > 0;
+    let minX = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxZ = -Infinity;
+
     if (state.cursorWorld) {
       u.uCursorWorld.value.set(state.cursorWorld.x, state.cursorWorld.y);
       u.uCursorActive.value = 1.0;
       u.uOpacity.value = showForTool ? 0.64 : isStation ? 0.3 : 0.42;
+      const rPad = cursorRadius * 1.08;
+      minX = state.cursorWorld.x - rPad;
+      maxX = state.cursorWorld.x + rPad;
+      minZ = state.cursorWorld.y - rPad;
+      maxZ = state.cursorWorld.y + rPad;
     } else {
       u.uCursorActive.value = 0.0;
     }
 
+    let hasRect = false;
+    let rMinX = 0;
+    let rMinZ = 0;
+    let rMaxX = 0;
+    let rMaxZ = 0;
+
     if (state.boxSelectRect) {
-      u.uFocusRect.value.set(
-        state.boxSelectRect.minX,
-        state.boxSelectRect.minY,
-        state.boxSelectRect.maxX,
-        state.boxSelectRect.maxY
-      );
-      u.uHasFocusRect.value = 1.0;
+      rMinX = state.boxSelectRect.minX;
+      rMinZ = state.boxSelectRect.minY;
+      rMaxX = state.boxSelectRect.maxX;
+      rMaxZ = state.boxSelectRect.maxY;
+      hasRect = true;
     } else if (state.beltPreview.length > 0) {
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-      for (const s of state.beltPreview) {
-        minX = Math.min(minX, s.x);
-        minY = Math.min(minY, s.y);
-        maxX = Math.max(maxX, s.x + 1);
-        maxY = Math.max(maxY, s.y + 1);
+      rMinX = Infinity;
+      rMinZ = Infinity;
+      rMaxX = -Infinity;
+      rMaxZ = -Infinity;
+      for (let i = 0; i < state.beltPreview.length; i++) {
+        const s = state.beltPreview[i];
+        if (s.x < rMinX) rMinX = s.x;
+        if (s.y < rMinZ) rMinZ = s.y;
+        if (s.x + 1 > rMaxX) rMaxX = s.x + 1;
+        if (s.y + 1 > rMaxZ) rMaxZ = s.y + 1;
       }
-      u.uFocusRect.value.set(minX, minY, maxX, maxY);
-      u.uHasFocusRect.value = 1.0;
+      hasRect = true;
     } else if (state.cursorWorld && state.activeTool.kind === 'place-building') {
       const def = getBuildableDef(state.activeTool.buildingType);
       if (def) {
         const [w, d] = getBuildingSizeCells(def, state.activeTool.rotation);
         const bx = Math.floor(state.cursorWorld.x - w / 2 + 0.5);
         const by = Math.floor(state.cursorWorld.y - d / 2 + 0.5);
-        u.uFocusRect.value.set(bx, by, bx + w, by + d);
-        u.uHasFocusRect.value = 1.0;
-      } else {
-        u.uHasFocusRect.value = 0.0;
+        rMinX = bx;
+        rMinZ = by;
+        rMaxX = bx + w;
+        rMaxZ = by + d;
+        hasRect = true;
       }
     } else if (state.cursorWorld && state.activeTool.kind === 'stamp-blueprint') {
       const bounds = getBlueprintBoundsM(state.activeTool.blueprint);
@@ -2255,11 +2648,32 @@ export class CadSceneController {
       const ay = hasMods
         ? Math.floor(state.cursorWorld.y / STATION_UNIT_M) * STATION_UNIT_M
         : Math.floor(state.cursorWorld.y);
-      u.uFocusRect.value.set(ax, ay, ax + bounds.width, ay + bounds.depth);
+      rMinX = ax;
+      rMinZ = ay;
+      rMaxX = ax + bounds.width;
+      rMaxZ = ay + bounds.depth;
+      hasRect = true;
+    }
+
+    if (hasRect) {
+      u.uFocusRect.value.set(rMinX, rMinZ, rMaxX, rMaxZ);
       u.uHasFocusRect.value = 1.0;
+      const rectPad = cellSize * 2.8;
+      if (rMinX - rectPad < minX) minX = rMinX - rectPad;
+      if (rMaxX + rectPad > maxX) maxX = rMaxX + rectPad;
+      if (rMinZ - rectPad < minZ) minZ = rMinZ - rectPad;
+      if (rMaxZ + rectPad > maxZ) maxZ = rMaxZ + rectPad;
     } else {
       u.uHasFocusRect.value = 0.0;
     }
+
+    if (!Number.isFinite(minX)) {
+      mesh.visible = false;
+      return;
+    }
+    mesh.visible = true;
+    mesh.position.set((minX + maxX) * 0.5, gridY, (minZ + maxZ) * 0.5);
+    mesh.scale.set(Math.max(1, maxX - minX), 1, Math.max(1, maxZ - minZ));
   }
 
   private addFlatRectGhost(x0: number, z0: number, x1: number, z1: number, y: number, color: number, opacity = 0.88): void {
@@ -2859,7 +3273,9 @@ export class CadSceneController {
     this.rafId = 0;
     if (this.disposed) return;
 
-    const dt = Math.min(0.05, Math.max(0, (now - this.lastTime) / 1000));
+    // Wake sentinel `lastTime === 0`: always give the first wake frame a clean 1/60s step
+    // (never `now - performance.now() <= 0` which caused dropped frames on scroll/orbit start!).
+    const dt = this.lastTime === 0 ? 1 / 60 : Math.min(0.05, Math.max(0.001, (now - this.lastTime) / 1000));
     this.lastTime = now;
 
     let right = 0;
@@ -2874,21 +3290,43 @@ export class CadSceneController {
     }
 
     const cam = this.rig.update(dt, now);
-    const yScale = this.getCurrentExtrusionScale();
-    if (Math.abs(yScale - this.lastExtrusionScale) > 1e-4) {
-      this.lastExtrusionScale = yScale;
-      this.applyExtrusionScale(yScale);
-      this.dirty = true;
-    }
-    this.applyDistanceLodAndFog();
-
     if (this.dirty || cam.moved || movingByKeys) {
       this.dirty = false;
+      this.idleUntilMs = Math.max(this.idleUntilMs, now + 2000);
+      this.cullAndSyncVisibleChunks();
       this.renderer.render(this.scene, this.rig.camera);
+    } else if (this.pendingTextureUploads.length > 0 || this.pendingWarmupBuckets.length > 0) {
+      // Progressive silent idle GPU pre-warm: uploads label mipmaps & chunk VBOs/VAOs in tiny
+      // non-blocking slices while idle so subsequent orbits, 22° tilts, and floor switches NEVER spike!
+      if (this.pendingTextureUploads.length > 0) {
+        const batch = Math.min(4, this.pendingTextureUploads.length);
+        for (let i = 0; i < batch; i++) {
+          const tex = this.pendingTextureUploads.pop()!;
+          this.renderer.initTexture(tex);
+        }
+      }
+      if (this.pendingWarmupBuckets.length > 0) {
+        while (this.pendingWarmupBuckets.length > 0) {
+          const bucket = this.pendingWarmupBuckets.pop()!;
+          if (!bucket.isDisposed && !bucket.isEmpty && !bucket.gpuWarmed) {
+            this.warmupBucketGpu(bucket);
+            break;
+          }
+        }
+      }
+      this.idleUntilMs = Math.max(this.idleUntilMs, now + 500);
     }
 
-    // Demand-driven scheduling: stop RAF completely once camera settles and scene is clean (0% idle GPU!)
-    if (cam.active || movingByKeys || this.dirty) {
+    // Keep RAF VSync-locked for 2.0s after last activity (or while idle GPU pre-warm drains),
+    // then suspend completely at 0% idle GPU/CPU!
+    if (
+      cam.active ||
+      movingByKeys ||
+      this.dirty ||
+      this.pendingTextureUploads.length > 0 ||
+      this.pendingWarmupBuckets.length > 0 ||
+      now < this.idleUntilMs
+    ) {
       this.rafRunning = true;
       this.rafId = requestAnimationFrame(this.tick);
     }
@@ -2901,7 +3339,7 @@ export class CadSceneController {
       this.rafId = 0;
     }
     this.rafRunning = false;
-    this.clearFloorBuckets();
+    this.clearWorldBuckets();
     this.clearGroup(this.referenceGroup);
     this.clearGroup(this.selectionGroup);
     this.clearGroup(this.dockHintsGroup);

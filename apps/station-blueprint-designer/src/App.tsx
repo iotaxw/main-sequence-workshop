@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildBeltStrokeSpecs,
   buildMultiWaypointBeltPath,
@@ -522,6 +522,7 @@ export const App: React.FC = () => {
   } | null>(null);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const viewportRectRef = useRef<{ left: number; top: number; width: number; height: number } | null>(null);
   const sceneRef = useRef<CadSceneController | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -756,11 +757,13 @@ export const App: React.FC = () => {
     if (!el) return;
     const ctrl = new CadSceneController(el, {
       onAutoViewModeChange: (nextMode) => {
-        setViewMode(nextMode);
-        setActiveTool((prev) => {
-          if (nextMode === 'station' && prev.kind === 'place-building') return { kind: 'select' };
-          if (nextMode === 'building' && prev.kind === 'place-module') return { kind: 'select' };
-          return prev;
+        startTransition(() => {
+          setViewMode(nextMode);
+          setActiveTool((prev) => {
+            if (nextMode === 'station' && prev.kind === 'place-building') return { kind: 'select' };
+            if (nextMode === 'building' && prev.kind === 'place-module') return { kind: 'select' };
+            return prev;
+          });
         });
       },
       onTelemetryChange: (info) => {
@@ -771,14 +774,33 @@ export const App: React.FC = () => {
     });
     sceneRef.current = ctrl;
 
-    const ro = new ResizeObserver(() => ctrl.resize());
+    const refreshViewportRect = () => {
+      const r = el.getBoundingClientRect();
+      viewportRectRef.current = { left: r.left, top: r.top, width: Math.max(1, r.width), height: Math.max(1, r.height) };
+    };
+    refreshViewportRect();
+
+    const ro = new ResizeObserver(() => {
+      refreshViewportRect();
+      ctrl.resize();
+    });
     ro.observe(el);
+    window.addEventListener('resize', refreshViewportRect, { passive: true });
     return () => {
+      window.removeEventListener('resize', refreshViewportRect);
       ro.disconnect();
       ctrl.dispose();
       sceneRef.current = null;
+      viewportRectRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    viewportRectRef.current = { left: r.left, top: r.top, width: Math.max(1, r.width), height: Math.max(1, r.height) };
+  }, [libraryOpen, cleanView]);
 
   useEffect(() => {
     document.documentElement.style.colorScheme = theme === 'stealth-cad' ? 'only light' : 'dark';
@@ -1583,6 +1605,7 @@ export const App: React.FC = () => {
       spaceHeldRef.current = false;
       setForceReplaceHeld(false);
       sceneRef.current?.clearKeys();
+      sceneRef.current?.setCameraDragging(false);
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -1622,10 +1645,16 @@ export const App: React.FC = () => {
   ]);
 
   const clientToWorld = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
-    const el = viewportRef.current;
     const ctrl = sceneRef.current;
-    if (!el || !ctrl) return null;
-    const rect = el.getBoundingClientRect();
+    if (!ctrl) return null;
+    let rect = viewportRectRef.current;
+    if (!rect) {
+      const el = viewportRef.current;
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      rect = { left: r.left, top: r.top, width: Math.max(1, r.width), height: Math.max(1, r.height) };
+      viewportRectRef.current = rect;
+    }
     const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
     const hit = ctrl.rig.intersectFocusPlane(ndcX, ndcY);
@@ -1663,9 +1692,6 @@ export const App: React.FC = () => {
       return;
     }
 
-    const world = clientToWorld(e.clientX, e.clientY);
-    if (world) updateLiveCursor(world);
-
     if (e.button === 2) {
       dragRef.current = {
         ...dragRef.current,
@@ -1679,6 +1705,7 @@ export const App: React.FC = () => {
       return;
     }
 
+    const world = clientToWorld(e.clientX, e.clientY);
     if (e.button === 1 || (e.button === 0 && spaceHeldRef.current)) {
       dragRef.current = {
         ...dragRef.current,
@@ -1692,6 +1719,8 @@ export const App: React.FC = () => {
       };
       return;
     }
+
+    if (world) updateLiveCursor(world);
 
     if (e.button !== 0 || !world) return;
     const { doc: curDoc, viewMode: vm, focusFloor: fl, activeTool: tool } = stateRef.current;
@@ -1922,10 +1951,31 @@ export const App: React.FC = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+
+    // Ultra-fast camera drag short-circuit: skip ground raycast, HUD DOM writes, hover tips,
+    // preview rebuilds, and dock-hint rebuilds completely while orbiting or panning!
+    if (d.kind === 'orbit' || d.kind === 'clean-orbit' || d.kind === 'pan') {
+      const dx = e.clientX - d.lastX;
+      const dy = e.clientY - d.lastY;
+      d.lastX = e.clientX;
+      d.lastY = e.clientY;
+      if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) >= 5) {
+        d.moved = true;
+        sceneRef.current?.setCameraDragging(true);
+      }
+      if (d.kind === 'pan') {
+        const h = viewportRectRef.current?.height || 600;
+        sceneRef.current?.rig.panByScreenDelta(dx, dy, h);
+      } else {
+        sceneRef.current?.rig.orbitByPixels(dx, dy);
+      }
+      return;
+    }
+
     const world = stateRef.current.cleanView ? null : clientToWorld(e.clientX, e.clientY);
     if (world) updateLiveCursor(world);
 
-    const d = dragRef.current;
     if (d.kind === 'none') {
       if (stateRef.current.cleanView) return;
       const session = beltSessionRef.current;
@@ -1952,22 +2002,10 @@ export const App: React.FC = () => {
     }
     hideHoverTip();
 
-    const dx = e.clientX - d.lastX;
-    const dy = e.clientY - d.lastY;
     d.lastX = e.clientX;
     d.lastY = e.clientY;
     if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) >= 5) {
       d.moved = true;
-    }
-
-    if (d.kind === 'orbit' || d.kind === 'clean-orbit') {
-      sceneRef.current?.rig.orbitByPixels(dx, dy);
-      return;
-    }
-    if (d.kind === 'pan') {
-      const h = viewportRef.current?.clientHeight || 600;
-      sceneRef.current?.rig.panByScreenDelta(dx, dy, h);
-      return;
     }
     if (!world) return;
 
@@ -2278,12 +2316,17 @@ export const App: React.FC = () => {
       }
     }
 
+    const wasCamDrag = d.moved && (d.kind === 'orbit' || d.kind === 'clean-orbit' || d.kind === 'pan');
     dragRef.current.kind = 'none';
     dragRef.current.moved = false;
     dragRef.current.liveSelection = null;
     dragRef.current.sweepCommitted = false;
     dragRef.current.sweepModCount = 0;
     dragRef.current.sweepBldCount = 0;
+    if (wasCamDrag) {
+      sceneRef.current?.setCameraDragging(false);
+      if (world && !stateRef.current.cleanView) updateLiveCursor(world);
+    }
   };
 
   // Native non-passive wheel handler so Shift+Wheel steps floors cleanly without triggering browser scroll!
@@ -2308,7 +2351,12 @@ export const App: React.FC = () => {
       wheelFloorAccumRef.current = 0;
       const ctrl = sceneRef.current;
       if (!ctrl) return;
-      const rect = el.getBoundingClientRect();
+      let rect = viewportRectRef.current;
+      if (!rect) {
+        const r = el.getBoundingClientRect();
+        rect = { left: r.left, top: r.top, width: Math.max(1, r.width), height: Math.max(1, r.height) };
+        viewportRectRef.current = rect;
+      }
       const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       const hit = ctrl.rig.intersectFocusPlane(ndcX, ndcY);

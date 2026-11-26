@@ -306,13 +306,17 @@ export class CadCameraRig {
     const dpitch = this.targetPitch - this.curPitch;
     const ddist = this.targetDistance - this.curDistance;
 
+    // Distance-proportional sub-pixel rest threshold prevents needless asymptotic creeping
+    const posEps = Math.max(1e-3, this.curDistance * 1.5e-4);
+    const angEps = 1.5e-4;
+
     const alreadyAtRest =
-      Math.abs(dx) < 1e-3 &&
-      Math.abs(dz) < 1e-3 &&
+      Math.abs(dx) < posEps &&
+      Math.abs(dz) < posEps &&
       Math.abs(dy) < 1e-3 &&
-      Math.abs(dyaw) < 1e-4 &&
-      Math.abs(dpitch) < 1e-4 &&
-      Math.abs(ddist) < 1e-3;
+      Math.abs(dyaw) < angEps &&
+      Math.abs(dpitch) < angEps &&
+      Math.abs(ddist) < posEps;
 
     if (alreadyAtRest) {
       if (dx !== 0 || dz !== 0 || dy !== 0 || dyaw !== 0 || dpitch !== 0 || ddist !== 0) {
@@ -323,7 +327,7 @@ export class CadCameraRig {
       return { moved: false, active: false };
     }
 
-    const alpha = 1 - Math.exp(-14 * Math.min(dt, 0.05));
+    const alpha = 1 - Math.exp(-15 * Math.min(dt, 0.05));
     this.curX += dx * alpha;
     this.curZ += dz * alpha;
     this.curY += dy * alpha;
@@ -332,12 +336,12 @@ export class CadCameraRig {
     this.curDistance += ddist * alpha;
 
     const settledNow =
-      Math.abs(this.targetX - this.curX) < 1e-3 &&
-      Math.abs(this.targetZ - this.curZ) < 1e-3 &&
+      Math.abs(this.targetX - this.curX) < posEps &&
+      Math.abs(this.targetZ - this.curZ) < posEps &&
       Math.abs(this.targetFloorY - this.curY) < 1e-3 &&
-      Math.abs(shortestAngleDelta(this.curYaw, this.targetYaw)) < 1e-4 &&
-      Math.abs(this.targetPitch - this.curPitch) < 1e-4 &&
-      Math.abs(this.targetDistance - this.curDistance) < 1e-3;
+      Math.abs(shortestAngleDelta(this.curYaw, this.targetYaw)) < angEps &&
+      Math.abs(this.targetPitch - this.curPitch) < angEps &&
+      Math.abs(this.targetDistance - this.curDistance) < posEps;
 
     if (settledNow) {
       this.applyImmediate();

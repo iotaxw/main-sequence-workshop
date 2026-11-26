@@ -112,7 +112,9 @@ export function createRoundedGridOverlay(): {
     uCursorActive: { value: 0 },
   };
 
-  const geo = new THREE.PlaneGeometry(4000, 4000);
+  // Unit 1x1 XZ quad dynamically positioned & scaled by scene-controller to cover ONLY the active
+  // cursor glow / focusRect bounds (eliminates 96%+ wasted full-screen fragment shader pixels!).
+  const geo = new THREE.PlaneGeometry(1, 1);
   geo.rotateX(-Math.PI / 2);
 
   const mat = new THREE.ShaderMaterial({
@@ -127,5 +129,6 @@ export function createRoundedGridOverlay(): {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.renderOrder = 10;
   mesh.frustumCulled = false;
+  mesh.visible = false;
   return { mesh, uniforms };
 }

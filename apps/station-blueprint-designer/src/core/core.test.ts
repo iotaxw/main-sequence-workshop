@@ -1,4 +1,5 @@
 import { createCrispLineSegments, withDeferredLines } from '../renderer/crisp-lines';
+import { emitBeltsMergedToBuffers } from '../renderer/line-art';
 import { describe, expect, it } from 'vitest';
 import {
   applyEndRotationOverride,
@@ -2624,5 +2625,32 @@ describe('Shapez 2 F / Shift+F Mirror Symmetry (geometry + commands + camera)', 
     const aabb = getModuleEngineBlockBoundsM(doc.modules[0], def);
     expect(aabb.maxX - aabb.minX).toBeCloseTo(32, 1);
     expect(aabb.maxY - aabb.minY).toBeCloseTo(32, 1);
+  });
+
+  it('merges collinear straight conveyor belts via RLE while keeping curved corners and chevrons exact', () => {
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    // 10 straight east Mk.3 belts (x=2..11, y=5) + 1 south turn at (12,5) + 5 straight south belts (x=12, y=6..10)
+    const specs: Array<{ x: number; y: number; rotation: 0 | 1 | 2 | 3 }> = [];
+    for (let x = 2; x <= 11; x++) specs.push({ x, y: 5, rotation: 0 });
+    specs.push({ x: 12, y: 5, rotation: 1 }); // corner turn fed from West, exits South
+    for (let y = 6; y <= 10; y++) specs.push({ x: 12, y, rotation: 1 });
+    doc = placeBeltRunCmd(doc, 'DAT_ConveyorBelt3', 0, specs).doc;
+
+    const bedTris: number[] = [];
+    const mk1: number[] = [];
+    const mk2: number[] = [];
+    const mk3: number[] = [];
+    const chevs: number[] = [];
+    emitBeltsMergedToBuffers(doc, doc.buildings, undefined, bedTris, mk1, mk2, mk3, chevs);
+
+    // 16 Mk.3 belts -> 16 * 3 chevrons * 2 segments = 96 segments = 576 floats (all preserved!)
+    expect(chevs.length).toBe(16 * 6 * 6);
+    // 15 straight belts merge into just 2 collinear runs (2 * 2 = 4 tris, 2 * 2 = 4 rail segs)
+    // + 1 curved turn (5 steps -> 10 tris, 10 rail segs) = 14 total tris (126 floats) and 14 rail segs (84 floats)!
+    expect(bedTris.length / 9).toBe(14);
+    expect(mk3.length / 6).toBe(14);
+    expect(mk1.length).toBe(0);
+    expect(mk2.length).toBe(0);
   });
 });

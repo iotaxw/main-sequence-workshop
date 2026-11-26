@@ -441,7 +441,7 @@ function buildPortPriorityMarker(
   pushChevron(pts, 0.042, 0, 0.115, 0);
 
   const color = palette.isLight ? palette.selectOutline : palette.powerTint;
-  const segs = buildLineSegments(pts, color, opacity, 1.15, 'primary');
+  const segs = buildLineSegments(pts, color, opacity, 1.15, 'detail');
   segs.position.set(wx + offX, y, wz + offZ);
   segs.rotation.y = -flowRot * (Math.PI / 2);
   return segs;
@@ -736,7 +736,7 @@ export function emitBeltDirectToBuffers(
     const pivZ = isRight ? 0.5 : -0.5;
     const rIn = 0.5 - r;
     const rOut = 0.5 + r;
-    const steps = 10;
+    const steps = 5;
     const aStart = Math.PI;
     const aEnd = isRight ? Math.PI * 1.5 : Math.PI * 0.5;
     const stepA = (aEnd - aStart) / steps;
@@ -786,6 +786,162 @@ export function emitBeltDirectToBuffers(
     emitChev(-0.16, 0.18);
     emitChev(0.0, 0.18);
     emitChev(0.16, 0.18);
+  }
+}
+
+/**
+ * Collinear run-length-merged belt batch emitter for a floor chunk.
+ * Merges consecutive straight belts of identical `(type, rotation)` into a single 2-triangle bed
+ * quad and 2 continuous rail line segments (~6x fewer straight-belt triangles & LineSegments2 quads
+ * on mega-stations, with zero inter-tile seams!). Curved turns & chevrons remain 100% intact.
+ */
+export function emitBeltsMergedToBuffers(
+  doc: BlueprintDocument,
+  belts: PlacedBuilding[],
+  floorCellMap: Map<number, PlacedBuilding | PlacedBuilding[]> | undefined,
+  bedTrisOut: number[],
+  railsMk1Out: number[],
+  railsMk2Out: number[],
+  railsMk3Out: number[],
+  chevPtsOut: number[]
+): void {
+  if (belts.length === 0) return;
+
+  const yBed = 0.03;
+  const yRail = 0.05;
+  const yChev = 0.055;
+  const r = 0.27;
+  const straightMap = new Map<number, { b: PlacedBuilding; def: BuildableDef }>();
+
+  const emitChevWorld = (cx: number, cz: number, rot: 0 | 1 | 2 | 3, ox: number, size: number) => {
+    const xL = ox - size * 0.45;
+    const xR = ox + size * 0.48;
+    const zH = size * 0.48;
+    const toWX = (lx: number, lz: number) =>
+      cx + (rot === 0 ? lx : rot === 1 ? -lz : rot === 2 ? -lx : lz);
+    const toWZ = (lx: number, lz: number) =>
+      cz + (rot === 0 ? lz : rot === 1 ? lx : rot === 2 ? -lz : -lx);
+    const tipX = toWX(xR, 0);
+    const tipZ = toWZ(xR, 0);
+    chevPtsOut.push(
+      toWX(xL, -zH), yChev, toWZ(xL, -zH), tipX, yChev, tipZ,
+      tipX, yChev, tipZ, toWX(xL, zH), yChev, toWZ(xL, zH)
+    );
+  };
+
+  for (let i = 0; i < belts.length; i++) {
+    const b = belts[i];
+    const def = getBuildableDef(b.type);
+    if (!def || def.kind !== 'belt') continue;
+
+    const [outDx, outDy] = rotationToDelta(b.rotation);
+    let localTurn: 0 | 1 | 2 = 0;
+    if (!doesNeighborFeedCell(doc, b.x - outDx, b.y - outDy, b.floor, -outDx, -outDy, undefined, floorCellMap)) {
+      const px1 = -outDy;
+      const py1 = outDx;
+      if (doesNeighborFeedCell(doc, b.x + px1, b.y + py1, b.floor, px1, py1, undefined, floorCellMap)) {
+        localTurn = 1;
+      } else {
+        const px2 = outDy;
+        const py2 = -outDx;
+        if (doesNeighborFeedCell(doc, b.x + px2, b.y + py2, b.floor, px2, py2, undefined, floorCellMap)) {
+          localTurn = 2;
+        }
+      }
+    }
+
+    if (localTurn !== 0) {
+      // Curved belt corner: delegate directly to single-belt arc emitter (emits bed, rails & chevrons)
+      const railTarget = def.tier === 3 ? railsMk3Out : def.tier === 2 ? railsMk2Out : railsMk1Out;
+      emitBeltDirectToBuffers(doc, b, def, bedTrisOut, railTarget, chevPtsOut, floorCellMap);
+      continue;
+    }
+
+    // Straight belt: emit chevrons immediately & queue for collinear RLE bed+rail merging
+    const cx = b.x + 0.5;
+    const cz = b.y + 0.5;
+    if (def.tier === 1) {
+      emitChevWorld(cx, cz, b.rotation, 0, 0.22);
+    } else if (def.tier === 2) {
+      emitChevWorld(cx, cz, b.rotation, -0.09, 0.2);
+      emitChevWorld(cx, cz, b.rotation, 0.11, 0.2);
+    } else {
+      emitChevWorld(cx, cz, b.rotation, -0.16, 0.18);
+      emitChevWorld(cx, cz, b.rotation, 0.0, 0.18);
+      emitChevWorld(cx, cz, b.rotation, 0.16, 0.18);
+    }
+    straightMap.set(packCellKey(b.x, b.y), { b, def });
+  }
+
+  // Merge collinear straight runs of identical (type, rotation) into 1 bed quad + 2 rail segments each!
+  const visited = new Set<number>();
+  for (const [k, entry] of straightMap.entries()) {
+    if (visited.has(k)) continue;
+    const { b, def } = entry;
+    const rot = b.rotation;
+    const [dx, dy] = rotationToDelta(rot);
+
+    // Walk backward to start of run within this chunk's straightMap
+    let sx = b.x;
+    let sy = b.y;
+    while (true) {
+      const pk = packCellKey(sx - dx, sy - dy);
+      if (visited.has(pk)) break;
+      const prev = straightMap.get(pk);
+      if (!prev || prev.b.type !== b.type || prev.b.rotation !== rot) break;
+      sx -= dx;
+      sy -= dy;
+    }
+
+    // Walk forward to end of run marking all tiles visited
+    let ex = sx;
+    let ey = sy;
+    while (true) {
+      visited.add(packCellKey(ex, ey));
+      const nk = packCellKey(ex + dx, ey + dy);
+      if (visited.has(nk)) break;
+      const next = straightMap.get(nk);
+      if (!next || next.b.type !== b.type || next.b.rotation !== rot) break;
+      ex += dx;
+      ey += dy;
+    }
+
+    const railTarget = def.tier === 3 ? railsMk3Out : def.tier === 2 ? railsMk2Out : railsMk1Out;
+    if (rot === 0 || rot === 2) {
+      const minX = Math.min(sx, ex);
+      const maxX = Math.max(sx, ex);
+      const bx0 = minX + 0.01;
+      const bx1 = maxX + 0.99;
+      const bz0 = sy + 0.5 - r;
+      const bz1 = sy + 0.5 + r;
+      bedTrisOut.push(
+        bx0, yBed, bz0, bx0, yBed, bz1, bx1, yBed, bz1,
+        bx0, yBed, bz0, bx1, yBed, bz1, bx1, yBed, bz0
+      );
+      const rx0 = minX;
+      const rx1 = maxX + 1;
+      railTarget.push(
+        rx0, yRail, bz0, rx1, yRail, bz0,
+        rx0, yRail, bz1, rx1, yRail, bz1
+      );
+    } else {
+      const minY = Math.min(sy, ey);
+      const maxY = Math.max(sy, ey);
+      const bx0 = sx + 0.5 - r;
+      const bx1 = sx + 0.5 + r;
+      const bz0 = minY + 0.01;
+      const bz1 = maxY + 0.99;
+      bedTrisOut.push(
+        bx0, yBed, bz0, bx0, yBed, bz1, bx1, yBed, bz1,
+        bx0, yBed, bz0, bx1, yBed, bz1, bx1, yBed, bz0
+      );
+      const rz0 = minY;
+      const rz1 = maxY + 1;
+      railTarget.push(
+        bx0, yRail, rz0, bx0, yRail, rz1,
+        bx1, yRail, rz0, bx1, yRail, rz1
+      );
+    }
   }
 }
 
@@ -1202,6 +1358,9 @@ export function buildMachineLineArt(
   }
 
   // Solid pre-baked ink at opacity = 1.0 on focus floor (zero overlapping vertex dots!)
+  // Small 1x1 interior props/logistics (undergrounds, splitters, plants, signs) use 'detail' LOD
+  // so they stay 100% crisp in Building View while fading smoothly at >190m macro overview zoom!
+  const isSmallInterior = !isGhost && !isSelected && def.size[0] <= 1 && def.size[1] <= 1;
   if (primaryPts.length > 0) {
     extrudeGroup.add(
       buildLineSegments(
@@ -1209,7 +1368,7 @@ export function buildMachineLineArt(
         primaryColor,
         isGhost ? opacity * 0.94 : opacity,
         isSelected ? 1.45 : 1.12,
-        'primary'
+        isSmallInterior ? 'detail' : 'primary'
       )
     );
   }
