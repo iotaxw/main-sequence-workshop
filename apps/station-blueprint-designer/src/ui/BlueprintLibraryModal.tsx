@@ -57,7 +57,7 @@ function collectFolders(nodes: LibraryNode[]): LibraryFolderEntry[] {
   return nodes.filter((n): n is LibraryFolderEntry => n.kind === 'folder');
 }
 
-export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = React.memo(({
+export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
   open,
   onClose,
   driver,
@@ -88,12 +88,10 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = React
   const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const driverRef = useRef(driver);
-  const loadedKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (driverRef.current !== driver) {
       driverRef.current = driver;
-      loadedKeysRef.current.clear();
       setDocCache({});
       setLoadingPaths({});
       setSelectedFolder('');
@@ -125,51 +123,8 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = React
     if (!open) return;
     let cancelled = false;
     const keyOf = (f: LibraryFileEntry) => `${f.path}@${f.contentHash ?? f.updatedAt}`;
-    const queue = visibleFiles.filter((f) => !loadedKeysRef.current.has(keyOf(f)));
+    const queue = visibleFiles.filter((f) => !docCache[keyOf(f)]);
     if (queue.length === 0) return;
-
-    // Mark queued files loading in ONE batched state update instead of N per-file updates
-    setLoadingPaths((prev) => {
-      const next = { ...prev };
-      for (const f of queue) next[keyOf(f)] = true;
-      return next;
-    });
-
-    // Batch loaded blueprint docs per animation frame so 40 files don't trigger 80+ full re-renders
-    const pendingDocs: Record<string, BlueprintDocument> = {};
-    const pendingDoneKeys: string[] = [];
-    let flushTimer: number | null = null;
-
-    const flushPending = () => {
-      flushTimer = null;
-      if (cancelled) return;
-      const docKeys = Object.keys(pendingDocs);
-      if (docKeys.length > 0) {
-        const batch = { ...pendingDocs };
-        for (const k of docKeys) delete pendingDocs[k];
-        setDocCache((prev) => ({ ...prev, ...batch }));
-      }
-      if (pendingDoneKeys.length > 0) {
-        const doneList = pendingDoneKeys.splice(0, pendingDoneKeys.length);
-        setLoadingPaths((prev) => {
-          let changed = false;
-          const next = { ...prev };
-          for (const k of doneList) {
-            if (next[k]) {
-              delete next[k];
-              changed = true;
-            }
-          }
-          return changed ? next : prev;
-        });
-      }
-    };
-
-    const scheduleFlush = () => {
-      if (flushTimer === null && !cancelled) {
-        flushTimer = window.setTimeout(flushPending, 36);
-      }
-    };
 
     let cursor = 0;
     const concurrency = driver.mode === 'github-private' ? 3 : 6;
@@ -180,43 +135,33 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = React
         if (idx >= queue.length) break;
         const entry = queue[idx];
         const key = keyOf(entry);
-        if (loadedKeysRef.current.has(key)) {
-          pendingDoneKeys.push(key);
-          scheduleFlush();
-          continue;
-        }
+        setLoadingPaths((prev) => ({ ...prev, [key]: true }));
         try {
           const { doc } = await driver.readBlueprint(entry.path);
           if (!cancelled) {
-            loadedKeysRef.current.add(key);
-            pendingDocs[key] = doc;
+            setDocCache((prev) => ({ ...prev, [key]: doc }));
           }
         } catch {
           // Ignore individual preview read error
         } finally {
           if (!cancelled) {
-            pendingDoneKeys.push(key);
-            scheduleFlush();
+            setLoadingPaths((prev) => {
+              if (!prev[key]) return prev;
+              const next = { ...prev };
+              delete next[key];
+              return next;
+            });
           }
         }
       }
     };
 
     const workers = Array.from({ length: Math.min(concurrency, queue.length) }, () => worker());
-    void Promise.all(workers).then(() => {
-      if (!cancelled) {
-        if (flushTimer !== null) {
-          window.clearTimeout(flushTimer);
-          flushTimer = null;
-        }
-        flushPending();
-      }
-    });
+    void Promise.all(workers);
     return () => {
       cancelled = true;
-      if (flushTimer !== null) window.clearTimeout(flushTimer);
     };
-  }, [open, visibleFiles, driver]);
+  }, [open, visibleFiles, driver, docCache]);
 
   if (!open) return null;
 
@@ -491,4 +436,4 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = React
       </div>
     </div>
   );
-});
+};

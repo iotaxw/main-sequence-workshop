@@ -16,7 +16,7 @@ interface LibrarySidebarProps {
   onOpenFromLibrary: (file: LibraryFileEntry) => void;
 }
 
-export const LibrarySidebar: React.FC<LibrarySidebarProps> = React.memo(({
+export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
   open,
   onToggleOpen,
   onOpenModal,
@@ -161,4 +161,4 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = React.memo(({
       </div>
     </aside>
   );
-});
+};

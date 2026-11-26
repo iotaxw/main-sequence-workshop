@@ -61,7 +61,6 @@ export class CadCameraRig {
   private viewMode: ViewMode = 'station';
   private onAutoViewModeChange?: (mode: ViewMode) => void;
   private onTelemetryChange?: (info: { yawDeg: number; pitchDeg: number; distance: number }) => void;
-  private onDirty?: () => void;
   private lastTelemetryTime = 0;
   private lastTelemetryYaw = -1;
   private lastTelemetryPitch = -1;
@@ -78,18 +77,12 @@ export class CadCameraRig {
     callbacks: {
       onAutoViewModeChange?: (mode: ViewMode) => void;
       onTelemetryChange?: (info: { yawDeg: number; pitchDeg: number; distance: number }) => void;
-      onDirty?: () => void;
     } = {}
   ) {
     this.camera = new THREE.PerspectiveCamera(42, aspect, 0.8, 6000);
     this.onAutoViewModeChange = callbacks.onAutoViewModeChange;
     this.onTelemetryChange = callbacks.onTelemetryChange;
-    this.onDirty = callbacks.onDirty;
     this.applyImmediate();
-  }
-
-  private markDirty(): void {
-    this.onDirty?.();
   }
 
   get currentPitchRad(): number {
@@ -113,15 +106,11 @@ export class CadCameraRig {
   setAspect(aspect: number): void {
     this.camera.aspect = Math.max(0.1, aspect);
     this.camera.updateProjectionMatrix();
-    this.markDirty();
   }
 
   setFocusFloor(floor: number): void {
-    const nextY = floor * FLOOR_VISUAL_SPACING;
-    if (this.focusFloor === floor && this.targetFloorY === nextY) return;
     this.focusFloor = floor;
-    this.targetFloorY = nextY;
-    this.markDirty();
+    this.targetFloorY = floor * FLOOR_VISUAL_SPACING;
   }
 
   setViewMode(mode: ViewMode, animateDistance = false): void {
@@ -132,7 +121,6 @@ export class CadCameraRig {
         // When entering building view, tilt nicely toward the floor
         this.targetPitch = PITCH_SNAP_PRESETS[1].rad;
       }
-      this.markDirty();
     }
   }
 
@@ -143,13 +131,11 @@ export class CadCameraRig {
 
   setPitchPreset(rad: number): void {
     this.targetPitch = THREE.MathUtils.clamp(rad, (14 * Math.PI) / 180, (89.2 * Math.PI) / 180);
-    this.markDirty();
   }
 
   stepYawCardinal(dir: 1 | -1): void {
     const snapped = this.findNearestYaw(this.targetYaw);
     this.targetYaw = normalizeAngle(snapped + dir * (Math.PI / 2));
-    this.markDirty();
   }
 
   private findNearestYaw(rad: number): number {
@@ -187,14 +173,12 @@ export class CadCameraRig {
       (14 * Math.PI) / 180,
       (89.2 * Math.PI) / 180
     );
-    this.markDirty();
   }
 
   snapAngles(): void {
     if (!this.snapEnabled) return;
     this.targetYaw = this.findNearestYaw(this.targetYaw);
     this.targetPitch = this.findNearestPitch(this.targetPitch);
-    this.markDirty();
   }
 
   panByScreenDelta(dxPx: number, dyPx: number, viewportHeight: number): void {
@@ -208,7 +192,6 @@ export class CadCameraRig {
     const moveUp = (dyPx * worldPerPx) / Math.max(0.35, Math.sin(this.curPitch));
     this.targetX += moveRight * cosY - moveUp * sinY;
     this.targetZ += -moveRight * sinY - moveUp * cosY;
-    this.markDirty();
   }
 
   panByAxes(rightAxis: number, forwardAxis: number, dt: number): void {
@@ -218,7 +201,6 @@ export class CadCameraRig {
     // W (forwardAxis = +1) moves toward screen-top (-sinY, -cosY)
     this.targetX += (rightAxis * cosY - forwardAxis * sinY) * speed;
     this.targetZ += (-rightAxis * sinY - forwardAxis * cosY) * speed;
-    this.markDirty();
   }
 
   /**
@@ -242,8 +224,6 @@ export class CadCameraRig {
       this.targetPitch = THREE.MathUtils.lerp(this.targetPitch, (64 * Math.PI) / 180, 0.08);
     }
 
-    this.markDirty();
-
     // Hysteresis view-mode switching
     if (this.viewMode === 'station' && nextDist < ZOOM_ENTER_BUILDING) {
       this.viewMode = 'building';
@@ -260,7 +240,6 @@ export class CadCameraRig {
     if (distance !== undefined) {
       this.targetDistance = THREE.MathUtils.clamp(distance, MIN_DISTANCE, MAX_DISTANCE);
     }
-    this.markDirty();
   }
 
   fitBounds(minX: number, minZ: number, maxX: number, maxZ: number): void {
@@ -278,7 +257,6 @@ export class CadCameraRig {
     this.targetX = cx;
     this.targetZ = cz;
     this.targetDistance = THREE.MathUtils.clamp(needed, 34, MAX_DISTANCE);
-    this.markDirty();
     if (this.targetDistance > ZOOM_EXIT_TO_STATION && this.viewMode !== 'station') {
       this.viewMode = 'station';
       this.onAutoViewModeChange?.('station');
@@ -293,83 +271,32 @@ export class CadCameraRig {
     return this.raycaster.ray.intersectPlane(this.focusPlane, this.hitVec) ? this.hitVec : null;
   }
 
-  /**
-   * Advance critically-damped camera smoothing toward targets.
-   * - `moved`: camera transform changed this frame (must render).
-   * - `active`: camera is still smoothing toward target (must schedule next RAF).
-   */
-  update(dt: number, nowMs: number): { moved: boolean; active: boolean } {
-    const dx = this.targetX - this.curX;
-    const dz = this.targetZ - this.curZ;
-    const dy = this.targetFloorY - this.curY;
-    const dyaw = shortestAngleDelta(this.curYaw, this.targetYaw);
-    const dpitch = this.targetPitch - this.curPitch;
-    const ddist = this.targetDistance - this.curDistance;
-
-    // Distance-proportional sub-pixel rest threshold prevents needless asymptotic creeping
-    const posEps = Math.max(1e-3, this.curDistance * 1.5e-4);
-    const angEps = 1.5e-4;
-
-    const alreadyAtRest =
-      Math.abs(dx) < posEps &&
-      Math.abs(dz) < posEps &&
-      Math.abs(dy) < 1e-3 &&
-      Math.abs(dyaw) < angEps &&
-      Math.abs(dpitch) < angEps &&
-      Math.abs(ddist) < posEps;
-
-    if (alreadyAtRest) {
-      if (dx !== 0 || dz !== 0 || dy !== 0 || dyaw !== 0 || dpitch !== 0 || ddist !== 0) {
-        this.applyImmediate();
-        this.emitTelemetry(nowMs, true);
-        return { moved: true, active: false };
-      }
-      return { moved: false, active: false };
-    }
-
-    const alpha = 1 - Math.exp(-15 * Math.min(dt, 0.05));
-    this.curX += dx * alpha;
-    this.curZ += dz * alpha;
-    this.curY += dy * alpha;
-    this.curYaw = normalizeAngle(this.curYaw + dyaw * alpha);
-    this.curPitch += dpitch * alpha;
-    this.curDistance += ddist * alpha;
-
-    const settledNow =
-      Math.abs(this.targetX - this.curX) < posEps &&
-      Math.abs(this.targetZ - this.curZ) < posEps &&
-      Math.abs(this.targetFloorY - this.curY) < 1e-3 &&
-      Math.abs(shortestAngleDelta(this.curYaw, this.targetYaw)) < angEps &&
-      Math.abs(this.targetPitch - this.curPitch) < angEps &&
-      Math.abs(this.targetDistance - this.curDistance) < posEps;
-
-    if (settledNow) {
-      this.applyImmediate();
-      this.emitTelemetry(nowMs, true);
-      return { moved: true, active: false };
-    }
+  update(dt: number, nowMs: number): void {
+    const alpha = 1 - Math.exp(-14 * Math.min(dt, 0.05));
+    this.curX = THREE.MathUtils.lerp(this.curX, this.targetX, alpha);
+    this.curZ = THREE.MathUtils.lerp(this.curZ, this.targetZ, alpha);
+    this.curY = THREE.MathUtils.lerp(this.curY, this.targetFloorY, alpha);
+    this.curYaw = normalizeAngle(this.curYaw + shortestAngleDelta(this.curYaw, this.targetYaw) * alpha);
+    this.curPitch = THREE.MathUtils.lerp(this.curPitch, this.targetPitch, alpha);
+    this.curDistance = THREE.MathUtils.lerp(this.curDistance, this.targetDistance, alpha);
 
     this.applyCameraTransform();
-    this.emitTelemetry(nowMs, false);
-    return { moved: true, active: true };
-  }
 
-  private emitTelemetry(nowMs: number, force: boolean): void {
-    if (!this.onTelemetryChange) return;
-    if (!force && nowMs - this.lastTelemetryTime <= 60) return;
-    const yawDeg = Math.round((this.curYaw * 180) / Math.PI) % 360;
-    const pitchDeg = Math.round((this.curPitch * 180) / Math.PI);
-    const distance = Math.round(this.curDistance);
-    if (
-      yawDeg !== this.lastTelemetryYaw ||
-      pitchDeg !== this.lastTelemetryPitch ||
-      distance !== this.lastTelemetryDist
-    ) {
-      this.lastTelemetryTime = nowMs;
-      this.lastTelemetryYaw = yawDeg;
-      this.lastTelemetryPitch = pitchDeg;
-      this.lastTelemetryDist = distance;
-      this.onTelemetryChange({ yawDeg, pitchDeg, distance });
+    if (this.onTelemetryChange && nowMs - this.lastTelemetryTime > 60) {
+      const yawDeg = Math.round((this.curYaw * 180) / Math.PI) % 360;
+      const pitchDeg = Math.round((this.curPitch * 180) / Math.PI);
+      const distance = Math.round(this.curDistance);
+      if (
+        yawDeg !== this.lastTelemetryYaw ||
+        pitchDeg !== this.lastTelemetryPitch ||
+        distance !== this.lastTelemetryDist
+      ) {
+        this.lastTelemetryTime = nowMs;
+        this.lastTelemetryYaw = yawDeg;
+        this.lastTelemetryPitch = pitchDeg;
+        this.lastTelemetryDist = distance;
+        this.onTelemetryChange({ yawDeg, pitchDeg, distance });
+      }
     }
   }
 

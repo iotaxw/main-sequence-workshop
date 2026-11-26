@@ -14,8 +14,6 @@ import type { ModuleConfigPatch } from '../core/commands';
 import {
   findBuildingsInsideModule,
   getBuildingSizeCells,
-  getBuildingSpatialIndex,
-  getModuleSpatialIndex,
   getModuleWorldDockPorts,
   getToggleablePorts,
   isPortToggleable,
@@ -200,7 +198,7 @@ const PortDiagram: React.FC<{
   );
 };
 
-export const InspectorPanel: React.FC<InspectorPanelProps> = React.memo(({
+export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   doc,
   selection,
   onUpdateBuilding,
@@ -217,27 +215,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = React.memo(({
   const [recipeQuery, setRecipeQuery] = useState('');
   const [itemQuery, setItemQuery] = useState('');
 
-  const selectedModules = useMemo(() => {
-    if (selection.moduleIds.length === 0) return [];
-    const byId = getModuleSpatialIndex(doc.modules).moduleById;
-    const out: PlacedModule[] = [];
-    for (let i = 0; i < selection.moduleIds.length; i++) {
-      const m = byId.get(selection.moduleIds[i]);
-      if (m) out.push(m);
-    }
-    return out;
-  }, [doc.modules, selection.moduleIds]);
-
-  const selectedBuildings = useMemo(() => {
-    if (selection.buildingIds.length === 0) return [];
-    const byId = getBuildingSpatialIndex(doc.buildings).buildingById;
-    const out: PlacedBuilding[] = [];
-    for (let i = 0; i < selection.buildingIds.length; i++) {
-      const b = byId.get(selection.buildingIds[i]);
-      if (b) out.push(b);
-    }
-    return out;
-  }, [doc.buildings, selection.buildingIds]);
+  const selectedModules = useMemo(
+    () => doc.modules.filter((m) => selection.moduleIds.includes(m.id)),
+    [doc.modules, selection.moduleIds]
+  );
+  const selectedBuildings = useMemo(
+    () => doc.buildings.filter((b) => selection.buildingIds.includes(b.id)),
+    [doc.buildings, selection.buildingIds]
+  );
 
   const totalSelected = selectedModules.length + selectedBuildings.length;
   if (totalSelected === 0) return null;
@@ -869,4 +854,4 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = React.memo(({
       </div>
     </aside>
   );
-});
+};

@@ -260,51 +260,6 @@ export function getModuleOriginOffsetM(def: StationModuleDef): [number, number] 
   return [ox, oy];
 }
 
-export interface Aabb3 {
-  minX: number;
-  minY: number;
-  minZ: number;
-  maxX: number;
-  maxY: number;
-  maxZ: number;
-}
-
-/**
- * Exact Build 26639889 engine `BuildBlueprintUtil::CheckOverlap` 3D AABB (`BlockBounds`) in meters,
- * using the unified class-level actor pivot offset derived from `blockBoundsM` & `sizeUnits`.
- */
-export function getModuleEngineBlockBoundsM(mod: PlacedModule, def: StationModuleDef): Aabb3 {
-  const [cx, cy] = getModuleCenterM(mod, def);
-  const [ox, oy] = getModuleOriginOffsetM(def);
-  const [pox, poy] = rotateVec2(-ox, -oy, mod.rotation);
-  const px = cx + pox;
-  const py = cy + poy;
-  const b = def.blockBoundsM;
-  if (!b) {
-    const [wu, du, hu] = getModuleSizeUnits(def, mod.rotation);
-    return {
-      minX: mod.gx * STATION_UNIT_M,
-      minY: mod.gy * STATION_UNIT_M,
-      minZ: mod.floor * FLOOR_HEIGHT_M,
-      maxX: (mod.gx + wu) * STATION_UNIT_M,
-      maxY: (mod.gy + du) * STATION_UNIT_M,
-      maxZ: (mod.floor + hu) * FLOOR_HEIGHT_M,
-    };
-  }
-  const zShiftFloors = getModuleFloorShift(def);
-  const pz = (mod.floor + zShiftFloors) * FLOOR_HEIGHT_M;
-  const [x1, y1] = rotateVec2(b.minX, b.minY, mod.rotation);
-  const [x2, y2] = rotateVec2(b.maxX, b.maxY, mod.rotation);
-  return {
-    minX: px + Math.min(x1, x2),
-    maxX: px + Math.max(x1, x2),
-    minY: py + Math.min(y1, y2),
-    maxY: py + Math.max(y1, y2),
-    minZ: pz + b.minZ,
-    maxZ: pz + b.maxZ,
-  };
-}
-
 /**
  * Class-level ceiling-hung floor shift derived purely from `blockBoundsM` (zero hardcoded module IDs).
  * Matches Rust codec `module_native_pivot_offset` (`z_shift = +2` in 4m units = +1 floor = +8m):
@@ -835,30 +790,17 @@ export interface UndergroundLink {
   tier: 1 | 2 | 3;
 }
 
-const undergroundLinksCache = new WeakMap<PlacedBuilding[], UndergroundLink[]>();
-
 /**
- * Compute underground belt links in O(U) using the per-floor spatial grid (cached by `doc.buildings` identity):
+ * Compute underground belt links:
  * 1. Explicit encoded pairs (`undergroundPartnerId`) take priority — supports multiple parallel/braided
  *    underground belts sharing the exact same straight line with zero ambiguity!
  * 2. Fallback for legacy/unencoded blueprints pairs remaining undergrounds same-tier first, then nearest
  *    inline matching 'out' within `maxLength` (default 8 cells).
  */
 export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink[] {
-  const cached = undergroundLinksCache.get(doc.buildings);
-  if (cached) return cached;
-
-  const bIdx = getBuildingSpatialIndex(doc.buildings);
-  const undergrounds = bIdx.undergrounds;
-  if (undergrounds.length === 0) {
-    const empty: UndergroundLink[] = [];
-    undergroundLinksCache.set(doc.buildings, empty);
-    return empty;
-  }
-  const byId = new Map<string, PlacedBuilding>();
-  for (let i = 0; i < undergrounds.length; i++) {
-    byId.set(undergrounds[i].id, undergrounds[i]);
-  }
+  const undergrounds = getBuildingSpatialIndex(doc.buildings).undergrounds;
+  if (undergrounds.length === 0) return [];
+  const byId = new Map(undergrounds.map((u) => [u.id, u]));
   const links: UndergroundLink[] = [];
   const used = new Set<string>();
 
@@ -875,8 +817,7 @@ export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink
   };
 
   // Pass 1: Explicit encoded pairs (undergroundPartnerId)
-  for (let i = 0; i < undergrounds.length; i++) {
-    const entry = undergrounds[i];
+  for (const entry of undergrounds) {
     if (used.has(entry.id) || entry.undergroundMode === 'out' || !entry.undergroundPartnerId) continue;
     const partner = byId.get(entry.undergroundPartnerId);
     if (!partner || used.has(partner.id)) continue;
@@ -897,39 +838,33 @@ export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink
     });
   }
 
-  // Pass 2: O(U * maxLen) spatial walk fallback for unencoded undergrounds (prefer same-tier first, then nearest inline)
-  for (let i = 0; i < undergrounds.length; i++) {
-    const entry = undergrounds[i];
+  // Pass 2: Backward-compatible fallback for unencoded undergrounds (prefer same-tier first, then nearest inline)
+  for (const entry of undergrounds) {
     if (used.has(entry.id) || entry.undergroundMode === 'out') continue;
     const def = getBuildableDef(entry.type)!;
     const [dx, dy] = rotationToDelta(entry.rotation);
     const maxLen = def.maxLength ?? 8;
-    const cellMap = bIdx.buildingCellByFloor.get(entry.floor);
-    if (!cellMap) continue;
 
-    let bestSame: PlacedBuilding | null = null;
-    let bestCross: PlacedBuilding | null = null;
-
-    for (let dist = 1; dist <= maxLen && !bestSame; dist++) {
-      const hit = cellMap.get(packCellKey(entry.x + dx * dist, entry.y + dy * dist));
-      if (!hit) continue;
-      const list = Array.isArray(hit) ? hit : [hit];
-      for (let j = 0; j < list.length; j++) {
-        const cand = list[j];
-        if (cand.id === entry.id || used.has(cand.id)) continue;
-        if (cand.rotation !== entry.rotation || cand.undergroundMode !== 'out') continue;
-        if (cand.undergroundPartnerId && byId.has(cand.undergroundPartnerId)) continue;
-        const candDef = getBuildableDef(cand.type);
-        if (!candDef || candDef.kind !== 'underground') continue;
-        if (candDef.tier === def.tier) {
-          bestSame = cand;
-          break;
-        }
-        if (!bestCross) bestCross = cand;
+    let best: PlacedBuilding | null = null;
+    let bestSameTier = false;
+    let bestDist = maxLen + 1;
+    for (const candidate of undergrounds) {
+      if (candidate.id === entry.id || used.has(candidate.id)) continue;
+      if (candidate.undergroundPartnerId && byId.has(candidate.undergroundPartnerId)) continue;
+      if (!isInlineValid(entry, candidate, maxLen)) continue;
+      const candDef = getBuildableDef(candidate.type);
+      const sameTier = candDef?.tier === def.tier;
+      const along = (candidate.x - entry.x) * dx + (candidate.y - entry.y) * dy;
+      if (
+        !best ||
+        (sameTier && !bestSameTier) ||
+        (sameTier === bestSameTier && along < bestDist)
+      ) {
+        best = candidate;
+        bestSameTier = sameTier;
+        bestDist = along;
       }
     }
-
-    const best = bestSame ?? bestCross;
     if (best) {
       used.add(entry.id);
       used.add(best.id);
@@ -945,8 +880,6 @@ export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink
       });
     }
   }
-
-  undergroundLinksCache.set(doc.buildings, links);
   return links;
 }
 

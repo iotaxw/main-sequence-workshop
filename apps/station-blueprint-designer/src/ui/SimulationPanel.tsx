@@ -68,7 +68,7 @@ function fmtMW(mw: number): string {
   return Math.abs(mw) >= 100 ? mw.toFixed(0) : mw.toFixed(1);
 }
 
-export const SimulationPanel: React.FC<SimulationPanelProps> = React.memo(({
+export const SimulationPanel: React.FC<SimulationPanelProps> = ({
   open,
   report,
   activeIssueId,
@@ -337,4 +337,4 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = React.memo(({
       </div>
     </aside>
   );
-});
+};

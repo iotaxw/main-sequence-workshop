@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildBeltStrokeSpecs,
   buildMultiWaypointBeltPath,
@@ -42,15 +42,12 @@ import {
   findBuildingAtCell,
   findModuleAtWorldPoint,
   getBuildingSizeCells,
-  getBuildingSpatialIndex,
   getMirroredBuildingRotation,
   getMirroredModuleRotation,
   getModuleBoundsM,
   getModuleSizeUnits,
-  getModuleSpatialIndex,
   getToggleablePorts,
   normalizeRotation,
-  packCellKey,
   STATION_UNIT_M,
 } from './core/geometry';
 import {
@@ -67,7 +64,8 @@ import {
   saveWorkspaceAutosave,
   VirtualFolderDriver,
 } from './core/library';
-import type { WorkbenchCheckReport, WorkbenchIoSpot, WorkbenchIssue } from './core/workbench-check';
+import { exportNativeSav, importNativeSav } from './core/native-codec';
+import { checkBlueprintWorkbench } from './core/workbench-check';
 import type {
   ActiveTool,
   BlueprintDocument,
@@ -81,19 +79,15 @@ import type {
 import { PITCH_SNAP_PRESETS } from './renderer/camera-rig';
 import { type BoxSelectMode, CadSceneController } from './renderer/scene-controller';
 import { CAD_THEMES, type CadThemeId, loadSavedTheme, saveTheme } from './renderer/theme';
+import { BlueprintLibraryModal } from './ui/BlueprintLibraryModal';
 import { FloorStackRail } from './ui/FloorStackRail';
 import { GameInteropMenu } from './ui/GameInteropMenu';
+import { HelpDrawer } from './ui/HelpDrawer';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { ToolActionBar, type KeyHintItem } from './ui/KeyHintBar';
 import { LibrarySidebar } from './ui/LibrarySidebar';
 import { PaletteDock } from './ui/PaletteDock';
-import type { CheckFocusTarget } from './ui/SimulationPanel';
-
-const BlueprintLibraryModal = lazy(() =>
-  import('./ui/BlueprintLibraryModal').then((m) => ({ default: m.BlueprintLibraryModal }))
-);
-const HelpDrawer = lazy(() => import('./ui/HelpDrawer').then((m) => ({ default: m.HelpDrawer })));
-const SimulationPanel = lazy(() => import('./ui/SimulationPanel').then((m) => ({ default: m.SimulationPanel })));
+import { SimulationPanel, type CheckFocusTarget } from './ui/SimulationPanel';
 
 const EMPTY_SELECTION: SelectionState = { moduleIds: [], buildingIds: [] };
 
@@ -149,7 +143,6 @@ export const App: React.FC = () => {
 
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [libraryModalOpen, setLibraryModalOpen] = useState(false);
-  const [libraryModalMounted, setLibraryModalMounted] = useState(false);
   const [prefsMenuOpen, setPrefsMenuOpen] = useState(false);
   const [cleanView, setCleanView] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -171,63 +164,7 @@ export const App: React.FC = () => {
     error: string | null;
   } | null>(null);
 
-  useEffect(() => {
-    if (libraryModalOpen && !libraryModalMounted) setLibraryModalMounted(true);
-  }, [libraryModalOpen, libraryModalMounted]);
-
-  const [checkFn, setCheckFn] = useState<
-    ((doc: BlueprintDocument, lang?: 'zh' | 'en') => WorkbenchCheckReport) | null
-  >(null);
-  useEffect(() => {
-    if (!simOpen || checkFn) return;
-    let cancelled = false;
-    void import('./core/workbench-check').then((m) => {
-      if (!cancelled) setCheckFn(() => m.checkBlueprintWorkbench);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [simOpen, checkFn]);
-
-  // Keyed on doc.modules & doc.buildings so renaming the blueprint never re-runs full check
-  const simReport = useMemo(
-    () => (simOpen && checkFn ? checkFn(doc, lang) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [doc.modules, doc.buildings, simOpen, lang, checkFn]
-  );
-
-  // O(1) spatial & building-id index for 144Hz hover tip inspection when Blueprint Check is active
-  const simLookup = useMemo(() => {
-    if (!simReport) return null;
-    const faultByCell = new Map<number, Map<number, WorkbenchIssue>>();
-    const faultByBld = new Map<string, WorkbenchIssue>();
-    for (let i = 0; i < simReport.faults.length; i++) {
-      const f = simReport.faults[i];
-      let fm = faultByCell.get(f.floor);
-      if (!fm) {
-        fm = new Map();
-        faultByCell.set(f.floor, fm);
-      }
-      const ck = packCellKey(f.x, f.y);
-      if (!fm.has(ck)) fm.set(ck, f);
-      if (f.buildingId && !faultByBld.has(f.buildingId)) faultByBld.set(f.buildingId, f);
-    }
-    const ioByCell = new Map<number, Map<number, WorkbenchIoSpot>>();
-    const ioByBld = new Map<string, WorkbenchIoSpot>();
-    for (let i = 0; i < simReport.ioSpots.length; i++) {
-      const s = simReport.ioSpots[i];
-      let fm = ioByCell.get(s.floor);
-      if (!fm) {
-        fm = new Map();
-        ioByCell.set(s.floor, fm);
-      }
-      const ck = packCellKey(s.x, s.y);
-      if (!fm.has(ck)) fm.set(ck, s);
-      if (s.buildingId && !ioByBld.has(s.buildingId)) ioByBld.set(s.buildingId, s);
-    }
-    return { faultByCell, faultByBld, ioByCell, ioByBld };
-  }, [simReport]);
-
+  const simReport = useMemo(() => (simOpen ? checkBlueprintWorkbench(doc, lang) : null), [doc, simOpen, lang]);
   const simOverlayIssues = useMemo(() => {
     if (!simReport) return undefined;
     const markers: Array<{
@@ -271,6 +208,7 @@ export const App: React.FC = () => {
   const hoverNoteRef = useRef<HTMLDivElement | null>(null);
   const lastHoverTipKeyRef = useRef<string>('');
   const lastHudCellRef = useRef<string>('');
+  const [beltPreview, setBeltPreview] = useState<BeltCellSpec[]>([]);
   const beltPreviewRef = useRef<BeltCellSpec[]>([]);
   const [beltSessionMode, setBeltSessionMode] = useState<'plan' | 'stroke' | null>(null);
   const [beltHudFlags, setBeltHudFlags] = useState<{ tunnel: boolean; reverse: boolean }>({
@@ -310,7 +248,6 @@ export const App: React.FC = () => {
         focusFloor: fl,
         activeTool: tool,
         simReport: curSim,
-        simLookup: curSimLookup,
         showIoSpots: curShowIo,
         lang: curLang,
       } = stateRef.current;
@@ -378,15 +315,16 @@ export const App: React.FC = () => {
                   : `空带 · Mk.${cellInfo.tier} (${cellInfo.capacity}/s)`;
             }
           }
-          const ck = packCellKey(cx, cy);
-          const fault =
-            curSimLookup?.faultByCell.get(fl)?.get(ck) ?? curSimLookup?.faultByBld.get(hit.id);
+          const fault = curSim.faults.find(
+            (i) => i.floor === fl && ((i.x === cx && i.y === cy) || i.buildingId === hit.id)
+          );
           if (fault) {
             noteText = fault.message;
             tone = fault.severity === 'error' ? 'error' : 'warn';
           } else if (curShowIo) {
-            const spot =
-              curSimLookup?.ioByCell.get(fl)?.get(ck) ?? curSimLookup?.ioByBld.get(hit.id);
+            const spot = curSim.ioSpots.find(
+              (s) => s.floor === fl && ((s.x === cx && s.y === cy) || s.buildingId === hit.id)
+            );
             if (spot) noteText = spot.message;
           }
         }
@@ -522,7 +460,6 @@ export const App: React.FC = () => {
   } | null>(null);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const viewportRectRef = useRef<{ left: number; top: number; width: number; height: number } | null>(null);
   const sceneRef = useRef<CadSceneController | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -538,7 +475,6 @@ export const App: React.FC = () => {
     lastGroupMember,
     clipboardBp,
     simReport,
-    simLookup,
     showIoSpots,
     activeSimIssueId,
     lang,
@@ -555,7 +491,6 @@ export const App: React.FC = () => {
     lastGroupMember,
     clipboardBp,
     simReport,
-    simLookup,
     showIoSpots,
     activeSimIssueId,
     lang,
@@ -591,7 +526,7 @@ export const App: React.FC = () => {
 
   const setBeltPreviewSync = useCallback((specs: BeltCellSpec[]) => {
     beltPreviewRef.current = specs;
-    sceneRef.current?.setLiveBeltPreview(specs);
+    setBeltPreview(specs);
   }, []);
 
   const syncBeltHudFlags = useCallback(() => {
@@ -616,7 +551,7 @@ export const App: React.FC = () => {
     setBeltHudFlags((prev) => (prev.tunnel || prev.reverse ? { tunnel: false, reverse: false } : prev));
     if (beltPreviewRef.current.length > 0) {
       beltPreviewRef.current = [];
-      sceneRef.current?.setLiveBeltPreview([]);
+      setBeltPreview([]);
     }
   }, []);
 
@@ -685,7 +620,6 @@ export const App: React.FC = () => {
     setPrefsMenuOpen(false);
     setLibraryModalOpen(false);
     setHelpOpen(false);
-    clearBeltSession();
     hideHoverTip();
     updateBoxBadge(false);
     sceneRef.current?.setCursorWorld(null);
@@ -695,7 +629,7 @@ export const App: React.FC = () => {
         ? 'Clean View · Drag to orbit / pan · Click or Esc to exit'
         : '无 UI 预览 · 拖拽旋转/平移 · 点按画布或 Esc 退出'
     );
-  }, [clearBeltSession, hideHoverTip, showToast, updateBoxBadge]);
+  }, [hideHoverTip, showToast, updateBoxBadge]);
 
   const exitCleanView = useCallback(() => {
     setCleanView(false);
@@ -757,13 +691,11 @@ export const App: React.FC = () => {
     if (!el) return;
     const ctrl = new CadSceneController(el, {
       onAutoViewModeChange: (nextMode) => {
-        startTransition(() => {
-          setViewMode(nextMode);
-          setActiveTool((prev) => {
-            if (nextMode === 'station' && prev.kind === 'place-building') return { kind: 'select' };
-            if (nextMode === 'building' && prev.kind === 'place-module') return { kind: 'select' };
-            return prev;
-          });
+        setViewMode(nextMode);
+        setActiveTool((prev) => {
+          if (nextMode === 'station' && prev.kind === 'place-building') return { kind: 'select' };
+          if (nextMode === 'building' && prev.kind === 'place-module') return { kind: 'select' };
+          return prev;
         });
       },
       onTelemetryChange: (info) => {
@@ -774,33 +706,14 @@ export const App: React.FC = () => {
     });
     sceneRef.current = ctrl;
 
-    const refreshViewportRect = () => {
-      const r = el.getBoundingClientRect();
-      viewportRectRef.current = { left: r.left, top: r.top, width: Math.max(1, r.width), height: Math.max(1, r.height) };
-    };
-    refreshViewportRect();
-
-    const ro = new ResizeObserver(() => {
-      refreshViewportRect();
-      ctrl.resize();
-    });
+    const ro = new ResizeObserver(() => ctrl.resize());
     ro.observe(el);
-    window.addEventListener('resize', refreshViewportRect, { passive: true });
     return () => {
-      window.removeEventListener('resize', refreshViewportRect);
       ro.disconnect();
       ctrl.dispose();
       sceneRef.current = null;
-      viewportRectRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    viewportRectRef.current = { left: r.left, top: r.top, width: Math.max(1, r.width), height: Math.max(1, r.height) };
-  }, [libraryOpen, cleanView]);
 
   useEffect(() => {
     document.documentElement.style.colorScheme = theme === 'stealth-cad' ? 'only light' : 'dark';
@@ -818,7 +731,7 @@ export const App: React.FC = () => {
       selectionLayerMode,
       activeTool: cleanView ? { kind: 'select' } : activeTool,
       cursorWorld: cleanView ? null : cursorWorldRef.current,
-      beltPreview: cleanView ? [] : beltPreviewRef.current,
+      beltPreview: cleanView ? [] : beltPreview,
       boxSelectRect: null,
       forceReplaceHeld: cleanView ? false : forceReplaceHeld,
       simulationIssues: cleanView ? undefined : simOverlayIssues,
@@ -833,6 +746,7 @@ export const App: React.FC = () => {
     selection,
     selectionLayerMode,
     activeTool,
+    beltPreview,
     forceReplaceHeld,
     simOverlayIssues,
   ]);
@@ -882,31 +796,25 @@ export const App: React.FC = () => {
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
-    if (sel.moduleIds.length > 0) {
-      const modById = getModuleSpatialIndex(curDoc.modules).moduleById;
-      for (let i = 0; i < sel.moduleIds.length; i++) {
-        const m = modById.get(sel.moduleIds[i]);
-        const def = m ? getModuleDef(m.type) : undefined;
-        if (!m || !def) continue;
-        const [x0, y0, x1, y1] = getModuleBoundsM(m, def);
-        if (x0 < minX) minX = x0;
-        if (y0 < minY) minY = y0;
-        if (x1 > maxX) maxX = x1;
-        if (y1 > maxY) maxY = y1;
-      }
+    for (const mid of sel.moduleIds) {
+      const m = curDoc.modules.find((x) => x.id === mid);
+      const def = m ? getModuleDef(m.type) : undefined;
+      if (!m || !def) continue;
+      const [x0, y0, x1, y1] = getModuleBoundsM(m, def);
+      minX = Math.min(minX, x0);
+      minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1);
+      maxY = Math.max(maxY, y1);
     }
-    if (sel.buildingIds.length > 0) {
-      const bldById = getBuildingSpatialIndex(curDoc.buildings).buildingById;
-      for (let i = 0; i < sel.buildingIds.length; i++) {
-        const b = bldById.get(sel.buildingIds[i]);
-        const def = b ? getBuildableDef(b.type) : undefined;
-        if (!b || !def) continue;
-        const [w, d] = getBuildingSizeCells(def, b.rotation);
-        if (b.x < minX) minX = b.x;
-        if (b.y < minY) minY = b.y;
-        if (b.x + w > maxX) maxX = b.x + w;
-        if (b.y + d > maxY) maxY = b.y + d;
-      }
+    for (const bid of sel.buildingIds) {
+      const b = curDoc.buildings.find((x) => x.id === bid);
+      const def = b ? getBuildableDef(b.type) : undefined;
+      if (!b || !def) continue;
+      const [w, d] = getBuildingSizeCells(def, b.rotation);
+      minX = Math.min(minX, b.x);
+      minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + w);
+      maxY = Math.max(maxY, b.y + d);
     }
     if (Number.isFinite(minX)) {
       rig.fitBounds(minX - 4, minY - 4, maxX + 4, maxY + 4);
@@ -1605,7 +1513,6 @@ export const App: React.FC = () => {
       spaceHeldRef.current = false;
       setForceReplaceHeld(false);
       sceneRef.current?.clearKeys();
-      sceneRef.current?.setCameraDragging(false);
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -1645,16 +1552,10 @@ export const App: React.FC = () => {
   ]);
 
   const clientToWorld = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
+    const el = viewportRef.current;
     const ctrl = sceneRef.current;
-    if (!ctrl) return null;
-    let rect = viewportRectRef.current;
-    if (!rect) {
-      const el = viewportRef.current;
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      rect = { left: r.left, top: r.top, width: Math.max(1, r.width), height: Math.max(1, r.height) };
-      viewportRectRef.current = rect;
-    }
+    if (!el || !ctrl) return null;
+    const rect = el.getBoundingClientRect();
     const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
     const hit = ctrl.rig.intersectFocusPlane(ndcX, ndcY);
@@ -1692,6 +1593,9 @@ export const App: React.FC = () => {
       return;
     }
 
+    const world = clientToWorld(e.clientX, e.clientY);
+    if (world) updateLiveCursor(world);
+
     if (e.button === 2) {
       dragRef.current = {
         ...dragRef.current,
@@ -1705,7 +1609,6 @@ export const App: React.FC = () => {
       return;
     }
 
-    const world = clientToWorld(e.clientX, e.clientY);
     if (e.button === 1 || (e.button === 0 && spaceHeldRef.current)) {
       dragRef.current = {
         ...dragRef.current,
@@ -1719,8 +1622,6 @@ export const App: React.FC = () => {
       };
       return;
     }
-
-    if (world) updateLiveCursor(world);
 
     if (e.button !== 0 || !world) return;
     const { doc: curDoc, viewMode: vm, focusFloor: fl, activeTool: tool } = stateRef.current;
@@ -1951,31 +1852,10 @@ export const App: React.FC = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-
-    // Ultra-fast camera drag short-circuit: skip ground raycast, HUD DOM writes, hover tips,
-    // preview rebuilds, and dock-hint rebuilds completely while orbiting or panning!
-    if (d.kind === 'orbit' || d.kind === 'clean-orbit' || d.kind === 'pan') {
-      const dx = e.clientX - d.lastX;
-      const dy = e.clientY - d.lastY;
-      d.lastX = e.clientX;
-      d.lastY = e.clientY;
-      if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) >= 5) {
-        d.moved = true;
-        sceneRef.current?.setCameraDragging(true);
-      }
-      if (d.kind === 'pan') {
-        const h = viewportRectRef.current?.height || 600;
-        sceneRef.current?.rig.panByScreenDelta(dx, dy, h);
-      } else {
-        sceneRef.current?.rig.orbitByPixels(dx, dy);
-      }
-      return;
-    }
-
     const world = stateRef.current.cleanView ? null : clientToWorld(e.clientX, e.clientY);
     if (world) updateLiveCursor(world);
 
+    const d = dragRef.current;
     if (d.kind === 'none') {
       if (stateRef.current.cleanView) return;
       const session = beltSessionRef.current;
@@ -2002,10 +1882,22 @@ export const App: React.FC = () => {
     }
     hideHoverTip();
 
+    const dx = e.clientX - d.lastX;
+    const dy = e.clientY - d.lastY;
     d.lastX = e.clientX;
     d.lastY = e.clientY;
     if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) >= 5) {
       d.moved = true;
+    }
+
+    if (d.kind === 'orbit' || d.kind === 'clean-orbit') {
+      sceneRef.current?.rig.orbitByPixels(dx, dy);
+      return;
+    }
+    if (d.kind === 'pan') {
+      const h = viewportRef.current?.clientHeight || 600;
+      sceneRef.current?.rig.panByScreenDelta(dx, dy, h);
+      return;
     }
     if (!world) return;
 
@@ -2316,17 +2208,12 @@ export const App: React.FC = () => {
       }
     }
 
-    const wasCamDrag = d.moved && (d.kind === 'orbit' || d.kind === 'clean-orbit' || d.kind === 'pan');
     dragRef.current.kind = 'none';
     dragRef.current.moved = false;
     dragRef.current.liveSelection = null;
     dragRef.current.sweepCommitted = false;
     dragRef.current.sweepModCount = 0;
     dragRef.current.sweepBldCount = 0;
-    if (wasCamDrag) {
-      sceneRef.current?.setCameraDragging(false);
-      if (world && !stateRef.current.cleanView) updateLiveCursor(world);
-    }
   };
 
   // Native non-passive wheel handler so Shift+Wheel steps floors cleanly without triggering browser scroll!
@@ -2351,12 +2238,7 @@ export const App: React.FC = () => {
       wheelFloorAccumRef.current = 0;
       const ctrl = sceneRef.current;
       if (!ctrl) return;
-      let rect = viewportRectRef.current;
-      if (!rect) {
-        const r = el.getBoundingClientRect();
-        rect = { left: r.left, top: r.top, width: Math.max(1, r.width), height: Math.max(1, r.height) };
-        viewportRectRef.current = rect;
-      }
+      const rect = el.getBoundingClientRect();
       const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       const hit = ctrl.rig.intersectFocusPlane(ndcX, ndcY);
@@ -2447,10 +2329,7 @@ export const App: React.FC = () => {
     try {
       const lower = file.name.toLowerCase();
       if (lower.endsWith('.sav')) {
-        const [bytes, { importNativeSav }] = await Promise.all([
-          file.arrayBuffer().then((buf) => new Uint8Array(buf)),
-          import('./core/native-codec'),
-        ]);
+        const bytes = new Uint8Array(await file.arrayBuffer());
         const { doc: imported, report } = await importNativeSav(bytes);
         const baseName = sanitizeFileName(imported.name || file.name.replace(/\.sav$/i, ''));
         const targetPath = `导入蓝图/${baseName}`;
@@ -2578,7 +2457,6 @@ export const App: React.FC = () => {
 
   const handleExportNativeSav = async (mode: 'station' | 'preset' = 'station', targetDoc: BlueprintDocument = doc) => {
     try {
-      const { exportNativeSav } = await import('./core/native-codec');
       const { bytes, report } = await exportNativeSav(targetDoc, mode);
       const blob = new Blob([bytes as BlobPart], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
@@ -2862,18 +2740,16 @@ export const App: React.FC = () => {
           <div className="topbar-group right-aligned">
             <button
               type="button"
-              className={`cad-btn ${simOpen && simReport ? (simReport.passed ? 'sim-ok' : 'sim-err') : simOpen ? 'accent' : ''}`}
+              className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
               onClick={() => setSimOpen((v) => !v)}
               title={t('图纸体检', 'Blueprint check')}
             >
               {simOpen
-                ? !simReport
-                  ? t('体检…', 'Check…')
-                  : !simReport.passed
-                    ? t(`体检 · ${simReport.errorCount}错`, `Check · ${simReport.errorCount} Err`)
-                    : simReport.warnCount > 0
-                      ? t(`体检 · ${simReport.warnCount}警`, `Check · ${simReport.warnCount} Warn`)
-                      : t('体检 · 正常', 'Check · OK')
+                ? !simReport?.passed
+                  ? t(`体检 · ${simReport?.errorCount ?? 0}错`, `Check · ${simReport?.errorCount ?? 0} Err`)
+                  : (simReport?.warnCount ?? 0) > 0
+                    ? t(`体检 · ${simReport?.warnCount ?? 0}警`, `Check · ${simReport?.warnCount ?? 0} Warn`)
+                    : t('体检 · 正常', 'Check · OK')
                 : t('体检', 'Check')}
             </button>
 
@@ -3132,34 +3008,30 @@ export const App: React.FC = () => {
               onClearSelection={() => setSelection(EMPTY_SELECTION)}
             />
 
-            {simOpen && (
-              <Suspense fallback={null}>
-                <SimulationPanel
-                  open={simOpen}
-                  report={simReport}
-                  activeIssueId={activeSimIssueId}
-                  showIoSpots={showIoSpots}
-                  onToggleShowIoSpots={() => setShowIoSpots((v) => !v)}
-                  onClose={() => {
-                    setSimOpen(false);
-                    setActiveSimIssueId(null);
-                  }}
-                  onFocusTarget={(target: CheckFocusTarget) => {
-                    setActiveSimIssueId(target.id);
-                    setFocusFloor(target.floor);
-                    if (target.moduleId && !target.buildingId) {
-                      switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
-                      setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
-                    } else {
-                      switchViewMode('building', [target.x + 0.5, target.y + 0.5]);
-                      if (target.buildingId) {
-                        setSelection({ moduleIds: [], buildingIds: [target.buildingId] });
-                      }
-                    }
-                  }}
-                />
-              </Suspense>
-            )}
+            <SimulationPanel
+              open={simOpen}
+              report={simReport}
+              activeIssueId={activeSimIssueId}
+              showIoSpots={showIoSpots}
+              onToggleShowIoSpots={() => setShowIoSpots((v) => !v)}
+              onClose={() => {
+                setSimOpen(false);
+                setActiveSimIssueId(null);
+              }}
+              onFocusTarget={(target: CheckFocusTarget) => {
+                setActiveSimIssueId(target.id);
+                setFocusFloor(target.floor);
+                if (target.moduleId && !target.buildingId) {
+                  switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
+                  setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
+                } else {
+                  switchViewMode('building', [target.x + 0.5, target.y + 0.5]);
+                  if (target.buildingId) {
+                    setSelection({ moduleIds: [], buildingIds: [target.buildingId] });
+                  }
+                }
+              }}
+            />
 
             {toolBannerSpec && (
               <ToolActionBar
@@ -3184,38 +3056,30 @@ export const App: React.FC = () => {
         )}
       </div>
 
-      {libraryModalMounted && (
-        <Suspense fallback={null}>
-          <BlueprintLibraryModal
-            open={libraryModalOpen}
-            onClose={() => setLibraryModalOpen(false)}
-            driver={driver}
-            fsSupported={FileSystemFolderDriver.isSupported()}
-            tree={libraryTree}
-            theme={theme}
-            activeSourcePath={activeSourcePath}
-            stampingPath={stampingLibPath}
-            onMountLocalFolder={handleMountLocalFolder}
-            onOpenGitHubConnect={openGitHubConnectModal}
-            onRefresh={() => void refreshLibrary(undefined, true)}
-            onNewBlueprint={handleNewBlueprint}
-            onCreateFolder={handleCreateFolder}
-            onImportJsonFile={handleImportJsonFile}
-            onStampFromLibrary={handleStampFromLibrary}
-            onOpenFromLibrary={handleOpenFromLibrary}
-            onExportFromLibrary={handleExportFromLibrary}
-            onExportSavFromLibrary={(f) => void handleExportSavFromLibrary(f)}
-            onDeleteEntry={handleDeleteLibEntry}
-            onMoveFile={handleMoveLibFile}
-          />
-        </Suspense>
-      )}
+      <BlueprintLibraryModal
+        open={libraryModalOpen}
+        onClose={() => setLibraryModalOpen(false)}
+        driver={driver}
+        fsSupported={FileSystemFolderDriver.isSupported()}
+        tree={libraryTree}
+        theme={theme}
+        activeSourcePath={activeSourcePath}
+        stampingPath={stampingLibPath}
+        onMountLocalFolder={handleMountLocalFolder}
+        onOpenGitHubConnect={openGitHubConnectModal}
+        onRefresh={() => void refreshLibrary(undefined, true)}
+        onNewBlueprint={handleNewBlueprint}
+        onCreateFolder={handleCreateFolder}
+        onImportJsonFile={handleImportJsonFile}
+        onStampFromLibrary={handleStampFromLibrary}
+        onOpenFromLibrary={handleOpenFromLibrary}
+        onExportFromLibrary={handleExportFromLibrary}
+        onExportSavFromLibrary={(f) => void handleExportSavFromLibrary(f)}
+        onDeleteEntry={handleDeleteLibEntry}
+        onMoveFile={handleMoveLibFile}
+      />
 
-      {helpOpen && (
-        <Suspense fallback={null}>
-          <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
-        </Suspense>
-      )}
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       {ghModal && (
         <div className="cad-modal-overlay" onClick={() => !ghModal.busy && setGhModal(null)}>
