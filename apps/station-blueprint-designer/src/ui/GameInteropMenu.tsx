@@ -2,25 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../core/i18n';
 
 interface GameInteropMenuProps {
-  driverMode: 'fs-local' | 'virtual-idb' | 'github-private';
-  rootLabel: string;
-  fsSupported: boolean;
   onImportFile: (file: File) => void;
   onExportNativeSav: (mode: 'station' | 'preset') => void;
   onExportCanonicalJson: () => void;
-  onMountLocalFolder: () => void;
-  onOpenGitHubConnect: () => void;
 }
 
 export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
-  driverMode,
-  rootLabel,
-  fsSupported,
   onImportFile,
   onExportNativeSav,
   onExportCanonicalJson,
-  onMountLocalFolder,
-  onOpenGitHubConnect,
 }) => {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -44,13 +34,6 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
       window.removeEventListener('keydown', onKey);
     };
   }, [open]);
-
-  const sourceLabel =
-    driverMode === 'fs-local'
-      ? t('本地目录', 'Local Folder')
-      : driverMode === 'github-private'
-        ? t('私有云库', 'Private Cloud')
-        : t('内置库', 'Built-in');
 
   return (
     <div className="interop-anchor" ref={wrapRef}>
@@ -125,42 +108,6 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
               <span className="interop-action-main">{t('蓝图 JSON', 'Blueprint JSON')}</span>
               <span className="interop-tag">.json</span>
             </button>
-          </div>
-
-          <div className="interop-section">
-            <div className="interop-section-title">{t('蓝图源', 'Source')}</div>
-            <div className="interop-sync-status" title={rootLabel}>
-              <span
-                className={`status-dot ${
-                  driverMode === 'fs-local' ? 'green' : driverMode === 'github-private' ? 'amber' : 'blue'
-                }`}
-              />
-              <span>{sourceLabel}</span>
-            </div>
-            <div className="interop-sync-actions">
-              {fsSupported && (
-                <button
-                  type="button"
-                  className="cad-btn"
-                  onClick={() => {
-                    setOpen(false);
-                    onMountLocalFolder();
-                  }}
-                >
-                  {driverMode === 'fs-local' ? t('切换目录', 'Change Dir') : t('本地目录', 'Local Dir')}
-                </button>
-              )}
-              <button
-                type="button"
-                className="cad-btn accent"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenGitHubConnect();
-                }}
-              >
-                {driverMode === 'github-private' ? t('云库设置', 'Cloud Settings') : t('私有云库', 'Private Cloud')}
-              </button>
-            </div>
           </div>
         </div>
       )}

@@ -242,6 +242,8 @@ export interface WorldConnector {
   y: number;
   floor: number;
   rotation: Rotation;
+  /** Vertical connector facing ('top' when local floorOffset > 0, 'bottom' when 0). */
+  verticalFace?: 'top' | 'bottom';
 }
 
 /**
@@ -353,6 +355,7 @@ export function getModuleWorldConnectors(mod: PlacedModule, def: StationModuleDe
     const lx = c.gx * 4 - ox;
     const ly = c.gy * 4 - oy;
     const [rx, ry] = rotateVec2(lx, ly, mod.rotation);
+    const isVert = c.type.startsWith('Vertical');
     return {
       moduleId: mod.id,
       type: c.type,
@@ -360,8 +363,80 @@ export function getModuleWorldConnectors(mod: PlacedModule, def: StationModuleDe
       y: cy + ry,
       floor: mod.floor + c.floorOffset,
       rotation: normalizeRotation(c.rotation + mod.rotation),
+      ...(isVert ? { verticalFace: c.floorOffset > 0 ? 'top' : 'bottom' } : {}),
     };
   });
+}
+
+/** Canonical spatial key for a world connector (0.5m resolution). */
+export function getWorldConnectorKey(c: Pick<WorldConnector, 'x' | 'y' | 'floor'>): string {
+  return `${Math.round(c.x * 2)},${Math.round(c.y * 2)},${c.floor}`;
+}
+
+/** Whether two world connectors at the same position/floor mate flush (type + opposite facing). */
+export function areWorldConnectorsMated(a: WorldConnector, b: WorldConnector): boolean {
+  if (a.type !== b.type) return false;
+  if (a.type.startsWith('Vertical')) {
+    return a.verticalFace !== undefined && b.verticalFace !== undefined
+      ? a.verticalFace !== b.verticalFace
+      : true;
+  }
+  return normalizeRotation(a.rotation + 2) === b.rotation;
+}
+
+/**
+ * Collect open (not internally mated) world connectors of a candidate module set
+ * — shared identically by single-module placement and multi-module blueprint pasting.
+ */
+export function collectOpenGhostConnectors(ghostModules: readonly PlacedModule[]): WorldConnector[] {
+  const raw: WorldConnector[] = [];
+  const byKey = new Map<string, WorldConnector[]>();
+  for (const mod of ghostModules) {
+    const def = getModuleDef(mod.type);
+    if (!def) continue;
+    for (const c of getModuleWorldConnectors(mod, def)) {
+      raw.push(c);
+      const k = getWorldConnectorKey(c);
+      const list = byKey.get(k);
+      if (list) list.push(c);
+      else byKey.set(k, [c]);
+    }
+  }
+  return raw.filter((c) => {
+    const peers = byKey.get(getWorldConnectorKey(c));
+    if (!peers || peers.length < 2) return true;
+    return !peers.some((p) => p !== c && areWorldConnectorsMated(c, p));
+  });
+}
+
+/**
+ * Find existing open station connectors that mate flush against `ghostModules`.
+ * Used for green alignment lock feedback in both single-module placement and blueprint paste.
+ */
+export function findMatchedDockConnectors(
+  existingConnectors: readonly WorldConnector[],
+  existingConnCounts: ReadonlyMap<string, number>,
+  ghostModules: readonly PlacedModule[]
+): WorldConnector[] {
+  const openGhost = collectOpenGhostConnectors(ghostModules);
+  if (openGhost.length === 0) return [];
+  const ghostByKey = new Map<string, WorldConnector[]>();
+  for (const gc of openGhost) {
+    const k = getWorldConnectorKey(gc);
+    const list = ghostByKey.get(k);
+    if (list) list.push(gc);
+    else ghostByKey.set(k, [gc]);
+  }
+  const matched: WorldConnector[] = [];
+  for (const c of existingConnectors) {
+    const k = getWorldConnectorKey(c);
+    if ((existingConnCounts.get(k) ?? 0) >= 2) continue;
+    const peers = ghostByKey.get(k);
+    if (peers && peers.some((gc) => areWorldConnectorsMated(c, gc))) {
+      matched.push(c);
+    }
+  }
+  return matched;
 }
 
 /** Check if a local meter cell center (lx, ly) is buildable on a station surface */

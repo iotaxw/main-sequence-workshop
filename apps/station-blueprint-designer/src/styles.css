@@ -434,6 +434,14 @@ body,
   cursor: default;
 }
 
+.cad-viewport.tool-clean {
+  cursor: grab;
+}
+
+.cad-viewport.tool-clean:active {
+  cursor: grabbing;
+}
+
 .cad-viewport.tool-demolish {
   cursor:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 7L17 17M17 7L7 17' stroke='%230e131b' stroke-width='4.2'/%3E%3Cpath d='M3.5 7.5V3.5H7.5M16.5 3.5H20.5V7.5M20.5 16.5V20.5H16.5M7.5 20.5H3.5V16.5' stroke='%230e131b' stroke-width='3.0' stroke-opacity='0.85'/%3E%3Cpath d='M7 7L17 17M17 7L7 17' stroke='%23f26d6d' stroke-width='2.1'/%3E%3Cpath d='M3.5 7.5V3.5H7.5M16.5 3.5H20.5V7.5M20.5 16.5V20.5H16.5M7.5 20.5H3.5V16.5' stroke='%23f26d6d' stroke-width='1.35'/%3E%3C/g%3E%3C/svg%3E")
@@ -941,22 +949,147 @@ body,
   padding: 8px 0 0;
 }
 
-/* Tool Banner & Telemetry (Whisper-quiet) */
+/* Unified Operational HUD Bar & Keycap System */
 .cad-tool-banner {
   position: absolute;
   top: 12px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 18;
-  background: var(--bg-panel);
+  z-index: 24;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 320px);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   color: var(--text-main);
-  padding: 5px 14px;
-  border-radius: 999px;
+  padding: 5px 12px;
+  border-radius: 10px;
   font-size: 11px;
+  line-height: 1;
   pointer-events: none;
   white-space: nowrap;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+
+.cad-tool-banner.tone-danger {
+  border-color: var(--line-disabled);
+}
+
+.cad-op-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cad-op-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.cad-op-dot.accent {
+  background: var(--border-focus);
+}
+
+.cad-op-dot.danger {
+  background: var(--line-disabled);
+}
+
+.cad-op-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-bright);
+  letter-spacing: 0.01em;
+}
+
+.cad-op-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-dim);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: 5px;
+  padding: 2px 5px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cad-op-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border-hairline);
+  flex-shrink: 0;
+}
+
+.cad-hint-list {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.cad-hint-list.compact {
+  gap: 7px;
+}
+
+.cad-hint-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+  transition: color 120ms ease;
+}
+
+.cad-hint-item.is-active {
+  color: var(--line-active);
+}
+
+.cad-op-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 -1px 0 var(--border-hairline);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-bright);
+  white-space: nowrap;
+}
+
+.cad-hint-list.compact .cad-op-kbd {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 9px;
+}
+
+.cad-hint-item.is-active .cad-op-kbd {
+  border-color: var(--line-active);
+  color: var(--line-active);
+  background: var(--bg-surface-active);
+}
+
+.cad-op-act {
+  font-size: 10.5px;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.cad-hint-list.compact .cad-op-act {
+  font-size: 10px;
 }
 
 .cad-telemetry {
@@ -1002,14 +1135,15 @@ body,
   pointer-events: none;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  border-radius: 9px;
+  border-radius: 10px;
   padding: 7px 12px;
   min-width: 210px;
-  max-width: 310px;
-  backdrop-filter: blur(10px);
+  max-width: 340px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .s2-hover-row {
@@ -1021,7 +1155,7 @@ body,
 
 .s2-hover-title {
   font-size: 11.5px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-bright);
 }
 
@@ -1039,10 +1173,8 @@ body,
 }
 
 .s2-hover-hint {
-  font-size: 10px;
-  color: var(--text-dim);
   margin-top: 2px;
-  padding-top: 3px;
+  padding-top: 5px;
   border-top: 1px solid var(--border-hairline);
 }
 
@@ -1053,9 +1185,10 @@ body,
   gap: 6px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  border-radius: 11px;
+  border-radius: 10px;
   padding: 4px 8px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
   max-width: calc(100vw - 32px);
   overflow-x: auto;
 }
@@ -1074,14 +1207,7 @@ body,
 }
 
 .s2-subtray-kbd {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  color: var(--text-muted);
-  border: 1px solid var(--border-hairline);
-  border-radius: 5px;
-  padding: 1px 5px;
   margin-left: 2px;
-  white-space: nowrap;
 }
 
 /* Main Compact Grouped Bar */
@@ -1198,21 +1324,28 @@ body,
   flex-shrink: 0;
 }
 
-/* Toast (Restrained Monochrome Hairline — always above modals) */
+/* Toast (Global Top Layer — ALWAYS above Blueprint Library, Modals & Clean View) */
 .cad-toast {
-  position: absolute;
-  top: 50px;
+  position: fixed;
+  top: 56px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 110;
+  z-index: 9999;
   background: var(--bg-elevated);
   border: 1px solid var(--border-mid);
   color: var(--text-bright);
-  padding: 6px 15px;
-  border-radius: 999px;
+  padding: 6px 14px;
+  border-radius: 10px;
   font-size: 11.5px;
+  line-height: 1.3;
   pointer-events: none;
-  backdrop-filter: blur(8px);
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+.cad-toast.clean-view {
+  top: 16px;
 }
 
 .cad-toast.warn {
@@ -1951,15 +2084,16 @@ body,
   left: 0;
   z-index: 65;
   pointer-events: none;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--bg-panel-solid);
+  padding: 5px 11px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-focus);
   color: var(--text-bright);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   white-space: nowrap;
   will-change: transform;
 }
@@ -1987,11 +2121,12 @@ body,
   flex-direction: column;
   gap: 2px;
   max-width: 268px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--bg-panel-solid);
+  padding: 6px 11px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   will-change: transform;
 }
 
@@ -2233,6 +2368,15 @@ body,
   padding: 2px 7px;
   color: var(--text-dim);
   font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.lib-source-chip:hover {
+  border-color: var(--border-mid);
+  color: var(--text-bright);
+  background: var(--bg-surface-hover);
 }
 
 .lib-slim-top-actions {

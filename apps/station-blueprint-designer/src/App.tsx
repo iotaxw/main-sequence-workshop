@@ -6,6 +6,7 @@ import {
   getMatchingBeltType,
   getMatchingUndergroundType,
   selectConnectedBeltChain,
+  stepBeltEndRotation,
   toggleBeltStrokeTunnel,
   type BeltCellSpec,
   type BeltStrokeTunnel,
@@ -83,6 +84,7 @@ import { FloorStackRail } from './ui/FloorStackRail';
 import { GameInteropMenu } from './ui/GameInteropMenu';
 import { HelpDrawer } from './ui/HelpDrawer';
 import { InspectorPanel } from './ui/InspectorPanel';
+import { ToolActionBar, type KeyHintItem } from './ui/KeyHintBar';
 import { LibrarySidebar } from './ui/LibrarySidebar';
 import { PaletteDock } from './ui/PaletteDock';
 import { SimulationPanel, type CheckFocusTarget } from './ui/SimulationPanel';
@@ -142,6 +144,7 @@ export const App: React.FC = () => {
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [libraryModalOpen, setLibraryModalOpen] = useState(false);
   const [prefsMenuOpen, setPrefsMenuOpen] = useState(false);
+  const [cleanView, setCleanView] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [simOpen, setSimOpen] = useState(false);
   const [showIoSpots, setShowIoSpots] = useState(false);
@@ -208,6 +211,10 @@ export const App: React.FC = () => {
   const [beltPreview, setBeltPreview] = useState<BeltCellSpec[]>([]);
   const beltPreviewRef = useRef<BeltCellSpec[]>([]);
   const [beltSessionMode, setBeltSessionMode] = useState<'plan' | 'stroke' | null>(null);
+  const [beltHudFlags, setBeltHudFlags] = useState<{ tunnel: boolean; reverse: boolean }>({
+    tunnel: false,
+    reverse: false,
+  });
   const beltSessionRef = useRef<{
     mode: 'plan' | 'stroke';
     floor: number;
@@ -424,6 +431,10 @@ export const App: React.FC = () => {
 
   const updateLiveCursor = useCallback((world: { x: number; y: number } | null) => {
     cursorWorldRef.current = world;
+    if (stateRef.current.cleanView) {
+      sceneRef.current?.setCursorWorld(null);
+      return;
+    }
     sceneRef.current?.setCursorWorld(world);
     const cellKey = world ? `${Math.floor(world.x)},${Math.floor(world.y)}` : 'null';
     if (cellKey !== lastHudCellRef.current) {
@@ -457,6 +468,7 @@ export const App: React.FC = () => {
     viewMode,
     focusFloor,
     hideAbove,
+    cleanView,
     selection,
     selectionLayerMode,
     activeTool,
@@ -472,6 +484,7 @@ export const App: React.FC = () => {
     viewMode,
     focusFloor,
     hideAbove,
+    cleanView,
     selection,
     selectionLayerMode,
     activeTool,
@@ -484,7 +497,7 @@ export const App: React.FC = () => {
   };
 
   const dragRef = useRef<{
-    kind: 'none' | 'orbit' | 'pan' | 'box-select' | 'box-demolish' | 'shift-place-or-box' | 'demolish';
+    kind: 'none' | 'orbit' | 'pan' | 'clean-orbit' | 'box-select' | 'box-demolish' | 'shift-place-or-box' | 'demolish';
     startX: number;
     startY: number;
     lastX: number;
@@ -516,11 +529,26 @@ export const App: React.FC = () => {
     setBeltPreview(specs);
   }, []);
 
+  const syncBeltHudFlags = useCallback(() => {
+    const s = beltSessionRef.current;
+    if (!s) {
+      setBeltHudFlags((prev) => (prev.tunnel || prev.reverse ? { tunnel: false, reverse: false } : prev));
+      return;
+    }
+    const tunnel =
+      s.mode === 'plan'
+        ? s.planTunnel
+        : s.strokeTunnels.length > 0 && s.strokeTunnels[s.strokeTunnels.length - 1].outIndex === null;
+    const reverse = s.reverse;
+    setBeltHudFlags((prev) => (prev.tunnel === tunnel && prev.reverse === reverse ? prev : { tunnel, reverse }));
+  }, []);
+
   const clearBeltSession = useCallback(() => {
     if (beltSessionRef.current !== null) {
       beltSessionRef.current = null;
       setBeltSessionMode(null);
     }
+    setBeltHudFlags((prev) => (prev.tunnel || prev.reverse ? { tunnel: false, reverse: false } : prev));
     if (beltPreviewRef.current.length > 0) {
       beltPreviewRef.current = [];
       setBeltPreview([]);
@@ -564,9 +592,10 @@ export const App: React.FC = () => {
     (targetCell?: [number, number]) => {
       const specs = computeBeltSessionSpecs(targetCell);
       setBeltPreviewSync(specs);
+      syncBeltHudFlags();
       return specs;
     },
-    [computeBeltSessionSpecs, setBeltPreviewSync]
+    [computeBeltSessionSpecs, setBeltPreviewSync, syncBeltHudFlags]
   );
 
   useEffect(() => {
@@ -585,6 +614,25 @@ export const App: React.FC = () => {
     setToast({ text, kind });
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(null), 2600);
+  }, []);
+
+  const enterCleanView = useCallback(() => {
+    setPrefsMenuOpen(false);
+    setLibraryModalOpen(false);
+    setHelpOpen(false);
+    hideHoverTip();
+    updateBoxBadge(false);
+    sceneRef.current?.setCursorWorld(null);
+    setCleanView(true);
+    showToast(
+      stateRef.current.lang === 'en'
+        ? 'Clean View · Drag to orbit / pan · Click or Esc to exit'
+        : '无 UI 预览 · 拖拽旋转/平移 · 点按画布或 Esc 退出'
+    );
+  }, [hideHoverTip, showToast, updateBoxBadge]);
+
+  const exitCleanView = useCallback(() => {
+    setCleanView(false);
   }, []);
 
   const commitDoc = useCallback((next: BlueprintDocument) => {
@@ -679,14 +727,14 @@ export const App: React.FC = () => {
       viewMode,
       focusFloor,
       hideAbove,
-      selection,
+      selection: cleanView ? EMPTY_SELECTION : selection,
       selectionLayerMode,
-      activeTool,
-      cursorWorld: cursorWorldRef.current,
-      beltPreview,
+      activeTool: cleanView ? { kind: 'select' } : activeTool,
+      cursorWorld: cleanView ? null : cursorWorldRef.current,
+      beltPreview: cleanView ? [] : beltPreview,
       boxSelectRect: null,
-      forceReplaceHeld,
-      simulationIssues: simOverlayIssues,
+      forceReplaceHeld: cleanView ? false : forceReplaceHeld,
+      simulationIssues: cleanView ? undefined : simOverlayIssues,
     });
   }, [
     doc,
@@ -694,6 +742,7 @@ export const App: React.FC = () => {
     viewMode,
     focusFloor,
     hideAbove,
+    cleanView,
     selection,
     selectionLayerMode,
     activeTool,
@@ -1095,6 +1144,10 @@ export const App: React.FC = () => {
       // Universal Esc close (works even while focused in search / text inputs!)
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (stateRef.current.cleanView) {
+          exitCleanView();
+          return;
+        }
         if (beltSessionRef.current) {
           clearBeltSession();
           return;
@@ -1137,6 +1190,26 @@ export const App: React.FC = () => {
 
       const mod = e.ctrlKey || e.metaKey;
       const lower = e.key.toLowerCase();
+
+      if (stateRef.current.cleanView) {
+        if (lower === 'h') {
+          e.preventDefault();
+          exitCleanView();
+        } else if (lower === 'e') {
+          e.preventDefault();
+          setFocusFloor((f) => Math.min(8, f + 1));
+        } else if (lower === 'q') {
+          e.preventDefault();
+          setFocusFloor((f) => Math.max(-2, f - 1));
+        } else if (lower === 'v') {
+          e.preventDefault();
+          setHideAbove((v) => !v);
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          fitAllStation();
+        }
+        return;
+      }
 
       if (mod) {
         if (lower === 'z' && !e.shiftKey) {
@@ -1234,6 +1307,11 @@ export const App: React.FC = () => {
         });
         return;
       }
+      if (lower === 'h') {
+        e.preventDefault();
+        enterCleanView();
+        return;
+      }
       if (lower === 'b') {
         e.preventDefault();
         setSelectionLayerMode((m) => {
@@ -1312,8 +1390,11 @@ export const App: React.FC = () => {
           const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
           const curSpecs = beltPreviewRef.current;
           const curLast = curSpecs.length > 0 ? curSpecs[curSpecs.length - 1] : undefined;
-          const baseRot = session.endRotation ?? curLast?.rotation ?? fallback;
-          session.endRotation = normalizeRotation(baseRot + delta);
+          if (curLast?.kind === 'underground-in' || curLast?.kind === 'underground-out') {
+            return;
+          }
+          const baseRot = curLast?.rotation ?? session.endRotation ?? fallback;
+          session.endRotation = stepBeltEndRotation(curSpecs, baseRot, delta);
           refreshBeltSessionPreview();
           return;
         }
@@ -1447,6 +1528,8 @@ export const App: React.FC = () => {
     clearBeltSession,
     commitDoc,
     copySelectionToGhost,
+    enterCleanView,
+    exitCleanView,
     fitAllStation,
     focusSelection,
     ghModal,
@@ -1482,6 +1565,34 @@ export const App: React.FC = () => {
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     hideHoverTip();
+
+    if (stateRef.current.cleanView) {
+      if (e.button === 1 || (e.button === 0 && spaceHeldRef.current)) {
+        dragRef.current = {
+          ...dragRef.current,
+          kind: 'pan',
+          startX: e.clientX,
+          startY: e.clientY,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          moved: false,
+          startWorld: null,
+        };
+      } else if (e.button === 0 || e.button === 2) {
+        dragRef.current = {
+          ...dragRef.current,
+          kind: 'clean-orbit',
+          startX: e.clientX,
+          startY: e.clientY,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          moved: false,
+          startWorld: null,
+        };
+      }
+      return;
+    }
+
     const world = clientToWorld(e.clientX, e.clientY);
     if (world) updateLiveCursor(world);
 
@@ -1741,11 +1852,12 @@ export const App: React.FC = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const world = clientToWorld(e.clientX, e.clientY);
+    const world = stateRef.current.cleanView ? null : clientToWorld(e.clientX, e.clientY);
     if (world) updateLiveCursor(world);
 
     const d = dragRef.current;
     if (d.kind === 'none') {
+      if (stateRef.current.cleanView) return;
       const session = beltSessionRef.current;
       if (session && world) {
         hideHoverTip();
@@ -1778,7 +1890,7 @@ export const App: React.FC = () => {
       d.moved = true;
     }
 
-    if (d.kind === 'orbit') {
+    if (d.kind === 'orbit' || d.kind === 'clean-orbit') {
       sceneRef.current?.rig.orbitByPixels(dx, dy);
       return;
     }
@@ -1880,13 +1992,19 @@ export const App: React.FC = () => {
     const d = dragRef.current;
     const world = clientToWorld(e.clientX, e.clientY);
 
-    if (d.kind === 'orbit') {
+    if (d.kind === 'clean-orbit') {
+      if (!d.moved) {
+        exitCleanView();
+      } else {
+        sceneRef.current?.rig.snapAngles();
+      }
+    } else if (d.kind === 'orbit') {
       if (!d.moved) {
         handleCancelAction();
       } else {
         sceneRef.current?.rig.snapAngles();
       }
-    } else if (d.kind === 'pan' && !d.moved && e.button === 1 && world) {
+    } else if (d.kind === 'pan' && !d.moved && e.button === 1 && world && !stateRef.current.cleanView) {
       const session = beltSessionRef.current;
       if (session) {
         if (session.mode === 'plan') {
@@ -2131,7 +2249,7 @@ export const App: React.FC = () => {
   }, []);
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (stateRef.current.activeTool.kind !== 'select') return;
+    if (stateRef.current.cleanView || stateRef.current.activeTool.kind !== 'select') return;
     const world = clientToWorld(e.clientX, e.clientY);
     if (!world) return;
     if (stateRef.current.viewMode === 'station') {
@@ -2444,242 +2562,374 @@ export const App: React.FC = () => {
         ? t('写入本地目录', 'Save Locally')
         : t('写入内置库', 'Save Built-in');
 
+  const toolBannerSpec = useMemo((): {
+    mode: string;
+    badge?: string;
+    tone: 'default' | 'accent' | 'danger';
+    hints: KeyHintItem[];
+  } | null => {
+    if (cleanView || activeTool.kind === 'select') return null;
+
+    if (activeTool.kind === 'demolish') {
+      return {
+        mode: t('拆除', 'Erase'),
+        tone: 'danger',
+        hints: [
+          { keys: t('左键', 'LMB'), label: t('点/扫', 'Sweep') },
+          { keys: t('Shift+拖', 'Shift+Drag'), label: t('框拆', 'Box') },
+          { keys: 'Esc', label: t('退出', 'Exit') },
+        ],
+      };
+    }
+
+    if (activeTool.kind === 'place-module') {
+      const def = getModuleDef(activeTool.moduleType);
+      const grp = findGroupForEntity('station', activeTool.moduleType);
+      const isArmour =
+        activeTool.moduleType === 'BPO_StationArmour_01' || activeTool.moduleType === 'BPO_StationArmour_01B';
+      return {
+        mode: getShortLabel(activeTool.moduleType, isEn ? def?.nameEn : def?.nameZh, lang),
+        badge: activeTool.label || undefined,
+        tone: 'accent',
+        hints: [
+          { keys: 'R', label: t('旋转', 'Rotate') },
+          { keys: 'F', label: isArmour ? t('翻转', 'Flip') : t('镜像', 'Mirror') },
+          { keys: 'Q/E', label: t('切层', 'Floor') },
+          ...(grp && grp.members.length > 1 ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),
+        ],
+      };
+    }
+
+    if (activeTool.kind === 'place-building') {
+      if (beltSessionMode === 'plan') {
+        return {
+          mode: t('拉带', 'Route'),
+          tone: 'accent',
+          hints: [
+            { keys: t('左键', 'LMB'), label: t('落位', 'Place') },
+            { keys: t('中键', 'MMB'), label: t('锚点', 'Anchor') },
+            { keys: 'F', label: t('换角', 'Corner') },
+            { keys: 'R', label: t('转向', 'Turn') },
+            { keys: 'T', label: t('地下', 'Tunnel'), active: beltHudFlags.tunnel },
+            { keys: 'Alt', label: t('反向', 'Rev'), active: beltHudFlags.reverse },
+            { keys: '⌫', label: t('退步', 'Undo') },
+          ],
+        };
+      }
+      if (beltSessionMode === 'stroke') {
+        return {
+          mode: t('手绘', 'Freehand'),
+          tone: 'accent',
+          hints: [
+            { keys: t('左键', 'LMB'), label: t('落位', 'Place') },
+            { keys: 'T', label: t('地下', 'Tunnel'), active: beltHudFlags.tunnel },
+            { keys: 'R', label: t('转向', 'Turn') },
+            { keys: 'Alt', label: t('反向', 'Rev'), active: beltHudFlags.reverse },
+            { keys: '⌫', label: t('退格', 'Undo') },
+          ],
+        };
+      }
+      const def = getBuildableDef(activeTool.buildingType);
+      const grp = findGroupForEntity('building', activeTool.buildingType);
+      const name = getShortLabel(activeTool.buildingType, isEn ? def?.nameEn : def?.nameZh, lang);
+      if (def?.kind === 'belt') {
+        return {
+          mode: name,
+          tone: 'accent',
+          hints: [
+            { keys: t('左键', 'LMB'), label: t('拉带', 'Route') },
+            { keys: t('Shift+左', 'Shift+LMB'), label: t('手绘', 'Free') },
+            { keys: 'T', label: t('地下', 'Tunnel') },
+            { keys: 'Tab', label: t('换型', 'Variant') },
+          ],
+        };
+      }
+      if (def?.kind === 'underground') {
+        return {
+          mode: name,
+          badge: activeTool.undergroundMode === 'out' ? 'OUT' : 'IN',
+          tone: 'accent',
+          hints: [
+            { keys: 'R', label: t('旋转', 'Rotate') },
+            { keys: 'T', label: t('地面', 'Belt') },
+            { keys: 'Tab', label: t('换型', 'Variant') },
+          ],
+        };
+      }
+      const recBadge = activeTool.recipeId
+        ? getRecipeDef(activeTool.recipeId)
+          ? getRecipeName(getRecipeDef(activeTool.recipeId)!, lang)
+          : activeTool.recipeId
+        : undefined;
+      return {
+        mode: name,
+        badge: recBadge,
+        tone: 'default',
+        hints: [
+          { keys: 'R', label: t('旋转', 'Rotate') },
+          { keys: 'F', label: t('镜像', 'Mirror') },
+          ...(grp && grp.members.length > 1 ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),
+        ],
+      };
+    }
+
+    return {
+      mode: activeTool.fromCut ? t('搬移', 'Move') : t('粘贴', 'Paste'),
+      badge: activeTool.name,
+      tone: 'accent',
+      hints: [
+        { keys: 'R', label: t('旋转', 'Rotate') },
+        { keys: 'F', label: t('镜像', 'Mirror') },
+        { keys: 'Q/E', label: t('切层', 'Floor') },
+        ...(!activeTool.fromCut ? [{ keys: 'Shift', label: t('覆盖', 'Overwrite') }] : []),
+      ],
+    };
+  }, [activeTool, beltHudFlags.reverse, beltHudFlags.tunnel, beltSessionMode, cleanView, isEn, lang, t]);
+
   return (
-    <div className="cad-shell" data-theme={theme}>
-      <header className="cad-topbar">
-        <div className="topbar-group">
-          <span className="brand-mark">MS · CAD</span>
-          <div className="doc-title-wrap">
-            <span
-              className={`doc-status-dot ${dirty ? 'dirty' : 'clean'}`}
-              title={dirty ? t('未保存', 'Unsaved') : activeSourcePath ? t('已保存', 'Saved') : t('草稿', 'Draft')}
-            />
-            <input
-              id="doc-title"
-              name="docTitle"
-              type="text"
-              className="doc-title-input"
-              value={doc.name}
-              onChange={(e) => {
-                const name = e.target.value;
-                setHistory((h) => ({ ...h, present: { ...h.present, name } }));
-                setDirty(true);
-              }}
-              title={t('蓝图名称', 'Blueprint name')}
-            />
-          </div>
-          <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="Ctrl+S">
-            {t('保存', 'Save')}
-          </button>
-        </div>
-
-        <div className="topbar-group topbar-center">
-          <div className="segmented">
-            <button
-              type="button"
-              className={`seg-btn ${viewMode === 'station' ? 'active' : ''}`}
-              onClick={() => switchViewMode('station')}
-              title={t('空间站视野 (` / Tab)', 'Station View (` / Tab)')}
-            >
-              {t('空间站', 'Station')}
-            </button>
-            <button
-              type="button"
-              className={`seg-btn ${viewMode === 'building' ? 'active' : ''}`}
-              onClick={() => switchViewMode('building')}
-              title={t('建筑视野 (` / Tab)', 'Building View (` / Tab)')}
-            >
-              {t('建筑', 'Building')}
+    <div className={`cad-shell ${cleanView ? 'clean-view' : ''}`} data-theme={theme}>
+      {!cleanView && (
+        <header className="cad-topbar">
+          <div className="topbar-group">
+            <span className="brand-mark">MS · CAD</span>
+            <div className="doc-title-wrap">
+              <span
+                className={`doc-status-dot ${dirty ? 'dirty' : 'clean'}`}
+                title={dirty ? t('未保存', 'Unsaved') : activeSourcePath ? t('已保存', 'Saved') : t('草稿', 'Draft')}
+              />
+              <input
+                id="doc-title"
+                name="docTitle"
+                type="text"
+                className="doc-title-input"
+                value={doc.name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setHistory((h) => ({ ...h, present: { ...h.present, name } }));
+                  setDirty(true);
+                }}
+                title={t('蓝图名称', 'Blueprint name')}
+              />
+            </div>
+            <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="Ctrl+S">
+              {t('保存', 'Save')}
             </button>
           </div>
-        </div>
 
-        <div className="topbar-group right-aligned">
-          <button
-            type="button"
-            className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
-            onClick={() => setSimOpen((v) => !v)}
-            title={t('图纸体检', 'Blueprint check')}
-          >
-            {simOpen
-              ? !simReport?.passed
-                ? t(`体检 · ${simReport?.errorCount ?? 0}错`, `Check · ${simReport?.errorCount ?? 0} Err`)
-                : (simReport?.warnCount ?? 0) > 0
-                  ? t(`体检 · ${simReport?.warnCount ?? 0}警`, `Check · ${simReport?.warnCount ?? 0} Warn`)
-                  : t('体检 · 正常', 'Check · OK')
-              : t('体检', 'Check')}
-          </button>
+          <div className="topbar-group topbar-center">
+            <div className="segmented">
+              <button
+                type="button"
+                className={`seg-btn ${viewMode === 'station' ? 'active' : ''}`}
+                onClick={() => switchViewMode('station')}
+                title={t('空间站视野 (` / Tab)', 'Station View (` / Tab)')}
+              >
+                {t('空间站', 'Station')}
+              </button>
+              <button
+                type="button"
+                className={`seg-btn ${viewMode === 'building' ? 'active' : ''}`}
+                onClick={() => switchViewMode('building')}
+                title={t('建筑视野 (` / Tab)', 'Building View (` / Tab)')}
+              >
+                {t('建筑', 'Building')}
+              </button>
+            </div>
+          </div>
 
-          <GameInteropMenu
-            driverMode={driver.mode}
-            rootLabel={driver.rootLabel}
-            fsSupported={FileSystemFolderDriver.isSupported()}
-            onImportFile={(f) => void handleImportJsonFile(f)}
-            onExportNativeSav={(mode) => void handleExportNativeSav(mode)}
-            onExportCanonicalJson={handleExportCanonicalJson}
-            onMountLocalFolder={handleMountLocalFolder}
-            onOpenGitHubConnect={openGitHubConnectModal}
-          />
-
-          <div className="interop-anchor" ref={prefsMenuRef}>
+          <div className="topbar-group right-aligned">
             <button
               type="button"
-              className={`cad-btn ${prefsMenuOpen ? 'accent' : ''}`}
-              onClick={() => setPrefsMenuOpen((o) => !o)}
-              title={t('视角与偏好', 'View & Preferences')}
+              className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
+              onClick={() => setSimOpen((v) => !v)}
+              title={t('图纸体检', 'Blueprint check')}
             >
-              {t('视角 ▾', 'View ▾')}
+              {simOpen
+                ? !simReport?.passed
+                  ? t(`体检 · ${simReport?.errorCount ?? 0}错`, `Check · ${simReport?.errorCount ?? 0} Err`)
+                  : (simReport?.warnCount ?? 0) > 0
+                    ? t(`体检 · ${simReport?.warnCount ?? 0}警`, `Check · ${simReport?.warnCount ?? 0} Warn`)
+                    : t('体检 · 正常', 'Check · OK')
+                : t('体检', 'Check')}
             </button>
-            {prefsMenuOpen && (
-              <div className="prefs-popover">
-                <div className="prefs-section">
-                  <div className="prefs-title">{t('相机与吸附', 'Camera')}</div>
-                  <div className="prefs-row">
-                    <button
-                      type="button"
-                      className={`cad-btn ${snapEnabled ? 'accent' : ''}`}
-                      onClick={() => {
-                        const next = !snapEnabled;
-                        setSnapEnabled(next);
-                        sceneRef.current?.rig.setSnapEnabled(next);
-                      }}
-                    >
-                      {snapEnabled ? t('吸附 · 开 (G)', 'Snap · On (G)') : t('自由 · 关 (G)', 'Free (G)')}
-                    </button>
-                    <button
-                      type="button"
-                      className="cad-btn"
-                      onClick={() => sceneRef.current?.rig.stepYawCardinal(1)}
-                      title={t('旋转 90°', 'Rotate 90°')}
-                    >
-                      ↻90°
-                    </button>
-                    <button
-                      type="button"
-                      className="cad-btn"
-                      onClick={() => {
-                        fitAllStation();
-                        setPrefsMenuOpen(false);
-                      }}
-                      title="Home"
-                    >
-                      {t('适配', 'Fit')}
-                    </button>
-                  </div>
-                  <div className="pitch-pills prefs-pitch">
-                    {PITCH_SNAP_PRESETS.map((p) => (
+
+            <GameInteropMenu
+              onImportFile={(f) => void handleImportJsonFile(f)}
+              onExportNativeSav={(mode) => void handleExportNativeSav(mode)}
+              onExportCanonicalJson={handleExportCanonicalJson}
+            />
+
+            <div className="interop-anchor" ref={prefsMenuRef}>
+              <button
+                type="button"
+                className={`cad-btn ${prefsMenuOpen ? 'accent' : ''}`}
+                onClick={() => setPrefsMenuOpen((o) => !o)}
+                title={t('视角与偏好', 'View & Preferences')}
+              >
+                {t('视角 ▾', 'View ▾')}
+              </button>
+              {prefsMenuOpen && (
+                <div className="prefs-popover">
+                  <div className="prefs-section">
+                    <div className="prefs-title">{t('相机与吸附', 'Camera')}</div>
+                    <div className="prefs-row">
                       <button
-                        key={p.id}
                         type="button"
-                        className="mini-pill"
-                        onClick={() => sceneRef.current?.rig.setPitchPreset(p.rad)}
-                        title={isEn ? p.labelEn : p.label}
+                        className={`cad-btn ${snapEnabled ? 'accent' : ''}`}
+                        onClick={() => {
+                          const next = !snapEnabled;
+                          setSnapEnabled(next);
+                          sceneRef.current?.rig.setSnapEnabled(next);
+                        }}
                       >
-                        {isEn ? p.labelEn.split(' ')[0] : p.label.slice(0, 2)}
+                        {snapEnabled ? t('吸附 · 开 (G)', 'Snap · On (G)') : t('自由 · 关 (G)', 'Free (G)')}
                       </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="prefs-section">
-                  <div className="prefs-title">{t('编辑与框选', 'Edit')}</div>
-                  <div className="prefs-row">
+                      <button
+                        type="button"
+                        className="cad-btn"
+                        onClick={() => sceneRef.current?.rig.stepYawCardinal(1)}
+                        title={t('旋转 90°', 'Rotate 90°')}
+                      >
+                        ↻90°
+                      </button>
+                      <button
+                        type="button"
+                        className="cad-btn"
+                        onClick={() => {
+                          fitAllStation();
+                          setPrefsMenuOpen(false);
+                        }}
+                        title="Home"
+                      >
+                        {t('适配', 'Fit')}
+                      </button>
+                    </div>
+                    <div className="pitch-pills prefs-pitch">
+                      {PITCH_SNAP_PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="mini-pill"
+                          onClick={() => sceneRef.current?.rig.setPitchPreset(p.rad)}
+                          title={isEn ? p.labelEn : p.label}
+                        >
+                          {isEn ? p.labelEn.split(' ')[0] : p.label.slice(0, 2)}
+                        </button>
+                      ))}
+                    </div>
                     <button
                       type="button"
-                      className="cad-btn"
-                      disabled={history.past.length === 0}
-                      onClick={() => setHistory((h) => undoHistory(h))}
+                      className="cad-btn prefs-full"
+                      onClick={enterCleanView}
+                      title={t('隐藏所有界面，拖拽浏览，点按或 Esc 退出', 'Hide all UI; drag to view, click or Esc to exit')}
                     >
-                      {t('撤销 (Ctrl+Z)', 'Undo')}
-                    </button>
-                    <button
-                      type="button"
-                      className="cad-btn"
-                      disabled={history.future.length === 0}
-                      onClick={() => setHistory((h) => redoHistory(h))}
-                    >
-                      {t('重做', 'Redo')}
+                      {t('无 UI 预览 (H)', 'Clean View (H)')}
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    className="cad-btn prefs-full"
-                    onClick={() =>
-                      setSelectionLayerMode((m) => (m === 'focus' ? 'visible' : m === 'visible' ? 'all' : 'focus'))
-                    }
-                  >
-                    {t('框选层域 (B)：', 'Layer Scope (B): ')}
-                    {selectionLayerMode === 'focus'
-                      ? t('仅当前层', 'Focus')
-                      : selectionLayerMode === 'visible'
-                        ? t('可见层', 'Visible')
-                        : t('全部', 'All')}
-                  </button>
-                </div>
 
-                <div className="prefs-section">
-                  <div className="prefs-title">{t('外观', 'Theme')}</div>
-                  <button
-                    type="button"
-                    className="cad-btn prefs-full"
-                    onClick={() => {
-                      const next: CadThemeId = theme === 'platinum-gold' ? 'stealth-cad' : 'platinum-gold';
-                      setTheme(next);
-                      saveTheme(next);
-                    }}
-                  >
-                    {isEn ? CAD_THEMES[theme].nameEn : CAD_THEMES[theme].nameZh}
-                  </button>
+                  <div className="prefs-section">
+                    <div className="prefs-title">{t('编辑与框选', 'Edit')}</div>
+                    <div className="prefs-row">
+                      <button
+                        type="button"
+                        className="cad-btn"
+                        disabled={history.past.length === 0}
+                        onClick={() => setHistory((h) => undoHistory(h))}
+                      >
+                        {t('撤销 (Ctrl+Z)', 'Undo')}
+                      </button>
+                      <button
+                        type="button"
+                        className="cad-btn"
+                        disabled={history.future.length === 0}
+                        onClick={() => setHistory((h) => redoHistory(h))}
+                      >
+                        {t('重做', 'Redo')}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="cad-btn prefs-full"
+                      onClick={() =>
+                        setSelectionLayerMode((m) => (m === 'focus' ? 'visible' : m === 'visible' ? 'all' : 'focus'))
+                      }
+                    >
+                      {t('框选层域 (B)：', 'Layer Scope (B): ')}
+                      {selectionLayerMode === 'focus'
+                        ? t('仅当前层', 'Focus')
+                        : selectionLayerMode === 'visible'
+                          ? t('可见层', 'Visible')
+                          : t('全部', 'All')}
+                    </button>
+                  </div>
+
+                  <div className="prefs-section">
+                    <div className="prefs-title">{t('外观', 'Theme')}</div>
+                    <button
+                      type="button"
+                      className="cad-btn prefs-full"
+                      onClick={() => {
+                        const next: CadThemeId = theme === 'platinum-gold' ? 'stealth-cad' : 'platinum-gold';
+                        setTheme(next);
+                        saveTheme(next);
+                      }}
+                    >
+                      {isEn ? CAD_THEMES[theme].nameEn : CAD_THEMES[theme].nameZh}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="cad-btn"
+              onClick={toggleLang}
+              title={t('切换为 English', 'Switch to 中文')}
+            >
+              {isEn ? '中' : 'EN'}
+            </button>
+
+            <button
+              type="button"
+              className={`cad-btn icon-pill ${helpOpen ? 'accent' : ''}`}
+              onClick={() => setHelpOpen((o) => !o)}
+              title={t('快捷键 (F1 / ?)', 'Shortcuts (F1 / ?)')}
+            >
+              ?
+            </button>
           </div>
-
-          <button
-            type="button"
-            className="cad-btn"
-            onClick={toggleLang}
-            title={t('切换为 English', 'Switch to 中文')}
-          >
-            {isEn ? '中' : 'EN'}
-          </button>
-
-          <button
-            type="button"
-            className={`cad-btn icon-pill ${helpOpen ? 'accent' : ''}`}
-            onClick={() => setHelpOpen((o) => !o)}
-            title={t('快捷键 (F1 / ?)', 'Shortcuts (F1 / ?)')}
-          >
-            ?
-          </button>
-        </div>
-      </header>
+        </header>
+      )}
 
       <div className="cad-main">
-        <LibrarySidebar
-          open={libraryOpen}
-          onToggleOpen={() => setLibraryOpen((o) => !o)}
-          onOpenModal={() => setLibraryModalOpen(true)}
-          driverMode={driver.mode}
-          rootLabel={driver.rootLabel}
-          tree={libraryTree}
-          activeSourcePath={activeSourcePath}
-          stampingPath={stampingLibPath}
-          onNewBlueprint={handleNewBlueprint}
-          onStampFromLibrary={handleStampFromLibrary}
-          onOpenFromLibrary={handleOpenFromLibrary}
-        />
+        {!cleanView && (
+          <LibrarySidebar
+            open={libraryOpen}
+            onToggleOpen={() => setLibraryOpen((o) => !o)}
+            onOpenModal={() => setLibraryModalOpen(true)}
+            driverMode={driver.mode}
+            rootLabel={driver.rootLabel}
+            tree={libraryTree}
+            activeSourcePath={activeSourcePath}
+            stampingPath={stampingLibPath}
+            onNewBlueprint={handleNewBlueprint}
+            onStampFromLibrary={handleStampFromLibrary}
+            onOpenFromLibrary={handleOpenFromLibrary}
+          />
+        )}
 
         <div
           ref={viewportRef}
-          className={`cad-viewport tool-${activeTool.kind}`}
+          className={`cad-viewport ${cleanView ? 'tool-clean' : `tool-${activeTool.kind}`}`}
           onContextMenu={(e) => e.preventDefault()}
           onDragOver={(e) => {
-            if (e.dataTransfer.types.includes('Files')) {
+            if (!cleanView && e.dataTransfer.types.includes('Files')) {
               e.preventDefault();
             }
           }}
           onDrop={(e) => {
+            if (cleanView) return;
             const dropped = e.dataTransfer.files?.[0];
             if (dropped && /\.(sav|json)$/i.test(dropped.name)) {
               e.preventDefault();
@@ -2696,7 +2946,7 @@ export const App: React.FC = () => {
           onDoubleClick={handleDoubleClick}
         />
 
-        <div className="cad-focal-vignette" aria-hidden="true" />
+        {!cleanView && <div className="cad-focal-vignette" aria-hidden="true" />}
         <div ref={boxBadgeRef} className="cad-box-badge" style={{ display: 'none' }} />
         <div ref={hoverTipRef} className="cad-hover-tip" style={{ display: 'none' }} aria-hidden="true">
           <div ref={hoverTitleRef} className="cad-hover-tip-title" />
@@ -2704,148 +2954,106 @@ export const App: React.FC = () => {
           <div ref={hoverNoteRef} className="cad-hover-tip-note" />
         </div>
 
-        <div className={`cad-hud-topright ${hasRightPanel ? 'shifted' : ''}`} aria-live="off">
-          <div className="hud-row primary">
-            <span className="hud-coord" ref={hudCoordRef}>X --  Y --</span>
-            <span className="hud-sep">·</span>
-            <span className="hud-grid" ref={hudGridRef}>G(-,-)</span>
-            <span className="hud-floor">{formatFloorTag(focusFloor)}</span>
-          </div>
-          <div className="hud-row secondary">
-            <span>{viewMode === 'station' ? t('空间站', 'Station') : t('建筑', 'Building')}</span>
-            <span ref={hudCamRef}>0°/64° · 76m</span>
-            <span>{snapEnabled ? t('吸附', 'Snap') : t('自由', 'Free')}</span>
-            <span>
-              {isEn ? `${doc.modules.length}M · ${doc.buildings.length}B` : `${doc.modules.length}模 · ${doc.buildings.length}建`}
-            </span>
-            {lastAutosaveAt && (
-              <span title={t('自动恢复点', 'Autosave')}>{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
+        {!cleanView && (
+          <>
+            <div className={`cad-hud-topright ${hasRightPanel ? 'shifted' : ''}`} aria-live="off">
+              <div className="hud-row primary">
+                <span className="hud-coord" ref={hudCoordRef}>X --  Y --</span>
+                <span className="hud-sep">·</span>
+                <span className="hud-grid" ref={hudGridRef}>G(-,-)</span>
+                <span className="hud-floor">{formatFloorTag(focusFloor)}</span>
+              </div>
+              <div className="hud-row secondary">
+                <span>{viewMode === 'station' ? t('空间站', 'Station') : t('建筑', 'Building')}</span>
+                <span ref={hudCamRef}>0°/64° · 76m</span>
+                <span>{snapEnabled ? t('吸附', 'Snap') : t('自由', 'Free')}</span>
+                <span>
+                  {isEn ? `${doc.modules.length}M · ${doc.buildings.length}B` : `${doc.modules.length}模 · ${doc.buildings.length}建`}
+                </span>
+                {lastAutosaveAt && (
+                  <span title={t('自动恢复点', 'Autosave')}>{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
+                )}
+              </div>
+            </div>
+
+            <FloorStackRail
+              doc={doc}
+              focusFloor={focusFloor}
+              hideAbove={hideAbove}
+              shifted={hasRightPanel}
+              onSelectFloor={setFocusFloor}
+              onToggleHideAbove={() => setHideAbove((v) => !v)}
+            />
+
+            <InspectorPanel
+              doc={doc}
+              selection={selection}
+              onUpdateBuilding={(ids, patch) => {
+                const res = updateBuildingConfigCmd(doc, ids, patch);
+                if (res.changed) commitDoc(res.doc);
+              }}
+              onUpdateModuleConfig={(id, patch) => {
+                const res = updateModuleConfigCmd(doc, id, patch);
+                if (res.changed) commitDoc(res.doc);
+              }}
+              onCopySelection={() => copySelectionToGhost(false)}
+              onCutSelection={() => copySelectionToGhost(true)}
+              onSaveSelectionAsBlueprint={() => openSaveDialog(true)}
+              onRotateSelection={() => {
+                const res = rotateSelectionInPlaceCmd(doc, selection, 1);
+                if (res.changed) commitDoc(res.doc);
+              }}
+              onMirrorSelection={(vertical) => applyMirrorAction(Boolean(vertical))}
+              onDeleteSelection={() => requestDeleteSelection(selection)}
+              onClearSelection={() => setSelection(EMPTY_SELECTION)}
+            />
+
+            <SimulationPanel
+              open={simOpen}
+              report={simReport}
+              activeIssueId={activeSimIssueId}
+              showIoSpots={showIoSpots}
+              onToggleShowIoSpots={() => setShowIoSpots((v) => !v)}
+              onClose={() => {
+                setSimOpen(false);
+                setActiveSimIssueId(null);
+              }}
+              onFocusTarget={(target: CheckFocusTarget) => {
+                setActiveSimIssueId(target.id);
+                setFocusFloor(target.floor);
+                if (target.moduleId && !target.buildingId) {
+                  switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
+                  setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
+                } else {
+                  switchViewMode('building', [target.x + 0.5, target.y + 0.5]);
+                  if (target.buildingId) {
+                    setSelection({ moduleIds: [], buildingIds: [target.buildingId] });
+                  }
+                }
+              }}
+            />
+
+            {toolBannerSpec && (
+              <ToolActionBar
+                mode={toolBannerSpec.mode}
+                badge={toolBannerSpec.badge}
+                tone={toolBannerSpec.tone}
+                hints={toolBannerSpec.hints}
+              />
             )}
-          </div>
-        </div>
 
-        <FloorStackRail
-          doc={doc}
-          focusFloor={focusFloor}
-          hideAbove={hideAbove}
-          shifted={hasRightPanel}
-          onSelectFloor={setFocusFloor}
-          onToggleHideAbove={() => setHideAbove((v) => !v)}
-        />
-
-        <InspectorPanel
-          doc={doc}
-          selection={selection}
-          onUpdateBuilding={(ids, patch) => {
-            const res = updateBuildingConfigCmd(doc, ids, patch);
-            if (res.changed) commitDoc(res.doc);
-          }}
-          onUpdateModuleConfig={(id, patch) => {
-            const res = updateModuleConfigCmd(doc, id, patch);
-            if (res.changed) commitDoc(res.doc);
-          }}
-          onCopySelection={() => copySelectionToGhost(false)}
-          onCutSelection={() => copySelectionToGhost(true)}
-          onSaveSelectionAsBlueprint={() => openSaveDialog(true)}
-          onRotateSelection={() => {
-            const res = rotateSelectionInPlaceCmd(doc, selection, 1);
-            if (res.changed) commitDoc(res.doc);
-          }}
-          onMirrorSelection={(vertical) => applyMirrorAction(Boolean(vertical))}
-          onDeleteSelection={() => requestDeleteSelection(selection)}
-          onClearSelection={() => setSelection(EMPTY_SELECTION)}
-        />
-
-        <SimulationPanel
-          open={simOpen}
-          report={simReport}
-          activeIssueId={activeSimIssueId}
-          showIoSpots={showIoSpots}
-          onToggleShowIoSpots={() => setShowIoSpots((v) => !v)}
-          onClose={() => {
-            setSimOpen(false);
-            setActiveSimIssueId(null);
-          }}
-          onFocusTarget={(target: CheckFocusTarget) => {
-            setActiveSimIssueId(target.id);
-            setFocusFloor(target.floor);
-            if (target.moduleId && !target.buildingId) {
-              switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
-              setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
-            } else {
-              switchViewMode('building', [target.x + 0.5, target.y + 0.5]);
-              if (target.buildingId) {
-                setSelection({ moduleIds: [], buildingIds: [target.buildingId] });
-              }
-            }
-          }}
-        />
-
-        {activeTool.kind !== 'select' && (
-          <div className="cad-tool-banner">
-            {activeTool.kind === 'demolish' &&
-              t('拆除 · 点/扫拆 · Shift+拖 框拆 · Esc 退出', 'Demolish · Click/Sweep · Shift+Drag Box · Esc Exit')}
-            {activeTool.kind === 'place-module' &&
-              `${getShortLabel(
-                activeTool.moduleType,
-                isEn ? getModuleDef(activeTool.moduleType)?.nameEn : getModuleDef(activeTool.moduleType)?.nameZh,
-                lang
-              )}${activeTool.label ? ` [${activeTool.label}]` : ''}${
-                activeTool.moduleType === 'BPO_StationArmour_01' || activeTool.moduleType === 'BPO_StationArmour_01B'
-                  ? t(' · F 翻转', ' · F Flip')
-                  : t(' · F 镜像', ' · F Mirror')
-              }${t(' · R 旋转 · Q/E 切层', ' · R Rotate · Q/E Floor')}`}
-            {activeTool.kind === 'place-building' &&
-              (beltSessionMode === 'plan'
-                ? t(
-                    '拉带 · 左键 落位 · 中键 锚点 · Backspace 退锚 · F 换角 · R 终向 · T 地下带 · Alt 反向',
-                    'Belt · LMB Place · MMB Anchor · Backspace Undo · F Corner · R End · T Tunnel · Alt Rev'
-                  )
-                : beltSessionMode === 'stroke'
-                  ? t(
-                      '手绘 · 左键 落位 · Backspace 退格 · T 地下带 · R 终向 · Alt 反向',
-                      'Freehand · LMB Place · Backspace Undo · T Tunnel · R End · Alt Rev'
-                    )
-                  : `${getShortLabel(
-                      activeTool.buildingType,
-                      isEn ? getBuildableDef(activeTool.buildingType)?.nameEn : getBuildableDef(activeTool.buildingType)?.nameZh,
-                      lang
-                    )}${
-                      activeTool.recipeId
-                        ? ` [${getRecipeDef(activeTool.recipeId) ? getRecipeName(getRecipeDef(activeTool.recipeId)!, lang) : activeTool.recipeId}]`
-                        : ''
-                    }${
-                      getBuildableDef(activeTool.buildingType)?.kind === 'underground'
-                        ? ` · ${activeTool.undergroundMode === 'out' ? 'OUT' : 'IN'}${t(' · T 地面带 · R 旋转 · Tab 换型', ' · T Belt · R Rotate · Tab Variant')}`
-                        : getBuildableDef(activeTool.buildingType)?.kind === 'belt'
-                          ? t(' · 左键 拉带 · Shift+左键 手绘 · T 地下带 · Tab 换型', ' · LMB Route · Shift+LMB Freehand · T Tunnel · Tab Variant')
-                          : t(' · R 旋转 · F 镜像 · Tab 换型', ' · R Rotate · F Mirror · Tab Variant')
-                    }`)}
-            {activeTool.kind === 'stamp-blueprint' &&
-              (activeTool.fromCut
-                ? t(
-                    `搬移「${activeTool.name}」· R 旋转 · F 镜像 · Q/E 切层`,
-                    `Move "${activeTool.name}" · R Rotate · F Mirror · Q/E Floor`
-                  )
-                : t(
-                    `盖章「${activeTool.name}」· Shift 覆盖 · R 旋转 · F 镜像`,
-                    `Stamp "${activeTool.name}" · Shift Overwrite · R Rotate · F Mirror`
-                  ))}
-          </div>
+            <PaletteDock
+              viewMode={viewMode}
+              activeTool={activeTool}
+              lastGroupMember={lastGroupMember}
+              onSelectEntity={(id) => selectEntityTool(id)}
+              onSelectTool={(tTool) => {
+                setActiveTool(tTool);
+                setStampingLibPath(null);
+              }}
+            />
+          </>
         )}
-
-        <PaletteDock
-          viewMode={viewMode}
-          activeTool={activeTool}
-          lastGroupMember={lastGroupMember}
-          onSelectEntity={(id) => selectEntityTool(id)}
-          onSelectTool={(tTool) => {
-            setActiveTool(tTool);
-            setStampingLibPath(null);
-          }}
-        />
-
-        {toast && <div className={`cad-toast ${toast.kind}`}>{toast.text}</div>}
       </div>
 
       <BlueprintLibraryModal
@@ -3015,6 +3223,12 @@ export const App: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`cad-toast ${toast.kind} ${cleanView ? 'clean-view' : ''}`} role="status" aria-live="polite">
+          {toast.text}
         </div>
       )}
     </div>

@@ -266,6 +266,38 @@ export function toggleBeltStrokeTunnel(
   return { tunnels: [...tunnels, { inIndex: headIdx, outIndex: null }], action: 'dive' };
 }
 
+/**
+ * Return the forbidden reverse rotation for the terminal belt cell (pointing directly back
+ * into the preceding cell), or `null` when the path has < 2 cells or ends on an underground portal.
+ */
+export function getForbiddenEndRotation(specs: readonly BeltCellSpec[]): Rotation | null {
+  if (specs.length < 2) return null;
+  const last = specs[specs.length - 1];
+  if (last.kind === 'underground-in' || last.kind === 'underground-out') return null;
+  const prev = specs[specs.length - 2];
+  const dx = last.x - prev.x;
+  const dy = last.y - prev.y;
+  if (dx === 0 && dy === 0) return null;
+  return normalizeRotation(deltaToRotation(dx, dy) + 2);
+}
+
+/**
+ * Step the terminal belt rotation by `delta` (+1 CW / -1 CCW), skipping the forbidden reverse
+ * direction so rotating during belt routing can never produce a back-facing belt.
+ */
+export function stepBeltEndRotation(
+  specs: readonly BeltCellSpec[],
+  currentRotation: Rotation,
+  delta: 1 | -1
+): Rotation {
+  const forbidden = getForbiddenEndRotation(specs);
+  let next = normalizeRotation(currentRotation + delta);
+  if (forbidden !== null && next === forbidden) {
+    next = normalizeRotation(next + delta);
+  }
+  return next;
+}
+
 /** Override the terminal belt cell's exit rotation (Shapez 2 `R` key during belt routing). */
 export function applyEndRotationOverride(
   specs: BeltCellSpec[],
@@ -276,6 +308,8 @@ export function applyEndRotationOverride(
   const last = specs[lastIdx];
   if (last.kind === 'underground-in' || last.kind === 'underground-out') return specs;
   const nextRot = normalizeRotation(endRotation);
+  const forbidden = getForbiddenEndRotation(specs);
+  if (forbidden !== null && nextRot === forbidden) return specs;
   if (last.rotation === nextRot) return specs;
   const out = specs.slice();
   out[lastIdx] = { ...last, rotation: nextRot };

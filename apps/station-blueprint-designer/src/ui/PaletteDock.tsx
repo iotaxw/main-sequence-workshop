@@ -9,6 +9,7 @@ import {
 } from '../core/groups';
 import { useI18n } from '../core/i18n';
 import type { ActiveTool, ViewMode } from '../core/types';
+import { KeyHintList, type KeyHintItem } from './KeyHintBar';
 import { EntityGlyph } from './Schematics';
 
 interface PaletteDockProps {
@@ -23,7 +24,7 @@ interface HoverMeta {
   title: string;
   sub?: string;
   spec: string;
-  hint?: string;
+  hints?: KeyHintItem[];
 }
 
 export const PaletteDock: React.FC<PaletteDockProps> = ({
@@ -55,6 +56,11 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
   const buildMeta = (id: string, showTabHint: boolean): HoverMeta => {
     if (viewMode === 'station') {
       const m = getModuleDef(id);
+      const hints: KeyHintItem[] = [
+        ...(showTabHint ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),
+        { keys: 'R', label: t('旋转', 'Rotate') },
+        { keys: 'F', label: t('镜像', 'Mirror') },
+      ];
       return {
         title: m ? getModuleName(m, lang) : id,
         sub: !isEn ? m?.nameEn : undefined,
@@ -63,18 +69,27 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
             ? `${m.sizeUnits[0]}×${m.sizeUnits[1]} · ${m.sizeUnits[2]}F · ${m.connectors.length}P`
             : `${m.sizeUnits[0]}×${m.sizeUnits[1]} · ${m.sizeUnits[2]}层 · ${m.connectors.length}口`
           : '',
-        hint: showTabHint ? t('Tab 换型 · R 旋转', 'Tab Variant · R Rotate') : t('R 旋转', 'R Rotate'),
+        hints,
       };
     }
     const b = getBuildableDef(id);
-    const hint =
+    const hints: KeyHintItem[] =
       b?.kind === 'belt'
-        ? t('左键拉带 · Shift+左键手绘 · T 地下带', 'LMB Route · Shift+LMB Freehand · T Tunnel')
+        ? [
+            { keys: t('左键', 'LMB'), label: t('拉带', 'Route') },
+            { keys: t('Shift+左', 'Shift+LMB'), label: t('手绘', 'Free') },
+            { keys: 'T', label: t('地下', 'Tunnel') },
+          ]
         : b?.kind === 'underground'
-          ? t('T 地面带 · R 旋转', 'T Belt · R Rotate')
-          : showTabHint
-            ? t('Tab 换型 · R 旋转 · F 镜像', 'Tab Variant · R Rotate · F Mirror')
-            : t('R 旋转 · F 镜像', 'R Rotate · F Mirror');
+          ? [
+              { keys: 'R', label: t('旋转', 'Rotate') },
+              { keys: 'T', label: t('地面', 'Belt') },
+            ]
+          : [
+              ...(showTabHint ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),
+              { keys: 'R', label: t('旋转', 'Rotate') },
+              { keys: 'F', label: t('镜像', 'Mirror') },
+            ];
     return {
       title: b ? getBuildableName(b, lang) : id,
       sub: !isEn ? b?.nameEn : undefined,
@@ -83,7 +98,7 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
           ? `${b.size[0]}×${b.size[1]} · ${b.ports.length}P`
           : `${b.size[0]}×${b.size[1]}格 · ${b.ports.length}口`
         : '',
-      hint,
+      hints,
     };
   };
 
@@ -96,7 +111,11 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
             <span className="s2-hover-spec">{hoverMeta.spec}</span>
           </div>
           {hoverMeta.sub && <div className="s2-hover-en">{hoverMeta.sub}</div>}
-          {hoverMeta.hint && <div className="s2-hover-hint">{hoverMeta.hint}</div>}
+          {hoverMeta.hints && hoverMeta.hints.length > 0 && (
+            <div className="s2-hover-hint">
+              <KeyHintList items={hoverMeta.hints} compact />
+            </div>
+          )}
         </div>
       )}
 
@@ -120,7 +139,7 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
               );
             })}
           </div>
-          <span className="s2-subtray-kbd">Tab</span>
+          <kbd className="cad-op-kbd s2-subtray-kbd">Tab</kbd>
         </div>
       )}
 
@@ -133,7 +152,11 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
             setHoverMeta({
               title: t('选择', 'Select'),
               spec: isEn ? 'Esc / RMB' : 'Esc / 右键',
-              hint: t('点选 / 框选 · Shift 加 · Alt 减', 'Click / Box · Shift Add · Alt Sub'),
+              hints: [
+                { keys: t('拖', 'Drag'), label: t('框选', 'Box') },
+                { keys: 'Shift', label: t('加选', 'Add') },
+                { keys: 'Alt', label: t('减选', 'Sub') },
+              ],
             })
           }
         >
@@ -151,7 +174,10 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
             setHoverMeta({
               title: t('拆除', 'Demolish'),
               spec: 'X',
-              hint: t('点 / 扫拆 · Shift+拖 框拆', 'Click / Sweep · Shift+Drag Box'),
+              hints: [
+                { keys: t('左键', 'LMB'), label: t('点/扫', 'Sweep') },
+                { keys: t('Shift+拖', 'Shift+Drag'), label: t('框拆', 'Box') },
+              ],
             })
           }
         >

@@ -5,6 +5,8 @@ import { getMatchingUndergroundType, type BeltCellSpec } from '../core/belt-rout
 import { getBuildableDef, getItemNameZh, getModuleDef, getRecipeDef } from '../core/catalog';
 import { computeStampCandidates, getBlueprintBoundsM } from '../core/commands';
 import {
+  areWorldConnectorsMated,
+  collectOpenGhostConnectors,
   computeUndergroundLinks,
   findBuildingAtCell,
   findModuleAtWorldPoint,
@@ -18,6 +20,7 @@ import {
   getModuleSizeUnits,
   getModuleSpatialIndex,
   getModuleWorldConnectors,
+  getWorldConnectorKey,
   isCellBuildable,
   packCellKey,
   rotateVec2,
@@ -693,6 +696,8 @@ export class CadSceneController {
   private lastLiveSelSig = '';
   private lastPreviewKey = '';
   private lastDockHintKey = '';
+  private bpRevIds = new WeakMap<BlueprintDocument, number>();
+  private nextBpRevId = 1;
   private activePalette: CadThemePalette = CAD_THEMES['platinum-gold'];
   private maxAniso = 16;
 
@@ -813,6 +818,15 @@ export class CadSceneController {
     this.floorBuckets.clear();
   }
 
+  private getBlueprintRevId(bp: BlueprintDocument): number {
+    let rev = this.bpRevIds.get(bp);
+    if (rev === undefined) {
+      rev = this.nextBpRevId++;
+      this.bpRevIds.set(bp, rev);
+    }
+    return rev;
+  }
+
   private computePreviewKey(state: SceneRenderState, cursor: { x: number; y: number } | null): string {
     if (state.beltPreview.length > 0 && state.activeTool.kind === 'place-building') {
       const first = state.beltPreview[0];
@@ -864,7 +878,8 @@ export class CadSceneController {
     const hasMods = tool.blueprint.modules.length > 0;
     const ax = hasMods ? Math.floor(cursor.x / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.x);
     const ay = hasMods ? Math.floor(cursor.y / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.y);
-    return `stamp:${tool.blueprint.id}:${tool.rotation}:${tool.floorOffset}:${state.focusFloor}:${state.forceReplaceHeld ? 1 : 0}:${ax},${ay}`;
+    const bpRev = this.getBlueprintRevId(tool.blueprint);
+    return `stamp:${bpRev}:${tool.rotation}:${tool.floorOffset}:${state.focusFloor}:${state.forceReplaceHeld ? 1 : 0}:${ax},${ay}`;
   }
 
   private computeDockHintKey(state: SceneRenderState, cursor: { x: number; y: number } | null): string {
@@ -877,7 +892,8 @@ export class CadSceneController {
     if (tool.kind === 'place-module') {
       return `mod:${tool.moduleType}:${tool.rotation}:${state.focusFloor}:${gx},${gy}`;
     }
-    return `stamp:${tool.blueprint.id}:${tool.rotation}:${state.focusFloor}:${gx},${gy}`;
+    const bpRev = this.getBlueprintRevId(tool.blueprint);
+    return `stamp:${bpRev}:${tool.rotation}:${tool.floorOffset}:${state.focusFloor}:${gx},${gy}`;
   }
 
   private computeSelectionSig(sel: SelectionState, mode: BoxSelectMode, isLive: boolean): string {
@@ -1723,9 +1739,10 @@ export class CadSceneController {
       tool.kind === 'stamp-blueprint' && tool.blueprint.modules.length > 0;
     if (!isPlacingMod && !isStampingMods) return;
 
-    // Determine connector types carried by the held module(s)
+    // Collect candidate ghost modules (identical connector-matching pipeline for single module & blueprint paste)
+    const ghostModules: PlacedModule[] = [];
     const heldTypes = new Set<string>();
-    const ghostConns: WorldConnector[] = [];
+    const relevantFloors = new Set<number>([state.focusFloor]);
 
     if (tool.kind === 'place-module') {
       const def = getModuleDef(tool.moduleType);
@@ -1734,28 +1751,44 @@ export class CadSceneController {
       if (state.cursorWorld) {
         const gx = Math.floor(state.cursorWorld.x / STATION_UNIT_M);
         const gy = Math.floor(state.cursorWorld.y / STATION_UNIT_M);
-        const ghostMod: PlacedModule = {
+        ghostModules.push({
           id: '__ghost_mod',
           type: def.id,
           gx,
           gy,
           floor: state.focusFloor,
           rotation: tool.rotation,
-        };
-        ghostConns.push(...getModuleWorldConnectors(ghostMod, def));
+        });
       }
     } else if (tool.kind === 'stamp-blueprint') {
-      for (const m of tool.blueprint.modules) {
-        const def = getModuleDef(m.type);
-        if (!def) continue;
-        for (const c of def.connectors) heldTypes.add(c.type);
+      const anchorFloor = state.focusFloor + tool.floorOffset;
+      if (state.cursorWorld) {
+        const shiftGx = Math.floor(Math.floor(state.cursorWorld.x) / STATION_UNIT_M);
+        const shiftGy = Math.floor(Math.floor(state.cursorWorld.y) / STATION_UNIT_M);
+        for (let i = 0; i < tool.blueprint.modules.length; i++) {
+          const m = tool.blueprint.modules[i];
+          ghostModules.push({
+            ...m,
+            id: `__ghost_stamp_${i}`,
+            gx: m.gx + shiftGx,
+            gy: m.gy + shiftGy,
+            floor: m.floor + anchorFloor,
+          });
+        }
+      } else {
+        for (const c of collectOpenGhostConnectors(tool.blueprint.modules)) {
+          heldTypes.add(c.type);
+        }
       }
     }
 
-    // Index ghost connectors for live mated-lock detection
+    // Only open boundary connectors of the ghost (excluding seams internally mated inside a stamp blueprint)
+    const ghostConns = collectOpenGhostConnectors(ghostModules);
     const ghostByKey = new Map<string, WorldConnector[]>();
     for (const gc of ghostConns) {
-      const k = connectorKey(gc.x, gc.y, gc.floor);
+      heldTypes.add(gc.type);
+      relevantFloors.add(gc.floor);
+      const k = getWorldConnectorKey(gc);
       const list = ghostByKey.get(k);
       if (list) list.push(gc);
       else ghostByKey.set(k, [gc]);
@@ -1765,17 +1798,37 @@ export class CadSceneController {
 
     for (const c of this.cachedAllConnectors) {
       const isVertical = c.type.startsWith('Vertical');
-      // Show horizontal open sockets on focusFloor; show vertical sockets on focusFloor or adjacent floors
-      if (!isVertical && c.floor !== state.focusFloor) continue;
-      if (isVertical && Math.abs(c.floor - state.focusFloor) > 1) continue;
-
-      const key = connectorKey(c.x, c.y, c.floor);
+      const key = getWorldConnectorKey(c);
       if (!isVertical && (this.cachedConnCounts.get(key) ?? 0) >= 2) continue; // Already mated
+
+      // Check whether hovered ghost (single module or blueprint stamp) docks flush onto this open socket!
+      const matchingGhosts = ghostByKey.get(key);
+      const isLockedNow =
+        matchingGhosts?.some((gc) => areWorldConnectorsMated(c, gc)) ?? false;
+
+      if (!isLockedNow) {
+        // Show open horizontal sockets on relevant floors; show vertical sockets on focusFloor or adjacent floors
+        if (!isVertical && !relevantFloors.has(c.floor)) continue;
+        if (isVertical && !relevantFloors.has(c.floor) && Math.abs(c.floor - state.focusFloor) > 1) continue;
+      }
 
       const compatible = heldTypes.size === 0 || heldTypes.has(c.type);
       const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.13;
 
       if (isVertical) {
+        if (isLockedNow) {
+          const rOuter = c.type === 'Vertical2x2' ? 4.0 : 2.35;
+          const rInner = rOuter * 0.62;
+          for (const r of [rOuter, rInner]) {
+            matchSealsPts.push(
+              c.x, cyWorld + 0.04, c.y - r, c.x + r, cyWorld + 0.04, c.y,
+              c.x + r, cyWorld + 0.04, c.y, c.x, cyWorld + 0.04, c.y + r,
+              c.x, cyWorld + 0.04, c.y + r, c.x - r, cyWorld + 0.04, c.y,
+              c.x - r, cyWorld + 0.04, c.y, c.x, cyWorld + 0.04, c.y - r
+            );
+          }
+          continue;
+        }
         if (!compatible) continue;
         const r = c.type === 'Vertical2x2' ? 3.7 : 2.1;
         const pts = [
@@ -1793,11 +1846,6 @@ export class CadSceneController {
         );
         continue;
       }
-
-      // Check whether hovered ghost docks flush & opposite-facing onto this open socket!
-      const matchingGhosts = ghostByKey.get(key);
-      const isLockedNow =
-        matchingGhosts?.some((gc) => gc.type === c.type && (gc.rotation + 2) % 4 === c.rotation) ?? false;
 
       if (isLockedNow) {
         const span = c.type === 'XLarge' ? 18.6 : 5.8;

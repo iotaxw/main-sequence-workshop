@@ -7,9 +7,11 @@ import {
   buildPlannedBeltPathWithTunnels,
   extendBeltStroke,
   extendBeltStrokeWithTunnels,
+  getForbiddenEndRotation,
   getMatchingBeltType,
   getMatchingUndergroundType,
   selectConnectedBeltChain,
+  stepBeltEndRotation,
   toggleBeltStrokeTunnel,
   type BeltStrokeTunnel,
 } from './belt-router';
@@ -45,13 +47,16 @@ import {
   updateModuleConfigCmd,
 } from './commands';
 import {
+  collectOpenGhostConnectors,
   computeUndergroundLinks,
+  findMatchedDockConnectors,
   getMirroredBuildingRotation,
   getMirroredModuleRotation,
   getModuleFloorShift,
   getModuleOriginOffsetM,
   getModuleWorldConnectors,
   getModuleWorldDockPorts,
+  getWorldConnectorKey,
   isCellBuildable,
   validateBuildingPlacement,
   validateModulePlacement,
@@ -2457,5 +2462,83 @@ describe('Shapez 2 F / Shift+F Mirror Symmetry (geometry + commands + camera)', 
       1
     );
     expect(ugEndSpecs[1].rotation).toBe(0);
+  });
+
+  it('prevents terminal belt rotation from ever turning into a reverse belt (forward, reversed, and cursor-turn invariant)', () => {
+    // Forward East belt: incoming = 0 (East), forbidden reverse = 2 (West)
+    const eastSpecs = buildBeltStrokeSpecs([[2, 2], [3, 2], [4, 2]], [], 0);
+    expect(getForbiddenEndRotation(eastSpecs)).toBe(2);
+    // R (+1) cycles strictly through 0 -> 1 -> 3 -> 0 (never 2!)
+    expect(stepBeltEndRotation(eastSpecs, 0, 1)).toBe(1);
+    expect(stepBeltEndRotation(eastSpecs, 1, 1)).toBe(3);
+    expect(stepBeltEndRotation(eastSpecs, 3, 1)).toBe(0);
+    // Shift+R (-1) cycles strictly through 0 -> 3 -> 1 -> 0 (never 2!)
+    expect(stepBeltEndRotation(eastSpecs, 0, -1)).toBe(3);
+    expect(stepBeltEndRotation(eastSpecs, 3, -1)).toBe(1);
+    expect(stepBeltEndRotation(eastSpecs, 1, -1)).toBe(0);
+    // Direct override with forbidden reverse rotation is rejected (keeps straight 0)
+    const rejected = applyEndRotationOverride(eastSpecs, 2);
+    expect(rejected[rejected.length - 1].rotation).toBe(0);
+
+    // Reversed flow (Alt): path (2,2)->(4,2) flows West (2), so forbidden reverse is East (0)
+    const revSpecs = buildBeltStrokeSpecs([[2, 2], [3, 2], [4, 2]], [], 0, true);
+    expect(getForbiddenEndRotation(revSpecs)).toBe(0);
+    expect(stepBeltEndRotation(revSpecs, 2, 1)).toBe(3);
+    expect(stepBeltEndRotation(revSpecs, 3, 1)).toBe(1);
+    expect(stepBeltEndRotation(revSpecs, 1, 1)).toBe(2);
+    expect(applyEndRotationOverride(revSpecs, 0)[revSpecs.length - 1].rotation).toBe(2);
+
+    // Single-cell belt (no predecessor) still rotates freely through all 4 directions
+    const single = buildBeltStrokeSpecs([[2, 2]], [], 0);
+    expect(getForbiddenEndRotation(single)).toBeNull();
+    expect(stepBeltEndRotation(single, 1, 1)).toBe(2);
+    expect(applyEndRotationOverride(single, 2)[0].rotation).toBe(2);
+  });
+
+  it('matches open station connectors for multi-module blueprint paste identically to single-module build (excluding internal seams)', () => {
+    let doc = createEmptyBlueprint();
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_01', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_ElevatorBlock_03', gx: 0, gy: 1, floor: 0, rotation: 0 }).doc;
+
+    const existingConns = doc.modules.flatMap((m) => {
+      const def = getModuleDef(m.type);
+      return def ? getModuleWorldConnectors(m, def) : [];
+    });
+    const existingCounts = new Map<string, number>();
+    for (const c of existingConns) {
+      if (!c.type.startsWith('Vertical')) {
+        const k = getWorldConnectorKey(c);
+        existingCounts.set(k, (existingCounts.get(k) ?? 0) + 1);
+      }
+    }
+
+    // Two-module stamp blueprint: two 1x1 rooms side-by-side at (gx=1, gy=0) and (gx=2, gy=0)
+    const stampMods = [
+      { id: '__g0', type: 'BPO_Station_01', gx: 1, gy: 0, floor: 0, rotation: 0 as const },
+      { id: '__g1', type: 'BPO_Station_01', gx: 2, gy: 0, floor: 0, rotation: 0 as const },
+    ];
+    // Internal seam between (1,0) and (2,0) must be excluded from open ghost connectors (8 total - 2 internal = 6 open)
+    const openGhost = collectOpenGhostConnectors(stampMods);
+    expect(openGhost.length).toBe(6);
+
+    // Docking flush east of existing (0,0) matches its East connector at x=16, y=8, floor=0
+    const matched = findMatchedDockConnectors(existingConns, existingCounts, stampMods);
+    expect(matched.length).toBe(1);
+    expect([matched[0].x, matched[0].y, matched[0].floor, matched[0].type]).toEqual([16, 8, 0, 'Large']);
+
+    // Vertical shaft stamp placed on floor 1 directly above existing elevator (0,1,F0) matches Vertical1x1 top<->bottom
+    const vertStamp = [
+      { id: '__v0', type: 'BPO_ElevatorBlock_03', gx: 0, gy: 1, floor: 1, rotation: 0 as const },
+    ];
+    const vertMatched = findMatchedDockConnectors(existingConns, existingCounts, vertStamp);
+    expect(vertMatched.some((c) => c.type === 'Vertical1x1' && c.floor === 1)).toBe(true);
+
+    // Sliding the 2-module stamp ON TOP of (0,0) and (1,0) must NOT falsely match the internal seam at x=16
+    const overlappingStamp = [
+      { id: '__o0', type: 'BPO_Station_01', gx: 0, gy: 0, floor: 0, rotation: 0 as const },
+      { id: '__o1', type: 'BPO_Station_01', gx: 1, gy: 0, floor: 0, rotation: 0 as const },
+    ];
+    const overlapMatched = findMatchedDockConnectors(existingConns, existingCounts, overlappingStamp);
+    expect(overlapMatched.some((c) => c.x === 16 && c.y === 8 && c.floor === 0)).toBe(false);
   });
 });
