@@ -15,7 +15,7 @@ const KEY_GROUPS_ZH = [
       ['滚轮 / ` / Tab / 双击模块', '缩放 / 空间站 ↔ 建筑视野'],
       ['E / Q / Shift+滚轮', '升降楼层'],
       ['V / G', '上层隐透 / 视角吸附'],
-      ['Home / F', '适配整站 / 聚焦选中'],
+      ['Home / Shift+Home', '适配整站 / 聚焦选中'],
     ],
   },
   {
@@ -35,9 +35,10 @@ const KEY_GROUPS_ZH = [
     items: [
       ['1 ~ 9 / Tab', '选分组 / 组内换型（Shift 反向）'],
       ['左键拖（传送带）', '自动转弯（T/U 切地下带）'],
-      ['Shift+拖（传送带）', 'L 形规划（R 切拐 · T/U 跨障 · Alt 反向）'],
+      ['Shift+拖（传送带）', 'L 形规划（R/F 切拐 · T/U 跨障 · Alt 反向）'],
       ['T / U', '传送带 ↔ 地下带互切'],
-      ['R / Shift+R / M', '旋转 90° / 镜像蓝图与装甲'],
+      ['R / Shift+R', '顺 / 逆时针旋转 90°'],
+      ['F / Shift+F', '水平 / 垂直镜像（蓝图 · 选区 · 预览）'],
       ['C / 中键短按', '吸管复制机器配置'],
     ],
   },
@@ -63,7 +64,7 @@ const KEY_GROUPS_EN = [
       ['Wheel / ` / Tab / Dbl-Click', 'Zoom / Station ↔ Building view'],
       ['E / Q / Shift+Wheel', 'Step floor up / down'],
       ['V / G', 'Hide upper floors / Snap camera'],
-      ['Home / F', 'Fit station / Focus selection'],
+      ['Home / Shift+Home', 'Fit station / Focus selection'],
     ],
   },
   {
@@ -83,9 +84,10 @@ const KEY_GROUPS_EN = [
     items: [
       ['1–9 / Tab', 'Pick group / Cycle variant (Shift reverse)'],
       ['LMB Drag (Belt)', 'Auto-bend belt (T/U underground)'],
-      ['Shift+Drag (Belt)', 'L-route (R flip · T/U tunnel · Alt rev)'],
+      ['Shift+Drag (Belt)', 'L-route (R/F flip · T/U tunnel · Alt rev)'],
       ['T / U', 'Toggle belt ↔ underground'],
-      ['R / Shift+R / M', 'Rotate 90° / Mirror blueprint & armour'],
+      ['R / Shift+R', 'Rotate 90° CW / CCW'],
+      ['F / Shift+F', 'Flip H / V (Blueprint · Selection · Preview)'],
       ['C / MMB Click', 'Eyedropper with full config'],
     ],
   },

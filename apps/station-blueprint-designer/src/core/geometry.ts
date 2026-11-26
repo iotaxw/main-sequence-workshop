@@ -838,3 +838,170 @@ export function getDocumentFloorRange(doc: BlueprintDocument): { min: number; ma
   }
   return { min, max };
 }
+
+/** World axis along which a reflection flips coordinates ('x': X -> -X, 'y': Y -> -Y). */
+export type MirrorAxis = 'x' | 'y';
+
+export function mirrorVec2(x: number, y: number, axis: MirrorAxis): [number, number] {
+  return axis === 'x' ? [-x, y] : [x, -y];
+}
+
+export function mirrorSide(side: CardinalSide, axis: MirrorAxis): CardinalSide {
+  if (axis === 'x') {
+    if (side === 'E') return 'W';
+    if (side === 'W') return 'E';
+    return side;
+  }
+  if (side === 'N') return 'S';
+  if (side === 'S') return 'N';
+  return side;
+}
+
+/** Reflect a cardinal direction (0=E, 1=S, 2=W, 3=N) across the given world axis. */
+export function flipDirection(rot: Rotation, axis: MirrorAxis): Rotation {
+  const n = normalizeRotation(rot);
+  if (axis === 'x') {
+    if (n === 0) return 2;
+    if (n === 2) return 0;
+    return n;
+  }
+  if (n === 1) return 3;
+  if (n === 3) return 1;
+  return n;
+}
+
+/**
+ * Class-level exact mirrored rotation for any building derived purely from footprint + port geometry
+ * (handles diagonal-port buildings like DAT_QuantumSciLab with zero hardcoded IDs).
+ */
+export function getMirroredBuildingRotation(
+  def: BuildableDef | undefined,
+  rot: Rotation,
+  axis: MirrorAxis
+): Rotation {
+  const cur = normalizeRotation(rot);
+  const base = flipDirection(cur, axis);
+  if (!def) return base;
+  const [w0, d0] = getBuildingSizeCells(def, cur);
+  const candidates: Rotation[] = [base, ...([0, 1, 2, 3] as Rotation[]).filter((r) => r !== base)];
+
+  for (const cand of candidates) {
+    const [wc, dc] = getBuildingSizeCells(def, cand);
+    if (wc !== w0 || dc !== d0) continue;
+    if (def.ports.length === 0) return cand;
+    const invCand = normalizeRotation(4 - cand);
+    let ok = true;
+    for (let i = 0; i < def.ports.length; i++) {
+      const p = def.ports[i];
+      const [wx, wy] = rotateVec2(p.hx, p.hy, cur);
+      const [mx, my] = mirrorVec2(wx, wy, axis);
+      const [lx, ly] = rotateVec2(mx, my, invCand);
+      const expectedSide = mirrorSide(rotateSide(p.side, cur), axis);
+      const hit = def.ports.find(
+        (q) => q.hx === lx && q.hy === ly && q.role === p.role && rotateSide(q.side, cand) === expectedSide
+      );
+      if (!hit) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return cand;
+  }
+  return base;
+}
+
+/**
+ * Class-level exact mirrored rotation for any station module derived purely from `sizeUnits`,
+ * `blockBoundsM` pivot offset, and `connectors` (handles diagonal modules like BPO_StationCorner_01
+ * and asymmetric docks like BPO_Dock_2 with zero hardcoded IDs).
+ */
+export function getMirroredModuleRotation(
+  def: StationModuleDef | undefined,
+  rot: Rotation,
+  axis: MirrorAxis
+): Rotation {
+  const cur = normalizeRotation(rot);
+  const base = flipDirection(cur, axis);
+  if (!def || !def.canRotate) return cur;
+  const [wu0, du0] = getModuleSizeUnits(def, cur);
+  const [ox, oy] = getModuleOriginOffsetM(def);
+  const candidates: Rotation[] = [base, ...([0, 1, 2, 3] as Rotation[]).filter((r) => r !== base)];
+
+  for (const cand of candidates) {
+    const [wuc, duc] = getModuleSizeUnits(def, cand);
+    if (wuc !== wu0 || duc !== du0) continue;
+    if (def.connectors.length === 0) return cand;
+    const invCand = normalizeRotation(4 - cand);
+    let ok = true;
+    for (let i = 0; i < def.connectors.length; i++) {
+      const c = def.connectors[i];
+      const [wx, wy] = rotateVec2(c.gx * 4 - ox, c.gy * 4 - oy, cur);
+      const [mx, my] = mirrorVec2(wx, wy, axis);
+      const [tx, ty] = rotateVec2(mx, my, invCand);
+      const isVertical = c.type.startsWith('Vertical');
+      const mWorldRot = isVertical ? c.rotation : flipDirection(normalizeRotation(c.rotation + cur), axis);
+      const expectedLocalRot = isVertical ? c.rotation : normalizeRotation(mWorldRot - cand);
+      const hit = def.connectors.find(
+        (q) =>
+          q.type === c.type &&
+          q.floorOffset === c.floorOffset &&
+          Math.abs(q.gx * 4 - ox - tx) < 0.1 &&
+          Math.abs(q.gy * 4 - oy - ty) < 0.1 &&
+          (isVertical || q.rotation === expectedLocalRot)
+      );
+      if (!hit) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return cand;
+  }
+  return base;
+}
+
+/** Remap a building's local port index when mirroring across `axis` from `rot` to `nextRot`. */
+export function remapPortIndexMirror(
+  def: BuildableDef | undefined,
+  rot: Rotation,
+  nextRot: Rotation,
+  axis: MirrorAxis,
+  portIndex: number
+): number {
+  if (!def) return portIndex;
+  const src = def.ports.find((p) => p.index === portIndex);
+  if (!src) return portIndex;
+  const [wx, wy] = rotateVec2(src.hx, src.hy, rot);
+  const [mx, my] = mirrorVec2(wx, wy, axis);
+  const [lx, ly] = rotateVec2(mx, my, normalizeRotation(4 - nextRot));
+  const hit = def.ports.find((p) => p.hx === lx && p.hy === ly);
+  return hit ? hit.index : portIndex;
+}
+
+/** Remap a dock module's per-port filter config when mirroring across `axis` from `rot` to `nextRot`. */
+export function remapDockPortsMirror(
+  def: StationModuleDef | undefined,
+  rot: Rotation,
+  nextRot: Rotation,
+  axis: MirrorAxis,
+  dockPorts: PlacedModule['dockPorts']
+): PlacedModule['dockPorts'] {
+  if (!dockPorts || dockPorts.length === 0) return undefined;
+  const cloned = dockPorts.map((p) => ({ ...p }));
+  if (!def) return cloned;
+  const portDefs = getModuleDockPortDefs(def);
+  if (portDefs.length === 0) return cloned;
+  const invNextRot = normalizeRotation(4 - nextRot);
+  return cloned
+    .map((p) => {
+      const src = portDefs.find((pd) => pd.portIndex === p.portIndex);
+      if (!src) return p;
+      const [wx, wy] = rotateVec2(src.localX, src.localY, rot);
+      const [mx, my] = mirrorVec2(wx, wy, axis);
+      const [lx, ly] = rotateVec2(mx, my, invNextRot);
+      const hit = portDefs.find(
+        (pd) => Math.abs(pd.localX - lx) < 0.01 && Math.abs(pd.localY - ly) < 0.01
+      );
+      return hit ? { ...p, portIndex: hit.portIndex } : p;
+    })
+    .sort((a, b) => a.portIndex - b.portIndex);
+}

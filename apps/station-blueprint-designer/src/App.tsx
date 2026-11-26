@@ -22,7 +22,9 @@ import {
   createHistory,
   deleteSelectionCmd,
   extractSelectionAsBlueprint,
-  mirrorBlueprintX,
+  mirrorBlueprint,
+  mirrorBuildingPortConfig,
+  mirrorSelectionInPlaceCmd,
   placeBeltRunCmd,
   placeBuildingCmd,
   placeModuleCmd,
@@ -38,6 +40,8 @@ import {
   findBuildingAtCell,
   findModuleAtWorldPoint,
   getBuildingSizeCells,
+  getMirroredBuildingRotation,
+  getMirroredModuleRotation,
   getModuleBoundsM,
   getModuleSizeUnits,
   getToggleablePorts,
@@ -876,6 +880,80 @@ export const App: React.FC = () => {
     []
   );
 
+  const applyMirrorAction = useCallback(
+    (vertical = false) => {
+      const axis = sceneRef.current?.rig.getScreenMirrorAxis(vertical) ?? (vertical ? 'y' : 'x');
+      const dirZh = vertical ? '垂直' : '水平';
+      const dirEn = vertical ? 'vertically' : 'horizontally';
+      const { activeTool: tool, doc: curDoc, selection: sel } = stateRef.current;
+
+      if (tool.kind === 'stamp-blueprint') {
+        setActiveTool({ ...tool, blueprint: mirrorBlueprint(tool.blueprint, axis) });
+        showToast(t(`已${dirZh}镜像蓝图`, `Mirrored blueprint ${dirEn}`));
+        return;
+      }
+
+      if (tool.kind === 'place-module') {
+        if (tool.moduleType === 'BPO_StationArmour_01' || tool.moduleType === 'BPO_StationArmour_01B') {
+          const flipped =
+            tool.moduleType === 'BPO_StationArmour_01' ? 'BPO_StationArmour_01B' : 'BPO_StationArmour_01';
+          selectEntityTool(flipped, { rotation: tool.rotation, label: tool.label });
+          showToast(
+            flipped === 'BPO_StationArmour_01'
+              ? t('已翻转为顶面装甲', 'Flipped to top armour')
+              : t('已翻转为底面装甲', 'Flipped to bottom armour')
+          );
+          return;
+        }
+        const def = getModuleDef(tool.moduleType);
+        const nextRot = getMirroredModuleRotation(def, tool.rotation, axis);
+        if (nextRot !== tool.rotation) {
+          setActiveTool({ ...tool, rotation: nextRot });
+          showToast(t(`已${dirZh}镜像模块`, `Mirrored module ${dirEn}`));
+        }
+        return;
+      }
+
+      if (tool.kind === 'place-building') {
+        const def = getBuildableDef(tool.buildingType);
+        const nextRot = getMirroredBuildingRotation(def, tool.rotation, axis);
+        const remapped = mirrorBuildingPortConfig(def, tool.rotation, nextRot, axis, {
+          disabledPorts: tool.disabledPorts,
+          priorityIn: tool.priorityIn,
+          priorityOut: tool.priorityOut,
+          portFilters: tool.portFilters,
+        });
+        setActiveTool({
+          ...tool,
+          rotation: nextRot,
+          disabledPorts: remapped.disabledPorts,
+          priorityIn: remapped.priorityIn,
+          priorityOut: remapped.priorityOut,
+          portFilters: remapped.portFilters,
+        });
+        showToast(t(`已${dirZh}镜像建筑`, `Mirrored building ${dirEn}`));
+        return;
+      }
+
+      if (sel.moduleIds.length > 0 || sel.buildingIds.length > 0) {
+        const res = mirrorSelectionInPlaceCmd(curDoc, sel, axis);
+        if (res.changed) {
+          commitDoc(res.doc);
+          showToast(t(`已${dirZh}镜像选中项`, `Mirrored selection ${dirEn}`));
+        } else if (res.message) {
+          showToast(
+            t(
+              `无法原地镜像：${res.message}（可先 Ctrl+X 剪切后按 F 镜像）`,
+              `Cannot mirror in place: ${res.message} (use Ctrl+X then F)`
+            ),
+            'warn'
+          );
+        }
+      }
+    },
+    [commitDoc, selectEntityTool, showToast, t]
+  );
+
   const pipetteAtWorld = useCallback(
     (world: { x: number; y: number }) => {
       const { doc: curDoc, viewMode: vm, focusFloor: fl } = stateRef.current;
@@ -1096,22 +1174,36 @@ export const App: React.FC = () => {
       }
       if (e.key === 'Home') {
         e.preventDefault();
-        fitAllStation();
+        if (e.shiftKey) focusSelection();
+        else fitAllStation();
         return;
       }
-      if (lower === 'f') {
+      if (lower === 'f' || lower === 'm') {
         e.preventDefault();
-        const tool = stateRef.current.activeTool;
-        if (
-          tool.kind === 'place-module' &&
-          (tool.moduleType === 'BPO_StationArmour_01' || tool.moduleType === 'BPO_StationArmour_01B')
-        ) {
-          const flipped = tool.moduleType === 'BPO_StationArmour_01' ? 'BPO_StationArmour_01B' : 'BPO_StationArmour_01';
-          selectEntityTool(flipped, { rotation: tool.rotation, label: tool.label });
-          showToast(flipped === 'BPO_StationArmour_01' ? '已翻转为顶面装甲（Z: 0..+4m）' : '已翻转为底面装甲（Z: -4..0m）');
+        if (dragRef.current.kind === 'belt-plan') {
+          dragRef.current.beltFlipCorner = !dragRef.current.beltFlipCorner;
+          const cw = cursorWorldRef.current;
+          if (dragRef.current.startWorld && cw) {
+            const tool = stateRef.current.activeTool;
+            const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
+            setBeltPreview(
+              buildPlannedBeltPathWithTunnels(
+                stateRef.current.doc,
+                stateRef.current.focusFloor,
+                [Math.floor(dragRef.current.startWorld.x), Math.floor(dragRef.current.startWorld.y)],
+                [Math.floor(cw.x), Math.floor(cw.y)],
+                {
+                  flipCorner: dragRef.current.beltFlipCorner,
+                  reverse: dragRef.current.beltReverse,
+                  fallbackRotation: fallback,
+                  tunnelObstacles: dragRef.current.beltPlanTunnel,
+                }
+              )
+            );
+          }
           return;
         }
-        focusSelection();
+        applyMirrorAction(e.shiftKey);
         return;
       }
       if (lower === 'x') {
@@ -1164,22 +1256,6 @@ export const App: React.FC = () => {
         } else {
           const res = rotateSelectionInPlaceCmd(stateRef.current.doc, stateRef.current.selection, delta);
           if (res.changed) commitDoc(res.doc);
-        }
-        return;
-      }
-      if (lower === 'm') {
-        e.preventDefault();
-        const tool = stateRef.current.activeTool;
-        if (tool.kind === 'stamp-blueprint') {
-          setActiveTool({ ...tool, blueprint: mirrorBlueprintX(tool.blueprint) });
-          showToast('已水平镜像翻转蓝图');
-        } else if (
-          tool.kind === 'place-module' &&
-          (tool.moduleType === 'BPO_StationArmour_01' || tool.moduleType === 'BPO_StationArmour_01B')
-        ) {
-          const flipped = tool.moduleType === 'BPO_StationArmour_01' ? 'BPO_StationArmour_01B' : 'BPO_StationArmour_01';
-          selectEntityTool(flipped, { rotation: tool.rotation, label: tool.label });
-          showToast(flipped === 'BPO_StationArmour_01' ? '已翻转为顶面装甲（Z: 0..+4m）' : '已翻转为底面装甲（Z: -4..0m）');
         }
         return;
       }
@@ -1325,6 +1401,7 @@ export const App: React.FC = () => {
       window.removeEventListener('blur', onBlur);
     };
   }, [
+    applyMirrorAction,
     commitDoc,
     copySelectionToGhost,
     fitAllStation,
@@ -2620,6 +2697,7 @@ export const App: React.FC = () => {
             const res = rotateSelectionInPlaceCmd(doc, selection, 1);
             if (res.changed) commitDoc(res.doc);
           }}
+          onMirrorSelection={(vertical) => applyMirrorAction(Boolean(vertical))}
           onDeleteSelection={() => requestDeleteSelection(selection)}
           onClearSelection={() => setSelection(EMPTY_SELECTION)}
         />
@@ -2660,8 +2738,8 @@ export const App: React.FC = () => {
                 lang
               )}${activeTool.label ? ` [${activeTool.label}]` : ''}${
                 activeTool.moduleType === 'BPO_StationArmour_01' || activeTool.moduleType === 'BPO_StationArmour_01B'
-                  ? t(' · M 翻转', ' · M Flip')
-                  : ''
+                  ? t(' · F 翻转', ' · F Flip')
+                  : t(' · F 镜像', ' · F Mirror')
               }${t(' · R 旋转 · Q/E 切层', ' · R Rotate · Q/E Floor')}`}
             {activeTool.kind === 'place-building' &&
               `${getShortLabel(
@@ -2678,16 +2756,16 @@ export const App: React.FC = () => {
                   : getBuildableDef(activeTool.buildingType)?.kind === 'belt'
                     ? t(' · T/U 地下带', ' · T/U Underground')
                     : ''
-              }${t(' · R 旋转 · Tab 换型', ' · R Rotate · Tab Variant')}`}
+              }${t(' · R 旋转 · F 镜像 · Tab 换型', ' · R Rotate · F Mirror · Tab Variant')}`}
             {activeTool.kind === 'stamp-blueprint' &&
               (activeTool.fromCut
                 ? t(
-                    `搬移「${activeTool.name}」· R 旋转 · M 镜像 · Q/E 切层`,
-                    `Move "${activeTool.name}" · R Rotate · M Mirror · Q/E Floor`
+                    `搬移「${activeTool.name}」· R 旋转 · F 镜像 · Q/E 切层`,
+                    `Move "${activeTool.name}" · R Rotate · F Mirror · Q/E Floor`
                   )
                 : t(
-                    `盖章「${activeTool.name}」· Shift 覆盖 · R 旋转 · M 镜像`,
-                    `Stamp "${activeTool.name}" · Shift Overwrite · R Rotate · M Mirror`
+                    `盖章「${activeTool.name}」· Shift 覆盖 · R 旋转 · F 镜像`,
+                    `Stamp "${activeTool.name}" · Shift Overwrite · R Rotate · F Mirror`
                   ))}
           </div>
         )}

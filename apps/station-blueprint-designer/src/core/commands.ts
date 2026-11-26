@@ -6,15 +6,18 @@ import {
   getBuildingSizeCells,
   getBuildingSpatialIndex,
   getDocSpatialIndex,
+  getMirroredBuildingRotation,
+  getMirroredModuleRotation,
   getModuleBoundsM,
-  getModuleDockPortDefs,
   getModuleSizeUnits,
   getModuleSpatialIndex,
   isCellBuildable,
   isPortToggleable,
+  type MirrorAxis,
   normalizeRotation,
   packCellKey,
-  rotateVec2,
+  remapDockPortsMirror,
+  remapPortIndexMirror,
   rotationToDelta,
   STATION_UNIT_M,
   validateBuildingPlacement,
@@ -65,20 +68,46 @@ function sanitizeDisabledPorts(def: BuildableDef | undefined, ports?: number[]):
   return valid.length > 0 ? [...new Set(valid)].sort((a, z) => a - z) : undefined;
 }
 
-/** Remap a building's local port index when mirroring a blueprint horizontally across world X */
-function remapPortIndexMirrorX(
+/** Remap a building's port-indexed configuration (disabledPorts, priorityIn/Out, portFilters) across a mirror transform. */
+export function mirrorBuildingPortConfig(
   def: BuildableDef | undefined,
   rot: Rotation,
   nextRot: Rotation,
-  portIndex: number
-): number {
-  if (!def) return portIndex;
-  const src = def.ports.find((p) => p.index === portIndex);
-  if (!src) return portIndex;
-  const [wx, wy] = rotateVec2(src.hx, src.hy, rot);
-  const [lx, ly] = rotateVec2(-wx, wy, normalizeRotation(4 - nextRot));
-  const hit = def.ports.find((p) => p.hx === lx && p.hy === ly);
-  return hit ? hit.index : portIndex;
+  axis: MirrorAxis,
+  cfg: {
+    disabledPorts?: number[];
+    priorityIn?: number;
+    priorityOut?: number;
+    portFilters?: Record<number, string>;
+  }
+): {
+  disabledPorts?: number[];
+  priorityIn?: number;
+  priorityOut?: number;
+  portFilters?: Record<number, string>;
+} {
+  const remap = (idx: number) => remapPortIndexMirror(def, rot, nextRot, axis, idx);
+  const out: {
+    disabledPorts?: number[];
+    priorityIn?: number;
+    priorityOut?: number;
+    portFilters?: Record<number, string>;
+  } = {};
+  if (cfg.disabledPorts && cfg.disabledPorts.length > 0) {
+    out.disabledPorts = cfg.disabledPorts.map(remap).sort((a, z) => a - z);
+  }
+  if (cfg.priorityIn !== undefined) {
+    out.priorityIn = remap(cfg.priorityIn);
+  }
+  if (cfg.priorityOut !== undefined) {
+    out.priorityOut = remap(cfg.priorityOut);
+  }
+  if (cfg.portFilters && Object.keys(cfg.portFilters).length > 0) {
+    out.portFilters = Object.fromEntries(
+      Object.entries(cfg.portFilters).map(([k, v]) => [remap(Number(k)), v])
+    );
+  }
+  return out;
 }
 
 let idCounter = 1;
@@ -567,6 +596,258 @@ export function rotateSelectionInPlaceCmd(
   };
 }
 
+function isSameNumberArray(a?: number[], b?: number[]): boolean {
+  const al = a?.length ?? 0;
+  const bl = b?.length ?? 0;
+  if (al !== bl) return false;
+  for (let i = 0; i < al; i++) {
+    if (a![i] !== b![i]) return false;
+  }
+  return true;
+}
+
+function isSamePortFilters(a?: Record<number, string>, b?: Record<number, string>): boolean {
+  const ak = a ? Object.keys(a) : [];
+  const bk = b ? Object.keys(b) : [];
+  if (ak.length !== bk.length) return false;
+  for (let i = 0; i < ak.length; i++) {
+    const k = Number(ak[i]);
+    if (a![k] !== b?.[k]) return false;
+  }
+  return true;
+}
+
+function isSameDockPorts(
+  a?: PlacedModule['dockPorts'],
+  b?: PlacedModule['dockPorts']
+): boolean {
+  const al = a?.length ?? 0;
+  const bl = b?.length ?? 0;
+  if (al !== bl) return false;
+  for (let i = 0; i < al; i++) {
+    if (
+      a![i].portIndex !== b![i].portIndex ||
+      a![i].itemId !== b![i].itemId ||
+      a![i].mode !== b![i].mode
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Mirror selected entities in place across `axis` ('x' or 'y') — Shapez 2 `F` / `Shift+F` style!
+ * - When station modules are selected, all buildings inside them are automatically mirrored together.
+ * - Single-selected top/bottom armour (`BPO_StationArmour_01` <-> `BPO_StationArmour_01B`) flips vertically.
+ * - Atomic: validates all floor & collision constraints before committing; rejects with reason on conflict.
+ */
+export function mirrorSelectionInPlaceCmd(
+  doc: BlueprintDocument,
+  selection: SelectionState,
+  axis: MirrorAxis
+): CommandResult {
+  const modSet = new Set(selection.moduleIds);
+  const bldSet = new Set(selection.buildingIds);
+  if (modSet.size === 0 && bldSet.size === 0) {
+    return { doc, changed: false };
+  }
+
+  const selectedModules = doc.modules.filter((m) => modSet.has(m.id));
+  if (
+    selectedModules.length === 1 &&
+    bldSet.size === 0 &&
+    (selectedModules[0].type === 'BPO_StationArmour_01' ||
+      selectedModules[0].type === 'BPO_StationArmour_01B')
+  ) {
+    const target = selectedModules[0];
+    const flippedType =
+      target.type === 'BPO_StationArmour_01' ? 'BPO_StationArmour_01B' : 'BPO_StationArmour_01';
+    return {
+      doc: {
+        ...doc,
+        modules: doc.modules.map((m) => (m.id === target.id ? { ...m, type: flippedType } : m)),
+      },
+      changed: true,
+    };
+  }
+
+  for (const m of selectedModules) {
+    for (const inside of findBuildingsInsideModule(doc, m)) {
+      bldSet.add(inside.id);
+    }
+  }
+  const selectedBuildings = doc.buildings.filter((b) => bldSet.has(b.id));
+  if (selectedModules.length === 0 && selectedBuildings.length === 0) {
+    return { doc, changed: false };
+  }
+
+  let sumGx = 0;
+  let sumGy = 0;
+  let sumX = 0;
+  let sumY = 0;
+
+  if (selectedModules.length > 0) {
+    let minGx = Infinity;
+    let maxGx = -Infinity;
+    let minGy = Infinity;
+    let maxGy = -Infinity;
+    for (const m of selectedModules) {
+      const def = getModuleDef(m.type);
+      const [wu, du] = def ? getModuleSizeUnits(def, m.rotation) : [1, 1];
+      minGx = Math.min(minGx, m.gx);
+      maxGx = Math.max(maxGx, m.gx + wu);
+      minGy = Math.min(minGy, m.gy);
+      maxGy = Math.max(maxGy, m.gy + du);
+    }
+    sumGx = minGx + maxGx;
+    sumGy = minGy + maxGy;
+    sumX = sumGx * STATION_UNIT_M;
+    sumY = sumGy * STATION_UNIT_M;
+  } else {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const b of selectedBuildings) {
+      const def = getBuildableDef(b.type);
+      const [w, d] = def ? getBuildingSizeCells(def, b.rotation) : [1, 1];
+      minX = Math.min(minX, b.x);
+      maxX = Math.max(maxX, b.x + w);
+      minY = Math.min(minY, b.y);
+      maxY = Math.max(maxY, b.y + d);
+    }
+    sumX = minX + maxX;
+    sumY = minY + maxY;
+  }
+
+  const mirroredModMap = new Map<string, PlacedModule>();
+  let anyChanged = false;
+
+  for (const m of selectedModules) {
+    const def = getModuleDef(m.type);
+    const [wu, du] = def ? getModuleSizeUnits(def, m.rotation) : [1, 1];
+    const nextRot = getMirroredModuleRotation(def, m.rotation, axis);
+    const nextGx = axis === 'x' ? sumGx - (m.gx + wu) : m.gx;
+    const nextGy = axis === 'y' ? sumGy - (m.gy + du) : m.gy;
+    const remappedDockPorts = remapDockPortsMirror(def, m.rotation, nextRot, axis, m.dockPorts);
+    const nextMod: PlacedModule = {
+      ...m,
+      gx: nextGx,
+      gy: nextGy,
+      rotation: nextRot,
+      ...(remappedDockPorts ? { dockPorts: remappedDockPorts } : {}),
+    };
+    if (
+      nextMod.gx !== m.gx ||
+      nextMod.gy !== m.gy ||
+      nextMod.rotation !== m.rotation ||
+      !isSameDockPorts(nextMod.dockPorts, m.dockPorts)
+    ) {
+      anyChanged = true;
+    }
+    mirroredModMap.set(m.id, nextMod);
+  }
+
+  // Validate mirrored modules against background modules outside selection
+  for (const nm of mirroredModMap.values()) {
+    const issue = validateModulePlacement(doc, nm, modSet);
+    if (issue) {
+      return { doc, changed: false, message: issue.message };
+    }
+  }
+
+  const nextModules =
+    mirroredModMap.size > 0
+      ? doc.modules.map((m) => mirroredModMap.get(m.id) ?? m)
+      : doc.modules;
+  const docWithNextMods: BlueprintDocument =
+    mirroredModMap.size > 0 ? { ...doc, modules: nextModules } : doc;
+
+  const mirroredBldMap = new Map<string, PlacedBuilding>();
+  for (const b of selectedBuildings) {
+    const def = getBuildableDef(b.type);
+    const [w, d] = def ? getBuildingSizeCells(def, b.rotation) : [1, 1];
+    const nextRot = getMirroredBuildingRotation(def, b.rotation, axis);
+    const nextX = axis === 'x' ? sumX - (b.x + w) : b.x;
+    const nextY = axis === 'y' ? sumY - (b.y + d) : b.y;
+    const remapped = mirrorBuildingPortConfig(def, b.rotation, nextRot, axis, b);
+    const nextBld: PlacedBuilding = {
+      ...b,
+      x: nextX,
+      y: nextY,
+      rotation: nextRot,
+      ...cloneBuildingExtras(b),
+      ...remapped,
+    };
+    const issue = validateBuildingPlacement(docWithNextMods, nextBld, { ignoreBuildingIds: bldSet });
+    if (issue) {
+      return { doc, changed: false, message: issue.message };
+    }
+    if (
+      nextBld.x !== b.x ||
+      nextBld.y !== b.y ||
+      nextBld.rotation !== b.rotation ||
+      nextBld.priorityIn !== b.priorityIn ||
+      nextBld.priorityOut !== b.priorityOut ||
+      !isSameNumberArray(nextBld.disabledPorts, b.disabledPorts) ||
+      !isSamePortFilters(nextBld.portFilters, b.portFilters)
+    ) {
+      anyChanged = true;
+    }
+    mirroredBldMap.set(b.id, nextBld);
+  }
+
+  if (!anyChanged) {
+    return { doc, changed: false };
+  }
+
+  // Unlink cross-boundary underground belt pairs that are no longer inline after mirroring
+  const bldById = new Map<string, PlacedBuilding>();
+  for (const b of doc.buildings) {
+    bldById.set(b.id, mirroredBldMap.get(b.id) ?? b);
+  }
+  const unlinkIds = new Set<string>();
+  for (const nb of mirroredBldMap.values()) {
+    if (!nb.undergroundPartnerId || bldSet.has(nb.undergroundPartnerId)) continue;
+    const partner = bldById.get(nb.undergroundPartnerId);
+    const def = getBuildableDef(nb.type);
+    if (!partner || !def || def.kind !== 'underground') {
+      unlinkIds.add(nb.id);
+      if (partner) unlinkIds.add(partner.id);
+      continue;
+    }
+    const maxLen = def.maxLength ?? 8;
+    const mode = nb.undergroundMode ?? 'in';
+    const [dx, dy] = rotationToDelta(nb.rotation);
+    const entry = mode === 'in' ? nb : partner;
+    const exit = mode === 'out' ? nb : partner;
+    const rx = exit.x - entry.x;
+    const ry = exit.y - entry.y;
+    const along = rx * dx + ry * dy;
+    const perp = Math.abs(rx * dy - ry * dx);
+    if (partner.floor !== nb.floor || partner.rotation !== nb.rotation || perp !== 0 || along < 1 || along > maxLen) {
+      unlinkIds.add(nb.id);
+      unlinkIds.add(partner.id);
+    }
+  }
+
+  const nextBuildings = doc.buildings.map((b) => {
+    const cur = mirroredBldMap.get(b.id) ?? b;
+    if (unlinkIds.has(cur.id) && cur.undergroundPartnerId) {
+      const copy = { ...cur };
+      delete copy.undergroundPartnerId;
+      return copy;
+    }
+    return cur;
+  });
+
+  return {
+    doc: { ...doc, modules: nextModules, buildings: nextBuildings },
+    changed: true,
+  };
+}
+
 /**
  * Multi-layer Box Selection (shapez 2 style!)
  * `boxMinX..boxMaxY` in world meters.
@@ -813,44 +1094,27 @@ export function rotateBlueprint(bp: BlueprintDocument, delta: 1 | -1): Blueprint
   return { ...bp, modules, buildings };
 }
 
-/** Mirror a blueprint horizontally across X (left <-> right, shapez 2 `M` key!) */
-export function mirrorBlueprintX(bp: BlueprintDocument): BlueprintDocument {
-  const { width } = getBlueprintBoundsM(bp);
+/**
+ * Mirror an entire blueprint across world `axis` ('x' = E<->W, 'y' = N<->S) — Shapez 2 `F` / `Shift+F`!
+ * Preserves exact geometric symmetry for all 27 modules & 36 buildings (including diagonal corners,
+ * Quantum Sci Lab, asymmetric docks, splitter/balancer port configs, and underground pairs).
+ */
+export function mirrorBlueprint(bp: BlueprintDocument, axis: MirrorAxis = 'x'): BlueprintDocument {
+  const { width, depth } = getBlueprintBoundsM(bp);
   const wUnits = Math.ceil(width / STATION_UNIT_M);
+  const dUnits = Math.ceil(depth / STATION_UNIT_M);
   const baseW = bp.modules.length > 0 ? wUnits * STATION_UNIT_M : width;
-
-  const flipRotX = (r: Rotation): Rotation => {
-    if (r === 0) return 2;
-    if (r === 2) return 0;
-    return r;
-  };
+  const baseD = bp.modules.length > 0 ? dUnits * STATION_UNIT_M : depth;
 
   const modules: PlacedModule[] = bp.modules.map((m) => {
     const def = getModuleDef(m.type);
-    const [wu] = def ? getModuleSizeUnits(def, m.rotation) : [1];
-    const nextRot = flipRotX(m.rotation);
-    let remappedDockPorts = m.dockPorts?.map((p) => ({ ...p }));
-    if (def && remappedDockPorts && remappedDockPorts.length > 0) {
-      const portDefs = getModuleDockPortDefs(def);
-      if (portDefs.length > 0) {
-        const invNextRot = normalizeRotation(4 - nextRot);
-        remappedDockPorts = remappedDockPorts
-          .map((p) => {
-            const src = portDefs.find((pd) => pd.portIndex === p.portIndex);
-            if (!src) return p;
-            const [wx, wy] = rotateVec2(src.localX, src.localY, m.rotation);
-            const [lx, ly] = rotateVec2(-wx, wy, invNextRot);
-            const hit = portDefs.find(
-              (pd) => Math.abs(pd.localX - lx) < 0.01 && Math.abs(pd.localY - ly) < 0.01
-            );
-            return hit ? { ...p, portIndex: hit.portIndex } : p;
-          })
-          .sort((a, b) => a.portIndex - b.portIndex);
-      }
-    }
+    const [wu, du] = def ? getModuleSizeUnits(def, m.rotation) : [1, 1];
+    const nextRot = getMirroredModuleRotation(def, m.rotation, axis);
+    const remappedDockPorts = remapDockPortsMirror(def, m.rotation, nextRot, axis, m.dockPorts);
     return {
       ...m,
-      gx: wUnits - (m.gx + wu),
+      gx: axis === 'x' ? wUnits - (m.gx + wu) : m.gx,
+      gy: axis === 'y' ? dUnits - (m.gy + du) : m.gy,
       rotation: nextRot,
       ...(remappedDockPorts ? { dockPorts: remappedDockPorts } : {}),
     };
@@ -858,27 +1122,25 @@ export function mirrorBlueprintX(bp: BlueprintDocument): BlueprintDocument {
 
   const buildings: PlacedBuilding[] = bp.buildings.map((b) => {
     const def = getBuildableDef(b.type);
-    const [w] = def ? getBuildingSizeCells(def, b.rotation) : [1];
-    const nextRot = flipRotX(b.rotation);
-    const remap = (idx: number) => remapPortIndexMirrorX(def, b.rotation, nextRot, idx);
-    const remappedFilters = b.portFilters
-      ? Object.fromEntries(Object.entries(b.portFilters).map(([k, v]) => [remap(Number(k)), v]))
-      : undefined;
+    const [w, d] = def ? getBuildingSizeCells(def, b.rotation) : [1, 1];
+    const nextRot = getMirroredBuildingRotation(def, b.rotation, axis);
+    const remapped = mirrorBuildingPortConfig(def, b.rotation, nextRot, axis, b);
     return {
       ...b,
-      x: baseW - (b.x + w),
+      x: axis === 'x' ? baseW - (b.x + w) : b.x,
+      y: axis === 'y' ? baseD - (b.y + d) : b.y,
       rotation: nextRot,
       ...cloneBuildingExtras(b),
-      ...(b.disabledPorts && b.disabledPorts.length > 0
-        ? { disabledPorts: b.disabledPorts.map(remap).sort((a, z) => a - z) }
-        : {}),
-      ...(b.priorityIn !== undefined ? { priorityIn: remap(b.priorityIn) } : {}),
-      ...(b.priorityOut !== undefined ? { priorityOut: remap(b.priorityOut) } : {}),
-      ...(remappedFilters ? { portFilters: remappedFilters } : {}),
+      ...remapped,
     };
   });
 
   return { ...bp, modules, buildings };
+}
+
+/** Mirror a blueprint horizontally across world X (compat alias for `mirrorBlueprint(bp, 'x')`). */
+export function mirrorBlueprintX(bp: BlueprintDocument): BlueprintDocument {
+  return mirrorBlueprint(bp, 'x');
 }
 
 /**

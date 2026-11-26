@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLOOR_VISUAL_SPACING } from '../core/geometry';
+import { FLOOR_VISUAL_SPACING, type MirrorAxis } from '../core/geometry';
 import type { ViewMode } from '../core/types';
 
 export const YAW_SNAP_ANGLES = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]; // 0°, 90°, 180°, 270°
@@ -91,6 +91,16 @@ export class CadCameraRig {
 
   get currentDistance(): number {
     return this.curDistance;
+  }
+
+  /**
+   * Resolve screen-relative horizontal (vertical=false, Shapez 2 `F`) or vertical (vertical=true, `Shift+F`)
+   * mirror axis onto the closest world grid axis ('x' or 'y') using target camera yaw.
+   */
+  getScreenMirrorAxis(vertical = false): MirrorAxis {
+    const horizIsX = Math.abs(Math.cos(this.targetYaw)) >= Math.abs(Math.sin(this.targetYaw));
+    const flipX = vertical ? !horizIsX : horizIsX;
+    return flipX ? 'x' : 'y';
   }
 
   setAspect(aspect: number): void {

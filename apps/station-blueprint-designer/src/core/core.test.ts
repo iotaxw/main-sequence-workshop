@@ -29,7 +29,9 @@ import {
   createHistory,
   deleteSelectionCmd,
   extractSelectionAsBlueprint,
+  mirrorBlueprint,
   mirrorBlueprintX,
+  mirrorSelectionInPlaceCmd,
   placeBeltRunCmd,
   placeBuildingCmd,
   placeModuleCmd,
@@ -42,6 +44,8 @@ import {
 } from './commands';
 import {
   computeUndergroundLinks,
+  getMirroredBuildingRotation,
+  getMirroredModuleRotation,
   getModuleFloorShift,
   getModuleOriginOffsetM,
   getModuleWorldConnectors,
@@ -555,9 +559,13 @@ describe('Versioned JSON codec safety', () => {
         !path.includes('Cell-9P') &&
         !path.includes('角落稳压母库') &&
         !path.includes('矿石母箱') &&
+        !path.includes('B1-母厅') &&
         !path.includes('翼内小总线') &&
+        !path.includes('F1-总线') &&
+        !path.includes('F1-电梯') &&
         !path.includes('玻璃玄关') &&
-        !path.includes('F2-电梯')
+        !path.includes('F2-电梯') &&
+        !path.includes('F2-模板D')
       ) {
         const keys = new Set(
           doc.buildings.map((b) => {
@@ -2176,4 +2184,227 @@ describe('Workbench Lightweight Checker (workbench-check.ts)', () => {
       expect(rep.ratedNetOutputs.length).toBeGreaterThan(10);
     });
   }
+});
+
+describe('Shapez 2 F / Shift+F Mirror Symmetry (geometry + commands + camera)', () => {
+  it('derives exact involutive mirror rotations across X and Y for all 27 modules and 36 buildings (including diagonal Corner & QuantumSciLab)', () => {
+    for (const axis of ['x', 'y'] as const) {
+      for (const m of CATALOG.stationModules) {
+        for (const r of [0, 1, 2, 3] as const) {
+          const mr = getMirroredModuleRotation(m, r, axis);
+          const back = getMirroredModuleRotation(m, mr, axis);
+          expect(back, `module ${m.id} rot=${r} axis=${axis}`).toBe(r);
+        }
+      }
+      for (const b of CATALOG.buildables) {
+        for (const r of [0, 1, 2, 3] as const) {
+          const mr = getMirroredBuildingRotation(b, r, axis);
+          const back = getMirroredBuildingRotation(b, mr, axis);
+          expect(back, `building ${b.id} rot=${r} axis=${axis}`).toBe(r);
+        }
+      }
+    }
+
+    // Diagonal entities: BPO_StationCorner_01 (W+S at rot=0) & DAT_QuantumSciLab (E+N at rot=0)
+    const corner = getModuleDef('BPO_StationCorner_01')!;
+    expect(getMirroredModuleRotation(corner, 0, 'x')).toBe(3); // W+S -> E+S
+    expect(getMirroredModuleRotation(corner, 0, 'y')).toBe(1); // W+S -> W+N
+    expect(getMirroredModuleRotation(corner, 2, 'x')).toBe(1); // E+N -> W+N
+    expect(getMirroredModuleRotation(corner, 2, 'y')).toBe(3); // E+N -> E+S
+
+    const qLab = getBuildableDef('DAT_QuantumSciLab')!;
+    expect(getMirroredBuildingRotation(qLab, 0, 'x')).toBe(3); // E+N -> N+W
+    expect(getMirroredBuildingRotation(qLab, 0, 'y')).toBe(1); // E+N -> S+E
+    expect(getMirroredBuildingRotation(qLab, 2, 'x')).toBe(1); // W+S -> S+E
+    expect(getMirroredBuildingRotation(qLab, 2, 'y')).toBe(3); // W+S -> N+W
+  });
+
+  it('mirrors entire blueprints across both X and Y axes with exact double-mirror identity, dock/port remapping, and valid diagonal corner floors', () => {
+    let bp = createEmptyBlueprint('mirror-xy-test');
+    bp = placeModuleCmd(bp, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    bp = placeModuleCmd(bp, { type: 'BPO_StationCorner_01', gx: 2, gy: 0, floor: 0, rotation: 0 }).doc;
+    const dockRes = placeModuleCmd(bp, { type: 'BPO_Dock_2', gx: 0, gy: 2, floor: 0, rotation: 0 });
+    bp = updateModuleConfigCmd(dockRes.doc, dockRes.addedModuleIds![0], {
+      dockPorts: [
+        { portIndex: 0, itemId: 'ITEM_TitaniumPlates', mode: 'unload' },
+        { portIndex: 6, itemId: 'ITEM_NickelPlates', mode: 'load' },
+      ],
+    }).doc;
+
+    const qRes = placeBuildingCmd(bp, { type: 'DAT_QuantumSciLab', x: 4, y: 4, floor: 0, rotation: 0 });
+    bp = qRes.doc;
+    const spRes = placeBuildingCmd(bp, {
+      type: 'DAT_Splitter',
+      x: 16,
+      y: 10,
+      floor: 0,
+      rotation: 3, // Facing North: S=in(0), E=right(1), N=fwd(2), W=left(3)
+      disabledPorts: [1],
+      portFilters: { 3: 'ITEM_TitaniumOre' },
+      priorityOut: 3,
+    });
+    bp = spRes.doc;
+    const ugIn = placeBuildingCmd(bp, {
+      type: 'DAT_UndergroundBelt',
+      x: 2,
+      y: 20,
+      floor: 0,
+      rotation: 0,
+      undergroundMode: 'in',
+    });
+    bp = placeBuildingCmd(ugIn.doc, {
+      type: 'DAT_UndergroundBelt',
+      x: 6,
+      y: 20,
+      floor: 0,
+      rotation: 0,
+      undergroundMode: 'out',
+    }).doc;
+
+    for (const axis of ['x', 'y'] as const) {
+      const m1 = mirrorBlueprint(bp, axis);
+      const m2 = mirrorBlueprint(m1, axis);
+
+      expect(m2.modules).toEqual(bp.modules);
+      expect(m2.buildings).toEqual(bp.buildings);
+
+      // Verify splitter rot=3 under X mirror keeps rot=3 and swaps left(3)<->right(1)!
+      if (axis === 'x') {
+        const spM = m1.buildings.find((b) => b.id === spRes.addedBuildingIds![0])!;
+        expect(spM.rotation).toBe(3);
+        expect(spM.disabledPorts).toEqual([3]);
+        expect(spM.portFilters).toEqual({ 1: 'ITEM_TitaniumOre' });
+        expect(spM.priorityOut).toBe(1);
+
+        const qM = m1.buildings.find((b) => b.id === qRes.addedBuildingIds![0])!;
+        expect(qM.rotation).toBe(3);
+
+        // Underground pair stays legally linked after X mirror!
+        const links = computeUndergroundLinks(m1);
+        expect(links.length).toBe(1);
+        expect(Math.abs(links[0].x2 - links[0].x1)).toBe(4);
+      } else {
+        // Under Y mirror, BPO_Dock_2 at rot=0 keeps rot=0 and reverses Y-descending port indices (i <-> 7-i)!
+        const dockM = m1.modules.find((m) => m.type === 'BPO_Dock_2')!;
+        expect(dockM.rotation).toBe(0);
+        expect(dockM.dockPorts).toEqual([
+          { portIndex: 1, itemId: 'ITEM_NickelPlates', mode: 'load' },
+          { portIndex: 7, itemId: 'ITEM_TitaniumPlates', mode: 'unload' },
+        ]);
+      }
+    }
+  });
+
+  it('mirrors selections in place (single splitter, module+interior cascade, armour flip, conflict rejection, and cross-boundary tunnel unlink)', () => {
+    let doc = createEmptyBlueprint('inplace-mirror');
+    const modA = placeModuleCmd(doc, { type: 'BPO_StationCorner_01', gx: 0, gy: 0, floor: 0, rotation: 0 });
+    doc = modA.doc;
+    // Place belt in valid corner-ws floor cell (x=2, y=13) — outside corner-es triangle if module didn't mirror!
+    const beltInCorner = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 2, y: 13, floor: 0, rotation: 0 });
+    expect(beltInCorner.changed).toBe(true);
+    doc = beltInCorner.doc;
+
+    // 1. In-place mirror of Corner module cascades its interior belt cleanly onto the mirrored corner floor
+    const resCorner = mirrorSelectionInPlaceCmd(doc, { moduleIds: [modA.addedModuleIds![0]], buildingIds: [] }, 'x');
+    expect(resCorner.changed).toBe(true);
+    const mCorner = resCorner.doc.modules.find((m) => m.id === modA.addedModuleIds![0])!;
+    const bCorner = resCorner.doc.buildings.find((b) => b.id === beltInCorner.addedBuildingIds![0])!;
+    expect(mCorner.rotation).toBe(3); // W+S -> E+S
+    expect(bCorner.x).toBe(13); // 16 - (2 + 1)
+    expect(bCorner.y).toBe(13);
+    expect(bCorner.rotation).toBe(2);
+    expect(isCellBuildable(resCorner.doc, bCorner.x, bCorner.y, 0)).toBeTruthy();
+
+    // 2. Single-selected top/bottom armour flips vertically in place
+    const armRes = placeModuleCmd(resCorner.doc, { type: 'BPO_StationArmour_01', gx: 2, gy: 0, floor: 0, rotation: 0 });
+    const armFlip = mirrorSelectionInPlaceCmd(
+      armRes.doc,
+      { moduleIds: [armRes.addedModuleIds![0]], buildingIds: [] },
+      'x'
+    );
+    expect(armFlip.changed).toBe(true);
+    expect(armFlip.doc.modules.find((m) => m.id === armRes.addedModuleIds![0])!.type).toBe('BPO_StationArmour_01B');
+
+    // 3. Pure building multi-select + conflict rejection + cross-boundary underground unlink
+    let roomDoc = createEmptyBlueprint('room-inplace');
+    roomDoc = placeModuleCmd(roomDoc, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    const sp = placeBuildingCmd(roomDoc, {
+      type: 'DAT_Splitter',
+      x: 8,
+      y: 8,
+      floor: 0,
+      rotation: 3,
+      portFilters: { 3: 'ITEM_TitaniumPlates' },
+      disabledPorts: [1],
+    });
+    roomDoc = sp.doc;
+    // Mirror single North-facing splitter across X: stays at (8,8) rot=3, swaps left<->right port config!
+    const spMir = mirrorSelectionInPlaceCmd(roomDoc, { moduleIds: [], buildingIds: [sp.addedBuildingIds![0]] }, 'x');
+    expect(spMir.changed).toBe(true);
+    const spAfter = spMir.doc.buildings.find((b) => b.id === sp.addedBuildingIds![0])!;
+    expect(spAfter.x).toBe(8);
+    expect(spAfter.rotation).toBe(3);
+    expect(spAfter.portFilters).toEqual({ 1: 'ITEM_TitaniumPlates' });
+    expect(spAfter.disabledPorts).toEqual([3]);
+
+    // Conflict rejection: select 2 buildings in an L-shape whose mirror lands on an unselected blocker
+    const b1 = placeBuildingCmd(roomDoc, { type: 'DAT_ConveyorBelt', x: 10, y: 10, floor: 0, rotation: 0 });
+    const b2 = placeBuildingCmd(b1.doc, { type: 'DAT_ConveyorBelt', x: 12, y: 11, floor: 0, rotation: 0 });
+    const blocker = placeBuildingCmd(b2.doc, { type: 'DAT_Container', x: 10, y: 11, floor: 0, rotation: 0 });
+    const blockedMir = mirrorSelectionInPlaceCmd(
+      blocker.doc,
+      { moduleIds: [], buildingIds: [b1.addedBuildingIds![0], b2.addedBuildingIds![0]] },
+      'x'
+    );
+    expect(blockedMir.changed).toBe(false);
+    expect(blockedMir.message).toBeTruthy();
+
+    // Cross-boundary underground pair: mirroring ONLY the entry end breaks alignment and cleanly unlinks both
+    const ugA = placeBuildingCmd(roomDoc, {
+      type: 'DAT_UndergroundBelt',
+      x: 4,
+      y: 16,
+      floor: 0,
+      rotation: 0,
+      undergroundMode: 'in',
+    });
+    const ugB = placeBuildingCmd(ugA.doc, {
+      type: 'DAT_UndergroundBelt',
+      x: 7,
+      y: 16,
+      floor: 0,
+      rotation: 0,
+      undergroundMode: 'out',
+    });
+    expect(ugB.doc.buildings.find((b) => b.id === ugA.addedBuildingIds![0])!.undergroundPartnerId).toBe(
+      ugB.addedBuildingIds![0]
+    );
+    const ugHalfMir = mirrorSelectionInPlaceCmd(
+      ugB.doc,
+      { moduleIds: [], buildingIds: [ugA.addedBuildingIds![0]] },
+      'x'
+    );
+    expect(ugHalfMir.changed).toBe(true);
+    expect(ugHalfMir.doc.buildings.find((b) => b.id === ugA.addedBuildingIds![0])!.undergroundPartnerId).toBeUndefined();
+    expect(ugHalfMir.doc.buildings.find((b) => b.id === ugB.addedBuildingIds![0])!.undergroundPartnerId).toBeUndefined();
+  });
+
+  it('maps screen-relative horizontal (F) and vertical (Shift+F) mirror axes according to camera yaw', () => {
+    const rig = new CadCameraRig(16 / 9);
+    rig.targetYaw = 0; // Looking North (+X right)
+    expect(rig.getScreenMirrorAxis(false)).toBe('x');
+    expect(rig.getScreenMirrorAxis(true)).toBe('y');
+
+    rig.targetYaw = Math.PI / 2; // Looking West (-Y right)
+    expect(rig.getScreenMirrorAxis(false)).toBe('y');
+    expect(rig.getScreenMirrorAxis(true)).toBe('x');
+
+    rig.targetYaw = Math.PI; // Looking South (-X right)
+    expect(rig.getScreenMirrorAxis(false)).toBe('x');
+    expect(rig.getScreenMirrorAxis(true)).toBe('y');
+
+    rig.targetYaw = (3 * Math.PI) / 2; // Looking East (+Y right)
+    expect(rig.getScreenMirrorAxis(false)).toBe('y');
+    expect(rig.getScreenMirrorAxis(true)).toBe('x');
+  });
 });
