@@ -2065,6 +2065,24 @@ export class CadSceneController {
           chev.rotation.y = -seg.rotation * (Math.PI / 2);
           this.previewGroup.add(chev);
         }
+
+        if (seg.isWaypoint) {
+          const cx = seg.x + 0.5;
+          const cz = seg.y + 0.5;
+          const r = 0.44;
+          const wy = baseY + 0.045;
+          this.previewGroup.add(
+            createCrispLineSegments(
+              [
+                cx, wy, cz - r, cx + r, wy, cz,
+                cx + r, wy, cz, cx, wy, cz + r,
+                cx, wy, cz + r, cx - r, wy, cz,
+                cx - r, wy, cz, cx, wy, cz - r,
+              ],
+              { color: palette.selectOutline, opacity: 0.98, widthPx: 1.8 }
+            )
+          );
+        }
       }
 
       // Draw crisp dashed underground tunnel bridges between each matched IN/OUT pair

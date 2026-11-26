@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildBeltStrokeSpecs,
-  buildPlannedBeltPathWithTunnels,
+  buildMultiWaypointBeltPath,
   extendBeltStrokeWithTunnels,
   getMatchingBeltType,
   getMatchingUndergroundType,
@@ -9,6 +9,7 @@ import {
   toggleBeltStrokeTunnel,
   type BeltCellSpec,
   type BeltStrokeTunnel,
+  type BeltWaypoint,
 } from './core/belt-router';
 import { getBuildableDef, getItemName, getModuleDef, getRecipeDef, getRecipeName } from './core/catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './core/codec';
@@ -205,6 +206,20 @@ export const App: React.FC = () => {
   const lastHoverTipKeyRef = useRef<string>('');
   const lastHudCellRef = useRef<string>('');
   const [beltPreview, setBeltPreview] = useState<BeltCellSpec[]>([]);
+  const beltPreviewRef = useRef<BeltCellSpec[]>([]);
+  const [beltSessionMode, setBeltSessionMode] = useState<'plan' | 'stroke' | null>(null);
+  const beltSessionRef = useRef<{
+    mode: 'plan' | 'stroke';
+    floor: number;
+    waypoints: BeltWaypoint[];
+    flipCorner: boolean;
+    planTunnel: boolean;
+    strokeCells: Array<[number, number]>;
+    strokeTunnels: BeltStrokeTunnel[];
+    reverse: boolean;
+    endRotation: Rotation | null;
+    lastCursorCell: [number, number];
+  } | null>(null);
   const [forceReplaceHeld, setForceReplaceHeld] = useState(false);
   const [toast, setToast] = useState<{ text: string; kind: 'info' | 'warn' | 'error' } | null>(null);
 
@@ -469,18 +484,13 @@ export const App: React.FC = () => {
   };
 
   const dragRef = useRef<{
-    kind: 'none' | 'orbit' | 'pan' | 'box-select' | 'box-demolish' | 'shift-place-or-box' | 'belt-stroke' | 'belt-plan' | 'demolish';
+    kind: 'none' | 'orbit' | 'pan' | 'box-select' | 'box-demolish' | 'shift-place-or-box' | 'demolish';
     startX: number;
     startY: number;
     lastX: number;
     lastY: number;
     moved: boolean;
     startWorld: { x: number; y: number } | null;
-    beltCells: Array<[number, number]>;
-    beltTunnels: BeltStrokeTunnel[];
-    beltPlanTunnel: boolean;
-    beltFlipCorner: boolean;
-    beltReverse: boolean;
     boxModifier: BoxSelectMode;
     liveSelection: SelectionState | null;
     sweepCommitted: boolean;
@@ -494,17 +504,80 @@ export const App: React.FC = () => {
     lastY: 0,
     moved: false,
     startWorld: null,
-    beltCells: [],
-    beltTunnels: [],
-    beltPlanTunnel: false,
-    beltFlipCorner: false,
-    beltReverse: false,
     boxModifier: 'replace',
     liveSelection: null,
     sweepCommitted: false,
     sweepModCount: 0,
     sweepBldCount: 0,
   });
+
+  const setBeltPreviewSync = useCallback((specs: BeltCellSpec[]) => {
+    beltPreviewRef.current = specs;
+    setBeltPreview(specs);
+  }, []);
+
+  const clearBeltSession = useCallback(() => {
+    if (beltSessionRef.current !== null) {
+      beltSessionRef.current = null;
+      setBeltSessionMode(null);
+    }
+    if (beltPreviewRef.current.length > 0) {
+      beltPreviewRef.current = [];
+      setBeltPreview([]);
+    }
+  }, []);
+
+  const computeBeltSessionSpecs = useCallback(
+    (targetCell?: [number, number]): BeltCellSpec[] => {
+      const session = beltSessionRef.current;
+      if (!session) return [];
+      const tool = stateRef.current.activeTool;
+      const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
+      const endCell = targetCell ?? session.lastCursorCell;
+      if (session.mode === 'plan') {
+        return buildMultiWaypointBeltPath(
+          stateRef.current.doc,
+          session.floor,
+          session.waypoints,
+          endCell,
+          {
+            currentFlipCorner: session.flipCorner,
+            reverse: session.reverse,
+            fallbackRotation: fallback,
+            tunnelObstacles: session.planTunnel,
+            endRotation: session.endRotation,
+          }
+        );
+      }
+      return buildBeltStrokeSpecs(
+        session.strokeCells,
+        session.strokeTunnels,
+        fallback,
+        session.reverse,
+        session.endRotation
+      );
+    },
+    []
+  );
+
+  const refreshBeltSessionPreview = useCallback(
+    (targetCell?: [number, number]) => {
+      const specs = computeBeltSessionSpecs(targetCell);
+      setBeltPreviewSync(specs);
+      return specs;
+    },
+    [computeBeltSessionSpecs, setBeltPreviewSync]
+  );
+
+  useEffect(() => {
+    const isBeltTool =
+      activeTool.kind === 'place-building' && getBuildableDef(activeTool.buildingType)?.kind === 'belt';
+    if (!isBeltTool || viewMode !== 'building') {
+      clearBeltSession();
+    } else if (beltSessionRef.current && beltSessionRef.current.floor !== focusFloor) {
+      clearBeltSession();
+    }
+  }, [activeTool, viewMode, focusFloor, clearBeltSession]);
 
   const spaceHeldRef = useRef(false);
 
@@ -836,7 +909,7 @@ export const App: React.FC = () => {
       }
     ) => {
       setStampingLibPath(null);
-      setBeltPreview([]);
+      clearBeltSession();
       const modDef = getModuleDef(entityId);
       if (modDef) {
         const grp = findGroupForEntity('station', entityId);
@@ -877,7 +950,7 @@ export const App: React.FC = () => {
         }));
       }
     },
-    []
+    [clearBeltSession]
   );
 
   const applyMirrorAction = useCallback(
@@ -998,17 +1071,21 @@ export const App: React.FC = () => {
   );
 
   const handleCancelAction = useCallback(() => {
+    if (beltSessionRef.current) {
+      clearBeltSession();
+      return;
+    }
     const { activeTool: tool, selection: sel } = stateRef.current;
     if (tool.kind !== 'select') {
       setActiveTool({ kind: 'select' });
       setStampingLibPath(null);
-      setBeltPreview([]);
+      clearBeltSession();
       return;
     }
     if (sel.moduleIds.length > 0 || sel.buildingIds.length > 0) {
       setSelection(EMPTY_SELECTION);
     }
-  }, []);
+  }, [clearBeltSession]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1018,13 +1095,8 @@ export const App: React.FC = () => {
       // Universal Esc close (works even while focused in search / text inputs!)
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (dragRef.current.kind === 'belt-stroke' || dragRef.current.kind === 'belt-plan') {
-          dragRef.current.kind = 'none';
-          dragRef.current.moved = false;
-          dragRef.current.beltCells = [];
-          dragRef.current.beltTunnels = [];
-          dragRef.current.beltPlanTunnel = false;
-          setBeltPreview([]);
+        if (beltSessionRef.current) {
+          clearBeltSession();
           return;
         }
         if (dragRef.current.kind === 'box-select' || dragRef.current.kind === 'box-demolish' || dragRef.current.kind === 'shift-place-or-box') {
@@ -1180,26 +1252,11 @@ export const App: React.FC = () => {
       }
       if (lower === 'f' || lower === 'm') {
         e.preventDefault();
-        if (dragRef.current.kind === 'belt-plan') {
-          dragRef.current.beltFlipCorner = !dragRef.current.beltFlipCorner;
-          const cw = cursorWorldRef.current;
-          if (dragRef.current.startWorld && cw) {
-            const tool = stateRef.current.activeTool;
-            const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
-            setBeltPreview(
-              buildPlannedBeltPathWithTunnels(
-                stateRef.current.doc,
-                stateRef.current.focusFloor,
-                [Math.floor(dragRef.current.startWorld.x), Math.floor(dragRef.current.startWorld.y)],
-                [Math.floor(cw.x), Math.floor(cw.y)],
-                {
-                  flipCorner: dragRef.current.beltFlipCorner,
-                  reverse: dragRef.current.beltReverse,
-                  fallbackRotation: fallback,
-                  tunnelObstacles: dragRef.current.beltPlanTunnel,
-                }
-              )
-            );
+        const session = beltSessionRef.current;
+        if (session) {
+          if (lower === 'f' && session.mode === 'plan') {
+            session.flipCorner = !session.flipCorner;
+            refreshBeltSessionPreview();
           }
           return;
         }
@@ -1213,35 +1270,53 @@ export const App: React.FC = () => {
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
+        const session = beltSessionRef.current;
+        if (session) {
+          if (e.key === 'Delete') {
+            clearBeltSession();
+            return;
+          }
+          if (session.mode === 'plan') {
+            if (session.waypoints.length > 1) {
+              session.waypoints.pop();
+              session.flipCorner = session.waypoints[session.waypoints.length - 1].flipCorner;
+              session.endRotation = null;
+              refreshBeltSessionPreview();
+            } else {
+              clearBeltSession();
+            }
+            return;
+          }
+          if (session.strokeCells.length > 1) {
+            session.strokeCells = session.strokeCells.slice(0, -1);
+            const len = session.strokeCells.length;
+            session.strokeTunnels = session.strokeTunnels
+              .filter((tn) => tn.inIndex < len)
+              .map((tn) => (tn.outIndex !== null && tn.outIndex >= len ? { inIndex: tn.inIndex, outIndex: null } : tn));
+            session.endRotation = null;
+            refreshBeltSessionPreview();
+          } else {
+            clearBeltSession();
+          }
+          return;
+        }
         requestDeleteSelection(stateRef.current.selection);
         return;
       }
       if (lower === 'r') {
         e.preventDefault();
-        if (dragRef.current.kind === 'belt-plan') {
-          dragRef.current.beltFlipCorner = !dragRef.current.beltFlipCorner;
-          const cw = cursorWorldRef.current;
-          if (dragRef.current.startWorld && cw) {
-            const tool = stateRef.current.activeTool;
-            const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
-            setBeltPreview(
-              buildPlannedBeltPathWithTunnels(
-                stateRef.current.doc,
-                stateRef.current.focusFloor,
-                [Math.floor(dragRef.current.startWorld.x), Math.floor(dragRef.current.startWorld.y)],
-                [Math.floor(cw.x), Math.floor(cw.y)],
-                {
-                  flipCorner: dragRef.current.beltFlipCorner,
-                  reverse: dragRef.current.beltReverse,
-                  fallbackRotation: fallback,
-                  tunnelObstacles: dragRef.current.beltPlanTunnel,
-                }
-              )
-            );
-          }
+        const delta: 1 | -1 = e.shiftKey ? -1 : 1;
+        const session = beltSessionRef.current;
+        if (session) {
+          const tool = stateRef.current.activeTool;
+          const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
+          const curSpecs = beltPreviewRef.current;
+          const curLast = curSpecs.length > 0 ? curSpecs[curSpecs.length - 1] : undefined;
+          const baseRot = session.endRotation ?? curLast?.rotation ?? fallback;
+          session.endRotation = normalizeRotation(baseRot + delta);
+          refreshBeltSessionPreview();
           return;
         }
-        const delta: 1 | -1 = e.shiftKey ? -1 : 1;
         const tool = stateRef.current.activeTool;
         if (tool.kind === 'place-module') {
           setActiveTool({ ...tool, rotation: normalizeRotation(tool.rotation + delta) });
@@ -1259,70 +1334,37 @@ export const App: React.FC = () => {
         }
         return;
       }
-      if (e.key === 'Alt' && dragRef.current.kind === 'belt-plan') {
+      if (e.key === 'Alt' && beltSessionRef.current) {
         e.preventDefault();
-        dragRef.current.beltReverse = !dragRef.current.beltReverse;
-        const cw = cursorWorldRef.current;
-        if (dragRef.current.startWorld && cw) {
-          const tool = stateRef.current.activeTool;
-          const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
-          setBeltPreview(
-            buildPlannedBeltPathWithTunnels(
-              stateRef.current.doc,
-              stateRef.current.focusFloor,
-              [Math.floor(dragRef.current.startWorld.x), Math.floor(dragRef.current.startWorld.y)],
-              [Math.floor(cw.x), Math.floor(cw.y)],
-              {
-                flipCorner: dragRef.current.beltFlipCorner,
-                reverse: dragRef.current.beltReverse,
-                fallbackRotation: fallback,
-                tunnelObstacles: dragRef.current.beltPlanTunnel,
-              }
-            )
-          );
-        }
+        beltSessionRef.current.reverse = !beltSessionRef.current.reverse;
+        refreshBeltSessionPreview();
         return;
       }
-      if (lower === 't' || lower === 'u') {
-        if (dragRef.current.kind === 'belt-stroke') {
+      if (lower === 't') {
+        const session = beltSessionRef.current;
+        if (session?.mode === 'stroke') {
           e.preventDefault();
-          const res = toggleBeltStrokeTunnel(dragRef.current.beltCells, dragRef.current.beltTunnels);
-          dragRef.current.beltTunnels = res.tunnels;
-          const tool = stateRef.current.activeTool;
-          const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
-          setBeltPreview(buildBeltStrokeSpecs(dragRef.current.beltCells, res.tunnels, fallback, e.altKey));
+          const res = toggleBeltStrokeTunnel(session.strokeCells, session.strokeTunnels);
+          session.strokeTunnels = res.tunnels;
+          refreshBeltSessionPreview();
           showToast(
             res.action === 'dive'
-              ? '地下带潜入：直拉跨障，再按 T/U 钻出或松手落位'
+              ? t('地下带潜入（再按 T 钻出）', 'Tunnel dive (T to surface)')
               : res.action === 'surface'
-                ? '地下带钻出：已恢复地面传送带'
-                : '已取消地下带潜入'
+                ? t('地下带钻出', 'Tunnel surfaced')
+                : t('已取消地下带潜入', 'Tunnel dive cancelled')
           );
           return;
         }
-        if (dragRef.current.kind === 'belt-plan') {
+        if (session?.mode === 'plan') {
           e.preventDefault();
-          dragRef.current.beltPlanTunnel = !dragRef.current.beltPlanTunnel;
-          const cw = cursorWorldRef.current;
-          if (dragRef.current.startWorld && cw) {
-            const tool = stateRef.current.activeTool;
-            const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
-            setBeltPreview(
-              buildPlannedBeltPathWithTunnels(
-                stateRef.current.doc,
-                stateRef.current.focusFloor,
-                [Math.floor(dragRef.current.startWorld.x), Math.floor(dragRef.current.startWorld.y)],
-                [Math.floor(cw.x), Math.floor(cw.y)],
-                {
-                  flipCorner: dragRef.current.beltFlipCorner,
-                  reverse: dragRef.current.beltReverse || e.altKey,
-                  fallbackRotation: fallback,
-                  tunnelObstacles: dragRef.current.beltPlanTunnel,
-                }
-              )
-            );
-          }
-          showToast(dragRef.current.beltPlanTunnel ? 'L 形规划：已开启跨障地下带' : 'L 形规划：已切回纯地面带');
+          session.planTunnel = !session.planTunnel;
+          refreshBeltSessionPreview();
+          showToast(
+            session.planTunnel
+              ? t('跨障地下带：开', 'Auto tunnel: ON')
+              : t('跨障地下带：关', 'Auto tunnel: OFF')
+          );
           return;
         }
         const tool = stateRef.current.activeTool;
@@ -1331,14 +1373,14 @@ export const App: React.FC = () => {
           if (ugId) {
             e.preventDefault();
             selectEntityTool(ugId, { rotation: tool.rotation, undergroundMode: 'in' });
-            showToast(`已切换同级地下带：${getShortLabel(ugId)}`);
+            showToast(t(`地下带：${getShortLabel(ugId, undefined, lang)}`, `Tunnel: ${getShortLabel(ugId, undefined, lang)}`));
             return;
           }
           const beltId = getMatchingBeltType(tool.buildingType);
           if (beltId) {
             e.preventDefault();
             selectEntityTool(beltId, { rotation: tool.rotation });
-            showToast(`已切回同级传送带：${getShortLabel(beltId)}`);
+            showToast(t(`传送带：${getShortLabel(beltId, undefined, lang)}`, `Belt: ${getShortLabel(beltId, undefined, lang)}`));
             return;
           }
         }
@@ -1402,6 +1444,7 @@ export const App: React.FC = () => {
     };
   }, [
     applyMirrorAction,
+    clearBeltSession,
     commitDoc,
     copySelectionToGhost,
     fitAllStation,
@@ -1409,16 +1452,19 @@ export const App: React.FC = () => {
     ghModal,
     handleCancelAction,
     helpOpen,
+    lang,
     libraryModalOpen,
     openSaveDialog,
     pipetteAtWorld,
     prefsMenuOpen,
+    refreshBeltSessionPreview,
     requestDeleteSelection,
     saveDialog,
     selectEntityTool,
     showToast,
     simOpen,
     switchViewMode,
+    t,
     updateBoxBadge,
   ]);
 
@@ -1564,23 +1610,39 @@ export const App: React.FC = () => {
       if (!def) return;
       if (def.kind === 'belt') {
         const cell: [number, number] = [Math.floor(world.x), Math.floor(world.y)];
-        const isPlanner = e.shiftKey;
-        dragRef.current = {
-          ...dragRef.current,
-          kind: isPlanner ? 'belt-plan' : 'belt-stroke',
-          startX: e.clientX,
-          startY: e.clientY,
-          lastX: e.clientX,
-          lastY: e.clientY,
-          moved: false,
-          startWorld: world,
-          beltCells: [cell],
-          beltTunnels: [],
-          beltPlanTunnel: false,
-          beltFlipCorner: false,
-          beltReverse: e.altKey,
+        const existing = beltSessionRef.current;
+        if (existing) {
+          // Second click: commit entire planned/freehand belt path atomically!
+          existing.lastCursorCell = cell;
+          if (existing.mode === 'stroke') {
+            const ext = extendBeltStrokeWithTunnels(existing.strokeCells, existing.strokeTunnels, cell);
+            existing.strokeCells = ext.cells;
+            existing.strokeTunnels = ext.tunnels;
+          }
+          const finalSpecs = computeBeltSessionSpecs(cell);
+          if (finalSpecs.length > 0) {
+            const res = placeBeltRunCmd(curDoc, tool.buildingType, fl, finalSpecs);
+            if (res.changed) commitDoc(res.doc);
+          }
+          clearBeltSession();
+          return;
+        }
+        // First click: start click-to-click routing (default = L-plan with waypoints; Shift+click = freehand stroke)
+        const mode: 'plan' | 'stroke' = e.shiftKey ? 'stroke' : 'plan';
+        beltSessionRef.current = {
+          mode,
+          floor: fl,
+          waypoints: [{ cell, flipCorner: false }],
+          flipCorner: false,
+          planTunnel: false,
+          strokeCells: [cell],
+          strokeTunnels: [],
+          reverse: e.altKey,
+          endRotation: null,
+          lastCursorCell: cell,
         };
-        setBeltPreview([{ x: cell[0], y: cell[1], rotation: tool.rotation }]);
+        setBeltSessionMode(mode);
+        refreshBeltSessionPreview(cell);
         return;
       }
 
@@ -1684,6 +1746,25 @@ export const App: React.FC = () => {
 
     const d = dragRef.current;
     if (d.kind === 'none') {
+      const session = beltSessionRef.current;
+      if (session && world) {
+        hideHoverTip();
+        const cell: [number, number] = [Math.floor(world.x), Math.floor(world.y)];
+        if (cell[0] !== session.lastCursorCell[0] || cell[1] !== session.lastCursorCell[1]) {
+          session.lastCursorCell = cell;
+          if (session.mode === 'stroke') {
+            const ext = extendBeltStrokeWithTunnels(session.strokeCells, session.strokeTunnels, cell);
+            if (ext.cells !== session.strokeCells || ext.tunnels !== session.strokeTunnels) {
+              session.strokeCells = ext.cells;
+              session.strokeTunnels = ext.tunnels;
+              refreshBeltSessionPreview(cell);
+            }
+          } else {
+            refreshBeltSessionPreview(cell);
+          }
+        }
+        return;
+      }
       updateHoverTip(world, e.clientX, e.clientY);
       return;
     }
@@ -1767,39 +1848,6 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (d.kind === 'belt-stroke') {
-      const cell: [number, number] = [Math.floor(world.x), Math.floor(world.y)];
-      const ext = extendBeltStrokeWithTunnels(d.beltCells, d.beltTunnels, cell);
-      if (ext.cells !== d.beltCells || ext.tunnels !== d.beltTunnels) {
-        d.beltCells = ext.cells;
-        d.beltTunnels = ext.tunnels;
-        const tool = stateRef.current.activeTool;
-        const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
-        setBeltPreview(buildBeltStrokeSpecs(ext.cells, ext.tunnels, fallback, e.altKey));
-      }
-      return;
-    }
-
-    if (d.kind === 'belt-plan' && d.startWorld) {
-      const tool = stateRef.current.activeTool;
-      const fallback = tool.kind === 'place-building' ? tool.rotation : 0;
-      setBeltPreview(
-        buildPlannedBeltPathWithTunnels(
-          stateRef.current.doc,
-          stateRef.current.focusFloor,
-          [Math.floor(d.startWorld.x), Math.floor(d.startWorld.y)],
-          [Math.floor(world.x), Math.floor(world.y)],
-          {
-            flipCorner: d.beltFlipCorner,
-            reverse: d.beltReverse || e.altKey,
-            fallbackRotation: fallback,
-            tunnelObstacles: d.beltPlanTunnel,
-          }
-        )
-      );
-      return;
-    }
-
     if (d.kind === 'demolish') {
       const { doc: curDoc, viewMode: vm, focusFloor: fl } = stateRef.current;
       let res: ReturnType<typeof deleteSelectionCmd> | null = null;
@@ -1839,7 +1887,22 @@ export const App: React.FC = () => {
         sceneRef.current?.rig.snapAngles();
       }
     } else if (d.kind === 'pan' && !d.moved && e.button === 1 && world) {
-      pipetteAtWorld(world);
+      const session = beltSessionRef.current;
+      if (session) {
+        if (session.mode === 'plan') {
+          const cell: [number, number] = [Math.floor(world.x), Math.floor(world.y)];
+          const prevWp = session.waypoints[session.waypoints.length - 1];
+          if (!prevWp || prevWp.cell[0] !== cell[0] || prevWp.cell[1] !== cell[1]) {
+            if (prevWp) prevWp.flipCorner = session.flipCorner;
+            session.waypoints.push({ cell, flipCorner: session.flipCorner });
+            session.endRotation = null;
+            session.lastCursorCell = cell;
+            refreshBeltSessionPreview(cell);
+          }
+        }
+      } else {
+        pipetteAtWorld(world);
+      }
     } else if (d.kind === 'shift-place-or-box' && !d.moved && world) {
       // Short Shift+Click while holding a module or machine -> perform force-replace placement!
       const { doc: curDoc, focusFloor: fl, activeTool: tool } = stateRef.current;
@@ -2025,15 +2088,6 @@ export const App: React.FC = () => {
       } else if (d.sweepBldCount > 1) {
         showToast(`已扫拆 ${d.sweepBldCount} 台建筑（Ctrl+Z 撤销）`);
       }
-    } else if (d.kind === 'belt-stroke' || d.kind === 'belt-plan') {
-      const tool = stateRef.current.activeTool;
-      if (tool.kind === 'place-building' && beltPreview.length > 0) {
-        const res = placeBeltRunCmd(stateRef.current.doc, tool.buildingType, stateRef.current.focusFloor, beltPreview);
-        if (res.changed) commitDoc(res.doc);
-      }
-      d.beltTunnels = [];
-      d.beltPlanTunnel = false;
-      setBeltPreview([]);
     }
 
     dragRef.current.kind = 'none';
@@ -2742,21 +2796,31 @@ export const App: React.FC = () => {
                   : t(' · F 镜像', ' · F Mirror')
               }${t(' · R 旋转 · Q/E 切层', ' · R Rotate · Q/E Floor')}`}
             {activeTool.kind === 'place-building' &&
-              `${getShortLabel(
-                activeTool.buildingType,
-                isEn ? getBuildableDef(activeTool.buildingType)?.nameEn : getBuildableDef(activeTool.buildingType)?.nameZh,
-                lang
-              )}${
-                activeTool.recipeId
-                  ? ` [${getRecipeDef(activeTool.recipeId) ? getRecipeName(getRecipeDef(activeTool.recipeId)!, lang) : activeTool.recipeId}]`
-                  : ''
-              }${
-                getBuildableDef(activeTool.buildingType)?.kind === 'underground'
-                  ? ` · ${activeTool.undergroundMode === 'out' ? 'OUT' : 'IN'}${t(' · T/U 地面带', ' · T/U Belt')}`
-                  : getBuildableDef(activeTool.buildingType)?.kind === 'belt'
-                    ? t(' · T/U 地下带', ' · T/U Underground')
-                    : ''
-              }${t(' · R 旋转 · F 镜像 · Tab 换型', ' · R Rotate · F Mirror · Tab Variant')}`}
+              (beltSessionMode === 'plan'
+                ? t(
+                    '拉带 · 左键 落位 · 中键 锚点 · Backspace 退锚 · F 换角 · R 终向 · T 地下带 · Alt 反向',
+                    'Belt · LMB Place · MMB Anchor · Backspace Undo · F Corner · R End · T Tunnel · Alt Rev'
+                  )
+                : beltSessionMode === 'stroke'
+                  ? t(
+                      '手绘 · 左键 落位 · Backspace 退格 · T 地下带 · R 终向 · Alt 反向',
+                      'Freehand · LMB Place · Backspace Undo · T Tunnel · R End · Alt Rev'
+                    )
+                  : `${getShortLabel(
+                      activeTool.buildingType,
+                      isEn ? getBuildableDef(activeTool.buildingType)?.nameEn : getBuildableDef(activeTool.buildingType)?.nameZh,
+                      lang
+                    )}${
+                      activeTool.recipeId
+                        ? ` [${getRecipeDef(activeTool.recipeId) ? getRecipeName(getRecipeDef(activeTool.recipeId)!, lang) : activeTool.recipeId}]`
+                        : ''
+                    }${
+                      getBuildableDef(activeTool.buildingType)?.kind === 'underground'
+                        ? ` · ${activeTool.undergroundMode === 'out' ? 'OUT' : 'IN'}${t(' · T 地面带 · R 旋转 · Tab 换型', ' · T Belt · R Rotate · Tab Variant')}`
+                        : getBuildableDef(activeTool.buildingType)?.kind === 'belt'
+                          ? t(' · 左键 拉带 · Shift+左键 手绘 · T 地下带 · Tab 换型', ' · LMB Route · Shift+LMB Freehand · T Tunnel · Tab Variant')
+                          : t(' · R 旋转 · F 镜像 · Tab 换型', ' · R Rotate · F Mirror · Tab Variant')
+                    }`)}
             {activeTool.kind === 'stamp-blueprint' &&
               (activeTool.fromCut
                 ? t(

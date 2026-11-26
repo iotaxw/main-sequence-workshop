@@ -67,13 +67,14 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
       };
     }
     const b = getBuildableDef(id);
-    const baseHint = showTabHint ? t('Tab 换型 · R 旋转', 'Tab Variant · R Rotate') : t('R 旋转', 'R Rotate');
-    const extraHint =
+    const hint =
       b?.kind === 'belt'
-        ? t(' · T/U 地下带', ' · T/U Underground')
+        ? t('左键拉带 · Shift+左键手绘 · T 地下带', 'LMB Route · Shift+LMB Freehand · T Tunnel')
         : b?.kind === 'underground'
-          ? t(' · T/U 地面带', ' · T/U Belt')
-          : '';
+          ? t('T 地面带 · R 旋转', 'T Belt · R Rotate')
+          : showTabHint
+            ? t('Tab 换型 · R 旋转 · F 镜像', 'Tab Variant · R Rotate · F Mirror')
+            : t('R 旋转 · F 镜像', 'R Rotate · F Mirror');
     return {
       title: b ? getBuildableName(b, lang) : id,
       sub: !isEn ? b?.nameEn : undefined,
@@ -82,7 +83,7 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
           ? `${b.size[0]}×${b.size[1]} · ${b.ports.length}P`
           : `${b.size[0]}×${b.size[1]}格 · ${b.ports.length}口`
         : '',
-      hint: `${baseHint}${extraHint}`,
+      hint,
     };
   };
 

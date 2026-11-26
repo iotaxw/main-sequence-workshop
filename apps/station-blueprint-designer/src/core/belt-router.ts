@@ -8,10 +8,18 @@ export interface BeltCellSpec {
   rotation: Rotation;
   kind?: 'belt' | 'underground-in' | 'underground-out';
   pairIndex?: number;
+  /** Preview-only marker indicating a user-pinned waypoint anchor cell */
+  isWaypoint?: boolean;
+}
+
+export interface BeltWaypoint {
+  cell: [number, number];
+  /** Corner preference for the leg starting at this waypoint (false = X-first, true = Y-first) */
+  flipCorner: boolean;
 }
 
 export interface BeltStrokeTunnel {
-  /** Index in stroke cells where user pressed tunnel hotkey (T/U) to dive underground */
+  /** Index in stroke cells where user pressed tunnel hotkey (T) to dive underground */
   inIndex: number;
   /** Index in stroke cells where user pressed tunnel hotkey again to surface (null while actively diving) */
   outIndex: number | null;
@@ -111,9 +119,9 @@ export function extendBeltStroke(
 }
 
 /**
- * Shapez 2 Belt Planner (Shift + drag): automatic L-shaped path from anchor to target.
- * `flipCorner` toggles X-first vs Y-first (R key during planning).
- * `reverse` reverses flow direction (Alt key during planning).
+ * Shapez 2 Belt Planner: automatic L-shaped path from anchor to target.
+ * `flipCorner` toggles X-first vs Y-first (`F` key during planning).
+ * `reverse` reverses flow direction (`Alt` key during planning).
  */
 export function buildPlannedBeltPath(
   start: [number, number],
@@ -258,15 +266,34 @@ export function toggleBeltStrokeTunnel(
   return { tunnels: [...tunnels, { inIndex: headIdx, outIndex: null }], action: 'dive' };
 }
 
+/** Override the terminal belt cell's exit rotation (Shapez 2 `R` key during belt routing). */
+export function applyEndRotationOverride(
+  specs: BeltCellSpec[],
+  endRotation: Rotation | null | undefined
+): BeltCellSpec[] {
+  if (specs.length === 0 || endRotation === null || endRotation === undefined) return specs;
+  const lastIdx = specs.length - 1;
+  const last = specs[lastIdx];
+  if (last.kind === 'underground-in' || last.kind === 'underground-out') return specs;
+  const nextRot = normalizeRotation(endRotation);
+  if (last.rotation === nextRot) return specs;
+  const out = specs.slice();
+  out[lastIdx] = { ...last, rotation: nextRot };
+  return out;
+}
+
 /** Convert a freehand stroke + explicit hotkey tunnels into oriented BeltCellSpecs */
 export function buildBeltStrokeSpecs(
   cells: Array<[number, number]>,
   tunnels: BeltStrokeTunnel[],
   fallbackRotation: Rotation,
-  reverse = false
+  reverse = false,
+  endRotation: Rotation | null = null
 ): BeltCellSpec[] {
   if (cells.length === 0) return [];
-  if (tunnels.length === 0) return cellsToBeltSpecs(cells, fallbackRotation, reverse);
+  if (tunnels.length === 0) {
+    return applyEndRotationOverride(cellsToBeltSpecs(cells, fallbackRotation, reverse), endRotation);
+  }
 
   const forwardSpecs: BeltCellSpec[] = [];
   let pairCounter = 0;
@@ -306,41 +333,75 @@ export function buildBeltStrokeSpecs(
     i += 1;
   }
 
-  if (!reverse) return forwardSpecs;
-  return forwardSpecs
-    .slice()
-    .reverse()
-    .map((s) => ({
-      ...s,
-      rotation: normalizeRotation(s.rotation + 2),
-      kind:
-        s.kind === 'underground-in'
-          ? 'underground-out'
-          : s.kind === 'underground-out'
-            ? 'underground-in'
-            : s.kind,
-    }));
+  const ordered = !reverse
+    ? forwardSpecs
+    : forwardSpecs
+        .slice()
+        .reverse()
+        .map((s) => ({
+          ...s,
+          rotation: normalizeRotation(s.rotation + 2),
+          kind:
+            s.kind === 'underground-in'
+              ? ('underground-out' as const)
+              : s.kind === 'underground-out'
+                ? ('underground-in' as const)
+                : s.kind,
+        }));
+  return applyEndRotationOverride(ordered, endRotation);
 }
 
 /**
- * Planned L-shaped belt path (`Shift+drag`) with optional hotkey-triggered (`T`/`U`) underground bridging
- * over obstacles along straight legs. NEVER bridges automatically unless `tunnelObstacles` is true!
+ * Multi-waypoint Shapez 2 L-shaped belt planner (default click-to-click mode + middle-click waypoints).
+ * - Each locked waypoint remembers its own `flipCorner` preference.
+ * - `currentFlipCorner` (`F` key) flips only the active final leg.
+ * - `tunnelObstacles` (`T` key) bridges straight-leg obstacles with same-tier underground pairs.
+ * - `endRotation` (`R` key) rotates the terminal belt tile's exit direction.
  */
-export function buildPlannedBeltPathWithTunnels(
+export function buildMultiWaypointBeltPath(
   doc: BlueprintDocument,
   floor: number,
-  start: [number, number],
+  waypoints: BeltWaypoint[],
   end: [number, number],
   options: {
-    flipCorner: boolean;
+    currentFlipCorner: boolean;
     reverse: boolean;
     fallbackRotation: Rotation;
     tunnelObstacles: boolean;
+    endRotation?: Rotation | null;
     maxLength?: number;
   }
 ): BeltCellSpec[] {
-  const baseSpecs = buildPlannedBeltPath(start, end, options);
-  if (!options.tunnelObstacles || baseSpecs.length < 3) return baseSpecs;
+  if (waypoints.length === 0) return [];
+
+  const cells: Array<[number, number]> = [waypoints[0].cell];
+  const appendLeg = (from: [number, number], to: [number, number], flipCorner: boolean) => {
+    const steps = interpolateOrthogonalCells(from, to, !flipCorner);
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      const prev = cells[cells.length - 1];
+      if (prev && prev[0] === s[0] && prev[1] === s[1]) continue;
+      cells.push(s);
+    }
+  };
+
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    appendLeg(waypoints[i].cell, waypoints[i + 1].cell, waypoints[i].flipCorner);
+  }
+  appendLeg(waypoints[waypoints.length - 1].cell, end, options.currentFlipCorner);
+
+  const waypointKeys = new Set<string>();
+  for (let i = 0; i < waypoints.length; i++) {
+    waypointKeys.add(`${waypoints[i].cell[0]},${waypoints[i].cell[1]}`);
+  }
+
+  const baseSpecs = cellsToBeltSpecs(cells, options.fallbackRotation, options.reverse).map((s) =>
+    waypointKeys.has(`${s.x},${s.y}`) ? { ...s, isWaypoint: true } : s
+  );
+
+  if (!options.tunnelObstacles || baseSpecs.length < 3) {
+    return applyEndRotationOverride(baseSpecs, options.endRotation);
+  }
 
   const maxLen = options.maxLength ?? 8;
   const isObstacleForLeg = (cellX: number, cellY: number, legRot: Rotation): boolean => {
@@ -398,8 +459,22 @@ export function buildPlannedBeltPathWithTunnels(
         }
         if (exitIdx < leg.length && exitIdx - i <= maxLen && !isObstacleForLeg(leg[exitIdx].x, leg[exitIdx].y, legRot)) {
           const pid = pairCounter++;
-          outLeg.push({ x: leg[i].x, y: leg[i].y, rotation: legRot, kind: 'underground-in', pairIndex: pid });
-          outLeg.push({ x: leg[exitIdx].x, y: leg[exitIdx].y, rotation: legRot, kind: 'underground-out', pairIndex: pid });
+          outLeg.push({
+            x: leg[i].x,
+            y: leg[i].y,
+            rotation: legRot,
+            kind: 'underground-in',
+            pairIndex: pid,
+            ...(leg[i].isWaypoint ? { isWaypoint: true } : {}),
+          });
+          outLeg.push({
+            x: leg[exitIdx].x,
+            y: leg[exitIdx].y,
+            rotation: legRot,
+            kind: 'underground-out',
+            pairIndex: pid,
+            ...(leg[exitIdx].isWaypoint ? { isWaypoint: true } : {}),
+          });
           i = exitIdx + 1;
           continue;
         }
@@ -410,7 +485,35 @@ export function buildPlannedBeltPathWithTunnels(
     for (const s of outLeg) result.push(s);
   }
 
-  return result;
+  return applyEndRotationOverride(result, options.endRotation);
+}
+
+/**
+ * Planned L-shaped belt path with optional hotkey-triggered (`T`) underground bridging
+ * over obstacles along straight legs. NEVER bridges automatically unless `tunnelObstacles` is true!
+ */
+export function buildPlannedBeltPathWithTunnels(
+  doc: BlueprintDocument,
+  floor: number,
+  start: [number, number],
+  end: [number, number],
+  options: {
+    flipCorner: boolean;
+    reverse: boolean;
+    fallbackRotation: Rotation;
+    tunnelObstacles: boolean;
+    endRotation?: Rotation | null;
+    maxLength?: number;
+  }
+): BeltCellSpec[] {
+  return buildMultiWaypointBeltPath(doc, floor, [{ cell: start, flipCorner: options.flipCorner }], end, {
+    currentFlipCorner: options.flipCorner,
+    reverse: options.reverse,
+    fallbackRotation: options.fallbackRotation,
+    tunnelObstacles: options.tunnelObstacles,
+    endRotation: options.endRotation,
+    maxLength: options.maxLength,
+  });
 }
 
 /**

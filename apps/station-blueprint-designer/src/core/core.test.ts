@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyEndRotationOverride,
   buildBeltStrokeSpecs,
+  buildMultiWaypointBeltPath,
   buildPlannedBeltPath,
   buildPlannedBeltPathWithTunnels,
   extendBeltStroke,
@@ -2406,5 +2408,54 @@ describe('Shapez 2 F / Shift+F Mirror Symmetry (geometry + commands + camera)', 
     rig.targetYaw = (3 * Math.PI) / 2; // Looking East (+Y right)
     expect(rig.getScreenMirrorAxis(false)).toBe('y');
     expect(rig.getScreenMirrorAxis(true)).toBe('x');
+  });
+
+  it('builds multi-waypoint L-shaped belt paths with independent leg corners, waypoint markers, auto tunnels, and R terminal rotation override', () => {
+    let doc = createEmptyBlueprint('multi-waypoint-belt');
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    // Perpendicular obstacle belt on leg 2 at (8, 8) going East so a South-going leg must tunnel over it
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt', x: 8, y: 8, floor: 0, rotation: 0 }).doc;
+
+    const specs = buildMultiWaypointBeltPath(
+      doc,
+      0,
+      [
+        { cell: [2, 4], flipCorner: false }, // Leg 1: (2,4) -> (8,6) X-first -> corner at (8,4)
+        { cell: [8, 6], flipCorner: true },  // Waypoint pinned at (8,6)
+      ],
+      [12, 10], // Leg 2: (8,6) -> (12,10) Y-first -> goes South over obstacle (8,8), then East to (12,10)
+      {
+        currentFlipCorner: true,
+        reverse: false,
+        fallbackRotation: 0,
+        tunnelObstacles: true,
+        endRotation: 3, // Rotate terminal cell North via R!
+      }
+    );
+
+    // Waypoint cells marked for preview diamond rendering
+    expect(specs.some((s) => s.x === 2 && s.y === 4 && s.isWaypoint)).toBe(true);
+    expect(specs.some((s) => s.x === 8 && s.y === 6 && s.isWaypoint)).toBe(true);
+    // Leg 1 took X-first corner (8,4)
+    expect(specs.some((s) => s.x === 8 && s.y === 4)).toBe(true);
+    // Leg 2 tunneled over perpendicular belt at (8,8): IN at (8,7), OUT at (8,9), skipping (8,8)
+    expect(specs.some((s) => s.x === 8 && s.y === 8)).toBe(false);
+    expect(specs.some((s) => s.x === 8 && s.y === 7 && s.kind === 'underground-in' && s.rotation === 1)).toBe(true);
+    expect(specs.some((s) => s.x === 8 && s.y === 9 && s.kind === 'underground-out' && s.rotation === 1)).toBe(true);
+    // Terminal belt cell at (12,10) honors R override (rotation 3 = North) instead of incoming East (0)
+    const last = specs[specs.length - 1];
+    expect([last.x, last.y, last.rotation]).toEqual([12, 10, 3]);
+
+    // Terminal override works for freehand strokes too, but never corrupts an underground-out exit tile
+    const freeSpecs = buildBeltStrokeSpecs([[2, 2], [3, 2], [4, 2]], [], 0, false, 1);
+    expect(freeSpecs[freeSpecs.length - 1].rotation).toBe(1);
+    const ugEndSpecs = applyEndRotationOverride(
+      [
+        { x: 2, y: 2, rotation: 0, kind: 'underground-in', pairIndex: 0 },
+        { x: 5, y: 2, rotation: 0, kind: 'underground-out', pairIndex: 0 },
+      ],
+      1
+    );
+    expect(ugEndSpecs[1].rotation).toBe(0);
   });
 });
