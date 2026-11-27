@@ -30,6 +30,7 @@ export function serializeBlueprint(doc: BlueprintDocument): string {
     ...(doc.extensions ?? {}),
     format: CURRENT_FORMAT,
     formatVersion: CURRENT_FORMAT_VERSION,
+    ...(doc.category === 'ship' ? { category: 'ship' } : {}),
     id: doc.id,
     name: doc.name,
     ...(doc.description ? { description: doc.description } : {}),
@@ -222,7 +223,7 @@ export function deserializeBlueprintObject(parsed: unknown): DecodeResult | Deco
   }
 
   const knownKeys = new Set([
-    'format', 'formatVersion', 'id', 'name', 'description',
+    'format', 'formatVersion', 'category', 'id', 'name', 'description',
     'gameData', 'modules', 'buildings', 'buildables', 'nativeMeta',
   ]);
   const extensions: Record<string, unknown> = {};
@@ -234,11 +235,20 @@ export function deserializeBlueprintObject(parsed: unknown): DecodeResult | Deco
       ? (obj.nativeMeta as Record<string, unknown>)
       : undefined;
 
+  // Infer ship category if explicitly marked or if all modules are ship modules and buildings is empty
+  const explicitCategory = obj.category === 'ship' ? 'ship' : obj.category === 'station' ? 'station' : undefined;
+  const inferredCategory =
+    explicitCategory ??
+    (modules.length > 0 && buildings.length === 0 && modules.every((m) => getModuleDef(m.type)?.domain === 'ship')
+      ? 'ship'
+      : undefined);
+
   return {
     ok: true,
     doc: {
       format: CURRENT_FORMAT,
       formatVersion: CURRENT_FORMAT_VERSION,
+      ...(inferredCategory === 'ship' ? { category: 'ship' as const } : {}),
       id,
       name,
       ...(description ? { description } : {}),

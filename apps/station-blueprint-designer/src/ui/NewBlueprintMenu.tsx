@@ -55,7 +55,7 @@ export const NewBlueprintMenu: React.FC<NewBlueprintMenuProps> = ({
           </button>
           <button
             type="button"
-            className="new-bp-item reserved"
+            className="new-bp-item"
             role="menuitem"
             onClick={() => choose('ship')}
           >

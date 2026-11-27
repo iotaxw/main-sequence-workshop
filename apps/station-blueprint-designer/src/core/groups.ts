@@ -1,5 +1,6 @@
+import { getModuleDef } from './catalog';
 import type { Lang } from './i18n';
-import type { ViewMode } from './types';
+import type { BlueprintCategory, ViewMode } from './types';
 
 export interface PaletteGroupDef {
   id: string;
@@ -163,6 +164,86 @@ export const STATION_GROUPS: PaletteGroupDef[] = [
   },
 ];
 
+/**
+ * Ship Dock Groups (6 clean slots matching native ship categories).
+ * Mirror variants (L/R or Top/Bottom) are toggled smoothly via `F` while still resolving
+ * back to their parent group so the active dock slot stays highlighted!
+ */
+export const SHIP_GROUPS: PaletteGroupDef[] = [
+  {
+    id: 'sh-pilot',
+    slot: 1,
+    name: '驾驶核心',
+    nameEn: 'Bridge',
+    members: ['BPO_Cockpit_01', 'BPO_Cockpit_02', 'BPO_Cockpit_03', 'BPO_DockingCollar'],
+  },
+  {
+    id: 'sh-hull',
+    slot: 2,
+    name: '船体结构',
+    nameEn: 'Hull',
+    members: [
+      'BPO_Body_01',
+      'BPO_Body_02',
+      'BPO_ShipCorner_01',
+      'BPO_WindowBlock',
+      'BPO_Frame_01',
+      'BPO_FrameSlope_01T',
+      'BPO_LadderBlock',
+      'BPO_LandingGear_01',
+    ],
+  },
+  {
+    id: 'sh-thruster',
+    slot: 3,
+    name: '推进动力',
+    nameEn: 'Thrusters',
+    members: ['BPO_Thruster_02R', 'BPO_Thruster_04R', 'BPO_Thruster_03', 'BPO_Thruster_05'],
+  },
+  {
+    id: 'sh-utility',
+    slot: 4,
+    name: '能源与功能',
+    nameEn: 'Systems',
+    members: [
+      'BPO_ReactorBlock_Small',
+      'BPO_WarpDriveBlock',
+      'BPO_InterstellarWarpDriveBlock',
+      'BPO_ShipContainerBlock',
+      'BPO_WorkstationBlock',
+      'BPO_Hangar_2',
+      'BPO_AstronomicScanner',
+      'BPO_BiosampleCollector',
+    ],
+  },
+  {
+    id: 'sh-weapons',
+    slot: 5,
+    name: '武器与作业',
+    nameEn: 'Weapons',
+    members: [
+      'BPO_CannonBlock',
+      'BPO_LanceBlock',
+      'BPO_MissileLauncherBlock_01',
+      'BPO_ShipLaserTurretBlock_01',
+      'BPO_MiningLaserBlock',
+      'BPO_TractorBeamBlock',
+    ],
+  },
+  {
+    id: 'sh-defense',
+    slot: 6,
+    name: '护盾与装甲',
+    nameEn: 'Defense',
+    members: [
+      'BPO_ShipShieldGenerator_01',
+      'BPO_Armour_01R',
+      'BPO_ArmourSlope_01T',
+      'BPO_ArmourSlope_02T',
+    ],
+  },
+];
+
 const SHORT_LABELS: Record<string, string> = {
   // Logistics
   DAT_ConveyorBelt: '传送带 I',
@@ -232,6 +313,52 @@ const SHORT_LABELS: Record<string, string> = {
   BPO_StationTurretBlock_01: '炮塔',
   BPO_StationArmour_01: '装甲·顶',
   BPO_StationArmour_01B: '装甲·底',
+  // Ship modules
+  BPO_Cockpit_01: '驾驶舱',
+  BPO_Cockpit_02: '小舰桥',
+  BPO_Cockpit_03: '中舰桥',
+  BPO_DockingCollar: '对接舱',
+  BPO_Body_01: '居住舱',
+  BPO_Body_02: '舷窗舱',
+  BPO_ShipCorner_01: '角窗舱',
+  BPO_WindowBlock: '窗户',
+  BPO_Frame_01: '框架',
+  BPO_FrameSlope_01T: '框斜·顶',
+  BPO_FrameSlope_01B: '框斜·底',
+  BPO_LadderBlock: '梯子',
+  BPO_LandingGear_01: '起落架',
+  BPO_Thruster_02R: '小推·右',
+  BPO_Thruster_02L: '小推·左',
+  BPO_Thruster_04R: '遗迹推·右',
+  BPO_Thruster_04L: '遗迹推·左',
+  BPO_Thruster_03: '中推',
+  BPO_Thruster_05: '大推',
+  BPO_ReactorBlock_Small: '反应堆',
+  BPO_WarpDriveBlock: '曲速驱动',
+  BPO_InterstellarWarpDriveBlock: '星际曲速',
+  BPO_ShipContainerBlock: '货舱',
+  BPO_WorkstationBlock: '工作站',
+  BPO_Hangar_2: '机库',
+  BPO_AstronomicScanner: '天文扫描',
+  BPO_BiosampleCollector: '生物采样',
+  BPO_CannonBlock: '等离子炮',
+  BPO_CannonBlock_B: '等离子·底',
+  BPO_LanceBlock: '长枪',
+  BPO_MissileLauncherBlock_01: '导弹井',
+  BPO_ShipLaserTurretBlock_01: '点防御',
+  BPO_ShipLaserTurretBlock_01B: '点防·底',
+  BPO_MiningLaserBlock: '采矿光',
+  BPO_MiningLaserBlock_B: '采矿·底',
+  BPO_TractorBeamBlock: '牵引束',
+  BPO_TractorBeamBlock_B: '牵引·底',
+  BPO_ShipShieldGenerator_01: '护盾',
+  BPO_ShipShieldGenerator_01B: '护盾·底',
+  BPO_Armour_01R: '装甲翼·右',
+  BPO_Armour_01L: '装甲翼·左',
+  BPO_ArmourSlope_01T: '斜甲 1×1',
+  BPO_ArmourSlope_01B: '斜甲1·底',
+  BPO_ArmourSlope_02T: '斜甲 2×1',
+  BPO_ArmourSlope_02B: '斜甲2·底',
 };
 
 const SHORT_LABELS_EN: Record<string, string> = {
@@ -298,6 +425,52 @@ const SHORT_LABELS_EN: Record<string, string> = {
   BPO_StationTurretBlock_01: 'Turret',
   BPO_StationArmour_01: 'Arm Top',
   BPO_StationArmour_01B: 'Arm Bot',
+  // Ship modules
+  BPO_Cockpit_01: 'Cockpit',
+  BPO_Cockpit_02: 'Bridge S',
+  BPO_Cockpit_03: 'Bridge M',
+  BPO_DockingCollar: 'Collar',
+  BPO_Body_01: 'Hab',
+  BPO_Body_02: 'Hab Win',
+  BPO_ShipCorner_01: 'Corner',
+  BPO_WindowBlock: 'Window',
+  BPO_Frame_01: 'Frame',
+  BPO_FrameSlope_01T: 'Slope T',
+  BPO_FrameSlope_01B: 'Slope B',
+  BPO_LadderBlock: 'Ladder',
+  BPO_LandingGear_01: 'Gear',
+  BPO_Thruster_02R: 'Thr S-R',
+  BPO_Thruster_02L: 'Thr S-L',
+  BPO_Thruster_04R: 'Relic R',
+  BPO_Thruster_04L: 'Relic L',
+  BPO_Thruster_03: 'Thr Med',
+  BPO_Thruster_05: 'Thr Lrg',
+  BPO_ReactorBlock_Small: 'Reactor',
+  BPO_WarpDriveBlock: 'Warp',
+  BPO_InterstellarWarpDriveBlock: 'StarWarp',
+  BPO_ShipContainerBlock: 'Cargo',
+  BPO_WorkstationBlock: 'Bench',
+  BPO_Hangar_2: 'Hangar',
+  BPO_AstronomicScanner: 'Scanner',
+  BPO_BiosampleCollector: 'BioCol',
+  BPO_CannonBlock: 'Cannon',
+  BPO_CannonBlock_B: 'Cannon B',
+  BPO_LanceBlock: 'Lance',
+  BPO_MissileLauncherBlock_01: 'Missile',
+  BPO_ShipLaserTurretBlock_01: 'PD Laser',
+  BPO_ShipLaserTurretBlock_01B: 'PD Bot',
+  BPO_MiningLaserBlock: 'Mining',
+  BPO_MiningLaserBlock_B: 'Mining B',
+  BPO_TractorBeamBlock: 'Tractor',
+  BPO_TractorBeamBlock_B: 'Tractor B',
+  BPO_ShipShieldGenerator_01: 'Shield',
+  BPO_ShipShieldGenerator_01B: 'Shield B',
+  BPO_Armour_01R: 'Wing R',
+  BPO_Armour_01L: 'Wing L',
+  BPO_ArmourSlope_01T: 'Arm 1×1',
+  BPO_ArmourSlope_01B: 'Arm 1B',
+  BPO_ArmourSlope_02T: 'Arm 2×1',
+  BPO_ArmourSlope_02B: 'Arm 2B',
 };
 
 export function getShortLabel(id: string, fallback?: string, lang: Lang = 'zh'): string {
@@ -311,22 +484,39 @@ export function getGroupName(group: PaletteGroupDef, lang: Lang): string {
   return lang === 'en' ? group.nameEn : group.name;
 }
 
-export function getGroupsForView(viewMode: ViewMode): PaletteGroupDef[] {
+export function getGroupsForView(viewMode: ViewMode, category: BlueprintCategory = 'station'): PaletteGroupDef[] {
+  if (category === 'ship') return SHIP_GROUPS;
   return viewMode === 'station' ? STATION_GROUPS : BUILDING_GROUPS;
 }
 
-export function findGroupForEntity(viewMode: ViewMode, entityId: string): PaletteGroupDef | undefined {
-  return getGroupsForView(viewMode).find((g) => g.members.includes(entityId));
+export function findGroupForEntity(
+  viewMode: ViewMode,
+  entityId: string,
+  category: BlueprintCategory = 'station'
+): PaletteGroupDef | undefined {
+  const groups = getGroupsForView(viewMode, category);
+  const direct = groups.find((g) => g.members.includes(entityId));
+  if (direct) return direct;
+  const mirrorId = getModuleDef(entityId)?.mirrorId;
+  if (mirrorId) {
+    return groups.find((g) => g.members.includes(mirrorId));
+  }
+  return undefined;
 }
 
 export function cycleVariantInGroup(
   viewMode: ViewMode,
   entityId: string,
-  delta: 1 | -1 = 1
+  delta: 1 | -1 = 1,
+  category: BlueprintCategory = 'station'
 ): string | null {
-  const group = findGroupForEntity(viewMode, entityId);
+  const group = findGroupForEntity(viewMode, entityId, category);
   if (!group || group.members.length <= 1) return null;
-  const idx = group.members.indexOf(entityId);
+  let idx = group.members.indexOf(entityId);
+  if (idx < 0) {
+    const mirrorId = getModuleDef(entityId)?.mirrorId;
+    idx = mirrorId ? group.members.indexOf(mirrorId) : -1;
+  }
   if (idx < 0) return group.members[0];
   const nextIdx = (idx + delta + group.members.length) % group.members.length;
   return group.members[nextIdx];

@@ -6,6 +6,7 @@ import {
   getBuildingSizeCells,
   getBuildingSpatialIndex,
   getDocSpatialIndex,
+  getFrameGridSpec,
   getMirroredBuildingRotation,
   getMirroredModuleRotation,
   getModuleBoundsM,
@@ -20,11 +21,11 @@ import {
   remapDockPortsMirror,
   remapPortIndexMirror,
   rotationToDelta,
-  STATION_UNIT_M,
   validateBuildingPlacement,
   validateModulePlacement,
 } from './geometry';
 import type {
+  BlueprintCategory,
   BlueprintDocument,
   BuildableDef,
   PlacedBuilding,
@@ -117,10 +118,14 @@ export function createEntityId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${(idCounter++).toString(36)}_${rand}`;
 }
 
-export function createEmptyBlueprint(name = '未命名空间站'): BlueprintDocument {
+export function createEmptyBlueprint(
+  name = '未命名空间站',
+  category: BlueprintCategory = 'station'
+): BlueprintDocument {
   return {
     format: 'station-blueprint-designer',
     formatVersion: 2,
+    ...(category === 'ship' ? { category: 'ship' as const } : {}),
     id: createEntityId('bp'),
     name,
     gameData: {
@@ -701,10 +706,11 @@ export function mirrorSelectionInPlaceCmd(
       minGy = Math.min(minGy, m.gy);
       maxGy = Math.max(maxGy, m.gy + du);
     }
+    const unitM = getFrameGridSpec(doc.category).unitM;
     sumGx = minGx + maxGx;
     sumGy = minGy + maxGy;
-    sumX = sumGx * STATION_UNIT_M;
-    sumY = sumGy * STATION_UNIT_M;
+    sumX = sumGx * unitM;
+    sumY = sumGy * unitM;
   } else {
     let minX = Infinity;
     let maxX = -Infinity;
@@ -728,18 +734,30 @@ export function mirrorSelectionInPlaceCmd(
   for (const m of selectedModules) {
     const def = getModuleDef(m.type);
     const [wu, du] = def ? getModuleSizeUnits(def, m.rotation) : [1, 1];
-    const nextRot = getMirroredModuleRotation(def, m.rotation, axis);
+    // For ship modules with native MirrorClass pairs (e.g. L/R thrusters or wings), swap mirrorId!
+    const swapMirrorType =
+      def?.domain === 'ship' && def.mirrorId && def.canRotate === false
+        ? def.mirrorId
+        : def?.domain === 'ship' && def.mirrorId && (def.id.endsWith('L') || def.id.endsWith('R'))
+          ? def.mirrorId
+          : m.type;
+    const nextRot =
+      def?.domain === 'ship' && def.canRotate === false
+        ? m.rotation
+        : getMirroredModuleRotation(def, m.rotation, axis);
     const nextGx = axis === 'x' ? sumGx - (m.gx + wu) : m.gx;
     const nextGy = axis === 'y' ? sumGy - (m.gy + du) : m.gy;
     const remappedDockPorts = remapDockPortsMirror(def, m.rotation, nextRot, axis, m.dockPorts);
     const nextMod: PlacedModule = {
       ...m,
+      type: swapMirrorType,
       gx: nextGx,
       gy: nextGy,
       rotation: nextRot,
       ...(remappedDockPorts ? { dockPorts: remappedDockPorts } : {}),
     };
     if (
+      nextMod.type !== m.type ||
       nextMod.gx !== m.gx ||
       nextMod.gy !== m.gy ||
       nextMod.rotation !== m.rotation ||
@@ -995,17 +1013,19 @@ export function extractSelectionAsBlueprint(
   };
 
   if (selectedModules.length > 0) {
+    const unitM = getFrameGridSpec(doc.category).unitM;
     let minGx = Infinity;
     let minGy = Infinity;
     for (const m of selectedModules) {
       minGx = Math.min(minGx, m.gx);
       minGy = Math.min(minGy, m.gy);
     }
-    const shiftXM = minGx * STATION_UNIT_M;
-    const shiftYM = minGy * STATION_UNIT_M;
+    const shiftXM = minGx * unitM;
+    const shiftYM = minGy * unitM;
     return {
       format: 'station-blueprint-designer',
       formatVersion: 2,
+      ...(doc.category === 'ship' ? { category: 'ship' as const } : {}),
       id: createEntityId('bp'),
       name,
       gameData: { ...doc.gameData },
@@ -1065,14 +1085,15 @@ const blueprintBoundsCache = new WeakMap<
 export function getBlueprintBoundsM(bp: BlueprintDocument): { width: number; depth: number; floors: number } {
   const cached = blueprintBoundsCache.get(bp);
   if (cached) return cached;
+  const unitM = getFrameGridSpec(bp.category).unitM;
   let maxX = 0;
   let maxY = 0;
   let maxF = 1;
   for (const m of bp.modules) {
     const def = getModuleDef(m.type);
     const [wu, du, hu] = def ? getModuleSizeUnits(def, m.rotation) : [1, 1, 1];
-    maxX = Math.max(maxX, (m.gx + wu) * STATION_UNIT_M);
-    maxY = Math.max(maxY, (m.gy + du) * STATION_UNIT_M);
+    maxX = Math.max(maxX, (m.gx + wu) * unitM);
+    maxY = Math.max(maxY, (m.gy + du) * unitM);
     maxF = Math.max(maxF, m.floor + hu);
   }
   for (const b of bp.buildings) {
@@ -1089,9 +1110,10 @@ export function getBlueprintBoundsM(bp: BlueprintDocument): { width: number; dep
 
 /** Rotate an entire blueprint 90° CW (`delta=1`) or CCW (`delta=-1`), preserving relative positions */
 export function rotateBlueprint(bp: BlueprintDocument, delta: 1 | -1): BlueprintDocument {
+  const unitM = getFrameGridSpec(bp.category).unitM;
   const { width, depth } = getBlueprintBoundsM(bp);
-  const wUnits = Math.ceil(width / STATION_UNIT_M);
-  const dUnits = Math.ceil(depth / STATION_UNIT_M);
+  const wUnits = Math.ceil(width / unitM);
+  const dUnits = Math.ceil(depth / unitM);
   const cw = delta === 1;
 
   const modules: PlacedModule[] = bp.modules.map((m) => {
@@ -1108,8 +1130,8 @@ export function rotateBlueprint(bp: BlueprintDocument, delta: 1 | -1): Blueprint
     };
   });
 
-  const baseW = bp.modules.length > 0 ? wUnits * STATION_UNIT_M : width;
-  const baseD = bp.modules.length > 0 ? dUnits * STATION_UNIT_M : depth;
+  const baseW = bp.modules.length > 0 ? wUnits * unitM : width;
+  const baseD = bp.modules.length > 0 ? dUnits * unitM : depth;
 
   const buildings: PlacedBuilding[] = bp.buildings.map((b) => {
     const def = getBuildableDef(b.type);
@@ -1134,19 +1156,28 @@ export function rotateBlueprint(bp: BlueprintDocument, delta: 1 | -1): Blueprint
  * Quantum Sci Lab, asymmetric docks, splitter/balancer port configs, and underground pairs).
  */
 export function mirrorBlueprint(bp: BlueprintDocument, axis: MirrorAxis = 'x'): BlueprintDocument {
+  const unitM = getFrameGridSpec(bp.category).unitM;
   const { width, depth } = getBlueprintBoundsM(bp);
-  const wUnits = Math.ceil(width / STATION_UNIT_M);
-  const dUnits = Math.ceil(depth / STATION_UNIT_M);
-  const baseW = bp.modules.length > 0 ? wUnits * STATION_UNIT_M : width;
-  const baseD = bp.modules.length > 0 ? dUnits * STATION_UNIT_M : depth;
+  const wUnits = Math.ceil(width / unitM);
+  const dUnits = Math.ceil(depth / unitM);
+  const baseW = bp.modules.length > 0 ? wUnits * unitM : width;
+  const baseD = bp.modules.length > 0 ? dUnits * unitM : depth;
 
   const modules: PlacedModule[] = bp.modules.map((m) => {
     const def = getModuleDef(m.type);
     const [wu, du] = def ? getModuleSizeUnits(def, m.rotation) : [1, 1];
-    const nextRot = getMirroredModuleRotation(def, m.rotation, axis);
+    const swapMirrorType =
+      def?.domain === 'ship' && def.mirrorId && (def.canRotate === false || def.id.endsWith('L') || def.id.endsWith('R'))
+        ? def.mirrorId
+        : m.type;
+    const nextRot =
+      def?.domain === 'ship' && def.canRotate === false
+        ? m.rotation
+        : getMirroredModuleRotation(def, m.rotation, axis);
     const remappedDockPorts = remapDockPortsMirror(def, m.rotation, nextRot, axis, m.dockPorts);
     return {
       ...m,
+      type: swapMirrorType,
       gx: axis === 'x' ? wUnits - (m.gx + wu) : m.gx,
       gy: axis === 'y' ? dUnits - (m.gy + du) : m.gy,
       rotation: nextRot,
@@ -1179,18 +1210,19 @@ export function mirrorBlueprintX(bp: BlueprintDocument): BlueprintDocument {
 
 /**
  * Preview & Stamp a blueprint onto the target document at anchor `(anchorX, anchorY, anchorFloor)`.
- * - If blueprint has station modules, anchor snaps to 16m station grid `(gx, gy)`.
+ * - If blueprint has modules, anchor snaps to frame grid `(gx, gy)` (16m station / 8m ship).
  * - If blueprint is building-only, anchor is 1m cell `(x, y)`.
  */
 export function computeStampCandidates(
   bp: BlueprintDocument,
   anchor: { x: number; y: number; floor: number }
 ): { modules: PlacedModule[]; buildings: PlacedBuilding[] } {
+  const unitM = getFrameGridSpec(bp.category).unitM;
   const hasModules = bp.modules.length > 0;
-  const shiftGx = hasModules ? Math.floor(anchor.x / STATION_UNIT_M) : 0;
-  const shiftGy = hasModules ? Math.floor(anchor.y / STATION_UNIT_M) : 0;
-  const shiftX = hasModules ? shiftGx * STATION_UNIT_M : anchor.x;
-  const shiftY = hasModules ? shiftGy * STATION_UNIT_M : anchor.y;
+  const shiftGx = hasModules ? Math.floor(anchor.x / unitM) : 0;
+  const shiftGy = hasModules ? Math.floor(anchor.y / unitM) : 0;
+  const shiftX = hasModules ? shiftGx * unitM : anchor.x;
+  const shiftY = hasModules ? shiftGy * unitM : anchor.y;
 
   const modules: PlacedModule[] = bp.modules.map((m) => ({
     ...m,
@@ -1238,12 +1270,13 @@ export function validateStampBlueprintPlacement(
   anchor: { x: number; y: number; floor: number },
   options: { forceReplace?: boolean } = {}
 ): StampPlacementValidation {
+  const unitM = getFrameGridSpec(doc.category).unitM;
   const forceReplace = Boolean(options.forceReplace);
   const hasModules = bp.modules.length > 0;
-  const shiftGx = hasModules ? Math.floor(anchor.x / STATION_UNIT_M) : 0;
-  const shiftGy = hasModules ? Math.floor(anchor.y / STATION_UNIT_M) : 0;
-  const shiftX = hasModules ? shiftGx * STATION_UNIT_M : anchor.x;
-  const shiftY = hasModules ? shiftGy * STATION_UNIT_M : anchor.y;
+  const shiftGx = hasModules ? Math.floor(anchor.x / unitM) : 0;
+  const shiftGy = hasModules ? Math.floor(anchor.y / unitM) : 0;
+  const shiftX = hasModules ? shiftGx * unitM : anchor.x;
+  const shiftY = hasModules ? shiftGy * unitM : anchor.y;
   const moduleOffset = { gx: shiftGx, gy: shiftGy, floor: anchor.floor };
   const moduleIssues: Array<string | null> = new Array(bp.modules.length).fill(null);
   const buildingIssues: Array<string | null> = new Array(bp.buildings.length).fill(null);
@@ -1313,7 +1346,7 @@ export function validateStampBlueprintPlacement(
   const isOnStampFloor = (x: number, y: number, floor: number): boolean => {
     if (isCellBuildable(doc, x, y, floor)) return true;
     const grid = ghostModGridByFloor.get(floor);
-    const candidates = grid?.get(packCellKey(Math.floor(x / STATION_UNIT_M), Math.floor(y / STATION_UNIT_M)));
+    const candidates = grid?.get(packCellKey(Math.floor(x / unitM), Math.floor(y / unitM)));
     if (!candidates) return false;
     for (const m of candidates) {
       const def = getModuleDef(m.type);

@@ -5923,5 +5923,2599 @@
       ],
       "durationSeconds": 2
     }
+  ],
+  "shipModules": [
+    {
+      "id": "BPO_Body_01",
+      "nameEn": "Small Habitat",
+      "nameZh": "小型居住舱",
+      "descriptionZh": "基础构件，在各个方向均有连接口。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.01,
+        "maxX": 4.01,
+        "minY": -4.01,
+        "maxY": 4,
+        "minZ": -0.84,
+        "maxZ": 3.15
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Body_01"
+    },
+    {
+      "id": "BPO_Body_02",
+      "nameEn": "Small Habitat Window",
+      "nameZh": "小型居住舱窗",
+      "descriptionZh": "带大窗户的基础构件。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.01,
+        "maxX": 4.01,
+        "minY": -4.01,
+        "maxY": 4,
+        "minZ": -0.84,
+        "maxZ": 3.16
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 10,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Body_02"
+    },
+    {
+      "id": "BPO_ShipCorner_01",
+      "nameEn": "Corner Window",
+      "nameZh": "角落窗",
+      "descriptionZh": "带窗户的小型角落模块。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.01,
+        "maxX": 4.01,
+        "minY": -4.01,
+        "maxY": 4.01,
+        "minZ": -0.84,
+        "maxZ": 3.15
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 10,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ShipCorner_01"
+    },
+    {
+      "id": "BPO_WindowBlock",
+      "nameEn": "Window",
+      "nameZh": "窗户",
+      "descriptionZh": "用于观星的窗户。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": 0.03,
+        "minY": -1.97,
+        "minZ": 0,
+        "maxX": 1.97,
+        "maxY": 1.97,
+        "maxZ": 2.41
+      },
+      "meshBoundsM": {
+        "minX": 0,
+        "maxX": 1.7,
+        "minY": -1.63,
+        "maxY": 1.61,
+        "minZ": -0.13,
+        "maxZ": 2.43
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 1,
+      "hull": 0,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_WindowBlock"
+    },
+    {
+      "id": "BPO_Frame_01",
+      "nameEn": "Frame",
+      "nameZh": "框架",
+      "descriptionZh": "轻型飞船模块。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4,
+        "maxX": 4,
+        "minY": -4,
+        "maxY": 4,
+        "minZ": -0.85,
+        "maxZ": 3.15
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 2,
+      "hull": 5,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Frame_01"
+    },
+    {
+      "id": "BPO_FrameSlope_01T",
+      "nameEn": "Frame Slope (Top)",
+      "nameZh": "框架斜块（顶置）",
+      "descriptionZh": "轻型飞船模块。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4,
+        "maxX": 2,
+        "minY": -2,
+        "maxY": 2,
+        "minZ": -0.85,
+        "maxZ": 2.43
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_FrameSlope_01B",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 1,
+      "hull": 5,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_FrameSlope_01T"
+    },
+    {
+      "id": "BPO_LadderBlock",
+      "nameEn": "Ladder",
+      "nameZh": "梯子",
+      "descriptionZh": "带有梯子的多层构件。",
+      "categoryEn": "Vertical",
+      "categoryZh": "垂直",
+      "sizeUnits": [
+        1,
+        1,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.01,
+        "maxX": 4.01,
+        "minY": -4.01,
+        "maxY": 4.01,
+        "minZ": -0.84,
+        "maxZ": 7.15
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 1,
+          "floorOffset": 1,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 1,
+          "rotation": 3
+        },
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 2,
+          "rotation": 0
+        },
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 10,
+      "hull": 20,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_LadderBlock"
+    },
+    {
+      "id": "BPO_Cockpit_01",
+      "nameEn": "Cockpit",
+      "nameZh": "驾驶舱",
+      "descriptionZh": "用于驾驶飞船。",
+      "categoryEn": "Piloting",
+      "categoryZh": "驾驶",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.01,
+        "maxX": 1.38,
+        "minY": -4,
+        "maxY": 4,
+        "minZ": -0.46,
+        "maxZ": 3.18
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "functionalType": "PilotBlock",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerRole": "none",
+      "shipStats": {
+        "rangeM": 250,
+        "tractorRangeM": 250
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Cockpit_01"
+    },
+    {
+      "id": "BPO_Cockpit_02",
+      "nameEn": "Small Bridge",
+      "nameZh": "小型舰桥",
+      "descriptionZh": "用于驾驶飞船。",
+      "categoryEn": "Piloting",
+      "categoryZh": "驾驶",
+      "sizeUnits": [
+        2,
+        2,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "meshBoundsM": {
+        "minX": -8,
+        "maxX": 4.27,
+        "minY": -8.01,
+        "maxY": 8.01,
+        "minZ": -0.84,
+        "maxZ": 6.06
+      },
+      "heightSpanM": 8,
+      "canRotate": false,
+      "functionalType": "PilotBlock",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -2,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": -2,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Cockpit_02"
+    },
+    {
+      "id": "BPO_Cockpit_03",
+      "nameEn": "Medium Bridge",
+      "nameZh": "中型舰桥",
+      "descriptionZh": "用于驾驶飞船。",
+      "categoryEn": "Piloting",
+      "categoryZh": "驾驶",
+      "sizeUnits": [
+        3,
+        2,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -12,
+        "minY": -8,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 8,
+        "maxZ": 8
+      },
+      "meshBoundsM": {
+        "minX": -12.05,
+        "maxX": 11.98,
+        "minY": -11.8,
+        "maxY": 11.8,
+        "minZ": -0.84,
+        "maxZ": 5.3
+      },
+      "heightSpanM": 8,
+      "canRotate": false,
+      "functionalType": "PilotBlock",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -3,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Cockpit_03"
+    },
+    {
+      "id": "BPO_CannonBlock",
+      "nameEn": "Plasma Cannon",
+      "nameZh": "等离子炮",
+      "descriptionZh": "基础能量武器。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -2.81,
+        "maxX": 4.64,
+        "minY": -2.28,
+        "maxY": 2.28,
+        "minZ": -0.85,
+        "maxZ": 0.65
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_CannonBlock_B",
+      "connectors": [
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerKW": 3000,
+      "powerRole": "weapon",
+      "shipStats": {
+        "rangeM": 600,
+        "damagePerShot": 2,
+        "energyPerShotMJ": 2
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_CannonBlock"
+    },
+    {
+      "id": "BPO_TractorBeamBlock",
+      "nameEn": "Tractor Beam",
+      "nameZh": "牵引光束器",
+      "descriptionZh": "牵引光束器，可拉取小型漂浮物品。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -2.28,
+        "maxX": 3.16,
+        "minY": -2.28,
+        "maxY": 2.28,
+        "minZ": -0.85,
+        "maxZ": 0.73
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_TractorBeamBlock_B",
+      "connectors": [
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerRole": "none",
+      "shipStats": {
+        "rangeM": 250,
+        "tractorRangeM": 250
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_TractorBeamBlock"
+    },
+    {
+      "id": "BPO_MiningLaserBlock",
+      "nameEn": "Mining Laser",
+      "nameZh": "采矿激光器",
+      "descriptionZh": "专用于采矿的短程激光武器。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -2.49,
+        "maxX": 4.45,
+        "minY": -2.28,
+        "maxY": 2.28,
+        "minZ": -0.85,
+        "maxZ": 1.88
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_MiningLaserBlock_B",
+      "connectors": [],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerKW": 3000,
+      "powerRole": "mining",
+      "shipStats": {
+        "rangeM": 125,
+        "damagePerSec": 10
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_MiningLaserBlock"
+    },
+    {
+      "id": "BPO_ShipLaserTurretBlock_01",
+      "nameEn": "Point Defence Laser",
+      "nameZh": "点防御激光器",
+      "descriptionZh": "短程光束武器，专门用于跟踪及拦截快速移动的目标。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -3.16,
+        "maxX": 3.16,
+        "minY": -2.34,
+        "maxY": 2.34,
+        "minZ": -0.85,
+        "maxZ": 0.65
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_ShipLaserTurretBlock_01B",
+      "connectors": [
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerRole": "none",
+      "shipStats": {
+        "rangeM": 250
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ShipLaserTurretBlock_01"
+    },
+    {
+      "id": "BPO_MissileLauncherBlock_01",
+      "nameEn": "Missile Launcher",
+      "nameZh": "导弹发射器",
+      "descriptionZh": "中程武器，可发射自动追踪目标的弹体。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 8
+      },
+      "meshBoundsM": {
+        "minX": -4.01,
+        "maxX": 4.01,
+        "minY": -4.01,
+        "maxY": 4,
+        "minZ": -0.85,
+        "maxZ": 7.15
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerRole": "none",
+      "shipStats": {
+        "rangeM": 1000,
+        "missileSilos": 4,
+        "reloadSec": 6
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_MissileLauncherBlock_01"
+    },
+    {
+      "id": "BPO_LanceBlock",
+      "nameEn": "Plasma Lance",
+      "nameZh": "等离子长枪",
+      "descriptionZh": "缓慢但威力强大的能量武器。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        4,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -16,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 16,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -15.5,
+        "maxX": 15.93,
+        "minY": -4.13,
+        "maxY": 4.08,
+        "minZ": -0.8,
+        "maxZ": 3.1
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": -3,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "ShipSide",
+          "gx": -3,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerKW": 7500,
+      "powerRole": "weapon",
+      "shipStats": {
+        "rangeM": 1000,
+        "damagePerShot": 20,
+        "energyPerShotMJ": 10
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_LanceBlock"
+    },
+    {
+      "id": "BPO_Armour_01R",
+      "nameEn": "Armour Wing 2x1 (Right)",
+      "nameZh": "装甲翼2×1（右舷）",
+      "descriptionZh": "轻型装甲部件。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        2,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": 0,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -8,
+        "maxX": 8,
+        "minY": -0.25,
+        "maxY": 4,
+        "minZ": -0.31,
+        "maxZ": 2.62
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_Armour_01L",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 6,
+      "hull": 20,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Armour_01R"
+    },
+    {
+      "id": "BPO_ArmourSlope_01T",
+      "nameEn": "Armour Slope 1×1 (Top)",
+      "nameZh": "装甲斜块1×1（顶置）",
+      "descriptionZh": "轻型装甲部件。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.25,
+        "maxX": 4.01,
+        "minY": -4,
+        "maxY": 4,
+        "minZ": -0.85,
+        "maxZ": 3.15
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_ArmourSlope_01B",
+      "connectors": [
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 10,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ArmourSlope_01T"
+    },
+    {
+      "id": "BPO_ArmourSlope_02T",
+      "nameEn": "Armour Slope 2×1 (Top)",
+      "nameZh": "装甲斜块2×1（顶置）",
+      "descriptionZh": "轻型装甲部件。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        2,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -8.25,
+        "maxX": 8,
+        "minY": -4,
+        "maxY": 4,
+        "minZ": -0.86,
+        "maxZ": 3.15
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_ArmourSlope_02B",
+      "connectors": [
+        {
+          "type": "ShipBottom",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipBottom",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ArmourSlope_02T"
+    },
+    {
+      "id": "BPO_ShipShieldGenerator_01",
+      "nameEn": "Shield Generator Mk. 1",
+      "nameZh": "护盾生成器1型",
+      "descriptionZh": "创建可汲取能量来充能的防护能量场。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -3.83,
+        "maxX": 3.83,
+        "minY": -2.28,
+        "maxY": 2.28,
+        "minZ": -0.85,
+        "maxZ": 1.07
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_ShipShieldGenerator_01B",
+      "connectors": [
+        {
+          "type": "ShipBottom",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerKW": 3000,
+      "powerRole": "shield",
+      "shipStats": {
+        "shieldCapacity": 10,
+        "shieldRecharge": 0.5
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ShipShieldGenerator_01"
+    },
+    {
+      "id": "BPO_Thruster_02R",
+      "nameEn": "Small Thruster (Right)",
+      "nameZh": "小型推进器（右舷）",
+      "descriptionZh": "基础推进器，可提供少量推力。建造更多推进器可以提高飞船的最大速度。",
+      "categoryEn": "Thrusters",
+      "categoryZh": "推进器",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -10,
+        "maxX": 3.18,
+        "minY": -4.01,
+        "maxY": 1.84,
+        "minZ": -0.31,
+        "maxZ": 2.63
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_Thruster_02L",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "thrustKN": 20,
+      "boostThrustKN": 40,
+      "powerKW": 3000,
+      "powerRole": "thruster",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Thruster_02R"
+    },
+    {
+      "id": "BPO_Thruster_04R",
+      "nameEn": "Small Relic Thruster (Right)",
+      "nameZh": "小型遗迹推进器（右舷）",
+      "descriptionZh": "采用遗迹技术改装的小型推进器，可提供更强推力。",
+      "categoryEn": "Thrusters",
+      "categoryZh": "推进器",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -14.61,
+        "maxX": 3.4,
+        "minY": -4.03,
+        "maxY": 3.75,
+        "minZ": -0.7,
+        "maxZ": 3
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_Thruster_04L",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "thrustKN": 60,
+      "boostThrustKN": 120,
+      "powerKW": 9000,
+      "powerRole": "thruster",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Thruster_04R"
+    },
+    {
+      "id": "BPO_Thruster_03",
+      "nameEn": "Medium Thruster",
+      "nameZh": "中型推进器",
+      "descriptionZh": "比较强力的推进器，适用于较大的飞船。建造更多推进器可以提高飞船的最大速度。",
+      "categoryEn": "Thrusters",
+      "categoryZh": "推进器",
+      "sizeUnits": [
+        2,
+        1,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -12,
+        "minY": -4,
+        "minZ": -1,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 9
+      },
+      "meshBoundsM": {
+        "minX": -11.25,
+        "maxX": 4.01,
+        "minY": -3.79,
+        "maxY": 3.79,
+        "minZ": -2.11,
+        "maxZ": 8.41
+      },
+      "heightSpanM": 10,
+      "canRotate": false,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 10,
+      "hull": 20,
+      "thrustKN": 120,
+      "boostThrustKN": 240,
+      "powerKW": 12000,
+      "powerRole": "thruster",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Thruster_03"
+    },
+    {
+      "id": "BPO_Thruster_05",
+      "nameEn": "Large Thruster",
+      "nameZh": "大型推进器",
+      "descriptionZh": "比较强力的推进器，适用于较大的飞船。建造更多推进器可以提高飞船的最大速度。",
+      "categoryEn": "Thrusters",
+      "categoryZh": "推进器",
+      "sizeUnits": [
+        2,
+        3,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -12,
+        "minY": -12,
+        "minZ": -1,
+        "maxX": 4,
+        "maxY": 12,
+        "maxZ": 9
+      },
+      "meshBoundsM": {
+        "minX": -12.76,
+        "maxX": 4.04,
+        "minY": -11.79,
+        "maxY": 11.79,
+        "minZ": -2.34,
+        "maxZ": 8.64
+      },
+      "heightSpanM": 10,
+      "canRotate": false,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": -2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 2,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": -2,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 2,
+          "floorOffset": 1,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 20,
+      "hull": 40,
+      "thrustKN": 720,
+      "boostThrustKN": 1440,
+      "powerKW": 48000,
+      "powerRole": "thruster",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Thruster_05"
+    },
+    {
+      "id": "BPO_DockingCollar",
+      "nameEn": "Docking Collar",
+      "nameZh": "对接舱",
+      "descriptionZh": "用于飞船与空间站对接的连接点。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 0,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.01,
+        "maxX": 4.01,
+        "minY": -4,
+        "maxY": 0.01,
+        "minZ": -0.65,
+        "maxZ": 3.38
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "functionalType": "DockingCollar",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_DockingCollar"
+    },
+    {
+      "id": "BPO_ReactorBlock_Small",
+      "nameEn": "Small Reactor",
+      "nameZh": "小型反应堆",
+      "descriptionZh": "用于为飞船供能的小型发电机。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -3.19,
+        "maxX": 4.01,
+        "minY": -4.01,
+        "maxY": 4,
+        "minZ": -1.56,
+        "maxZ": 3.29
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerGenKW": 24000,
+      "powerRole": "generator",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ReactorBlock_Small"
+    },
+    {
+      "id": "BPO_WarpDriveBlock",
+      "nameEn": "Warp Drive",
+      "nameZh": "曲速驱动",
+      "descriptionZh": "允许飞船在恒星系内高速航行。需要曲速燃料才能运行。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -3.76,
+        "maxX": 4.01,
+        "minY": -4.01,
+        "maxY": 4.01,
+        "minZ": -0.84,
+        "maxZ": 3.15
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "functionalType": "WarpDrive",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 10,
+      "hull": 10,
+      "powerRole": "none",
+      "shipStats": {
+        "warpSpeedMS": 9000,
+        "interstellarWarp": false
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_WarpDriveBlock"
+    },
+    {
+      "id": "BPO_InterstellarWarpDriveBlock",
+      "nameEn": "Interstellar Warp Drive",
+      "nameZh": "星际曲速驱动",
+      "descriptionZh": "允许飞船在星系间航行。需要曲速燃料才能运行。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        2,
+        3,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -12,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 12,
+        "maxZ": 8
+      },
+      "meshBoundsM": {
+        "minX": -8.03,
+        "maxX": 8.01,
+        "minY": -12.02,
+        "maxY": 12.05,
+        "minZ": -0.85,
+        "maxZ": 6.58
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "functionalType": "WarpDrive",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 3,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 3,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": -3,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": -3,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 10,
+      "hull": 10,
+      "powerRole": "none",
+      "shipStats": {
+        "warpSpeedMS": 9000,
+        "interstellarWarp": true
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_InterstellarWarpDriveBlock"
+    },
+    {
+      "id": "BPO_WorkstationBlock",
+      "nameEn": "Workstation",
+      "nameZh": "工作站",
+      "descriptionZh": "提供精炼机与装配机用于制作。无法自动化。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.01,
+        "maxX": 4.01,
+        "minY": 0.13,
+        "maxY": 4,
+        "minZ": -0.65,
+        "maxZ": 3.27
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 1
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerKW": 10500,
+      "powerRole": "workstation",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_WorkstationBlock"
+    },
+    {
+      "id": "BPO_ShipContainerBlock",
+      "nameEn": "Container",
+      "nameZh": "容器",
+      "descriptionZh": "升级飞船的仓库，使你可以堆叠更多物品。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.01,
+        "maxX": 4.01,
+        "minY": -4.01,
+        "maxY": 4.01,
+        "minZ": -0.84,
+        "maxZ": 3.15
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 8,
+      "hull": 10,
+      "powerRole": "none",
+      "shipStats": {
+        "stackBonusPct": 50
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ShipContainerBlock"
+    },
+    {
+      "id": "BPO_LandingGear_01",
+      "nameEn": "Landing Gear",
+      "nameZh": "起落架",
+      "descriptionZh": "允许小型飞船在机库内降落。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4,
+        "maxX": 4,
+        "minY": -3.33,
+        "maxY": 3.33,
+        "minZ": 1.01,
+        "maxZ": 3.16
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_LandingGear_01"
+    },
+    {
+      "id": "BPO_Hangar_2",
+      "nameEn": "Ship Hangar",
+      "nameZh": "飞船机库",
+      "descriptionZh": "允许小型穿梭机和战斗机对接。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        3,
+        4,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -12,
+        "minY": -16,
+        "minZ": 0,
+        "maxX": 12,
+        "maxY": 16,
+        "maxZ": 8
+      },
+      "meshBoundsM": {
+        "minX": -12.01,
+        "maxX": 12.01,
+        "minY": -16.02,
+        "maxY": 16.01,
+        "minZ": -0.85,
+        "maxZ": 7.36
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "functionalType": "hangar",
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 4,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": -4,
+          "floorOffset": 0,
+          "rotation": 3
+        },
+        {
+          "type": "ShipSide",
+          "gx": -3,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": -3,
+          "gy": -1,
+          "floorOffset": 0,
+          "rotation": 2
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 20,
+      "hull": 20,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Hangar_2"
+    },
+    {
+      "id": "BPO_AstronomicScanner",
+      "nameEn": "Astronomic Scanner",
+      "nameZh": "天文扫描器",
+      "descriptionZh": "高级扫描阵列，可用于收集来自恒星和行星的数据。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        2,
+        3,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -12,
+        "minZ": -4,
+        "maxX": 8,
+        "maxY": 12,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -8.07,
+        "maxX": 8.83,
+        "minY": -12.02,
+        "maxY": 12.03,
+        "minZ": -4.29,
+        "maxZ": 3.16
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 3,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": -3,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_AstronomicScanner"
+    },
+    {
+      "id": "BPO_BiosampleCollector",
+      "nameEn": "Biosample Collector",
+      "nameZh": "生物样本取样器",
+      "descriptionZh": "可收集来自附近行星生物圈的外星生命样本的模块。",
+      "categoryEn": "Functional Blocks",
+      "categoryZh": "功能构件",
+      "sizeUnits": [
+        2,
+        3,
+        2
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -12,
+        "minZ": -4,
+        "maxX": 8,
+        "maxY": 12,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -8.08,
+        "maxX": 8.79,
+        "minY": -12.02,
+        "maxY": 12.03,
+        "minZ": -5.36,
+        "maxZ": 3.16
+      },
+      "heightSpanM": 8,
+      "canRotate": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -2,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 3,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": -3,
+          "floorOffset": 0,
+          "rotation": 3
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_BiosampleCollector"
+    },
+    {
+      "id": "BPO_FrameSlope_01B",
+      "nameEn": "Frame Slope (Bottom)",
+      "nameZh": "框架斜块（底挂）",
+      "descriptionZh": "轻型飞船模块。",
+      "categoryEn": "Basic",
+      "categoryZh": "基础",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4,
+        "maxX": 2,
+        "minY": -2,
+        "maxY": 2,
+        "minZ": -0.13,
+        "maxZ": 3.15
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_FrameSlope_01T",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 2
+        },
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 1,
+      "hull": 5,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_FrameSlope_01B"
+    },
+    {
+      "id": "BPO_CannonBlock_B",
+      "nameEn": "Plasma Cannon (Bottom)",
+      "nameZh": "等离子炮（底挂）",
+      "descriptionZh": "基础能量武器。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": -4,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 0
+      },
+      "meshBoundsM": {
+        "minX": -2.81,
+        "maxX": 4.64,
+        "minY": -2.28,
+        "maxY": 2.28,
+        "minZ": -0.85,
+        "maxZ": 0.65
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_CannonBlock",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerKW": 3000,
+      "powerRole": "weapon",
+      "shipStats": {
+        "rangeM": 600,
+        "damagePerShot": 2,
+        "energyPerShotMJ": 2
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_CannonBlock_B"
+    },
+    {
+      "id": "BPO_TractorBeamBlock_B",
+      "nameEn": "Tractor Beam (Bottom)",
+      "nameZh": "牵引光束器（底挂）",
+      "descriptionZh": "牵引光束器，可拉取小型漂浮物品。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": -4,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 0
+      },
+      "meshBoundsM": {
+        "minX": -2.28,
+        "maxX": 3.16,
+        "minY": -2.28,
+        "maxY": 2.28,
+        "minZ": -0.85,
+        "maxZ": 0.73
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_TractorBeamBlock",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerRole": "none",
+      "shipStats": {
+        "rangeM": 250,
+        "tractorRangeM": 250
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_TractorBeamBlock_B"
+    },
+    {
+      "id": "BPO_MiningLaserBlock_B",
+      "nameEn": "Mining Laser (Bottom)",
+      "nameZh": "采矿激光器（底挂）",
+      "descriptionZh": "专用于采矿的短程激光武器。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": -4,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 0
+      },
+      "meshBoundsM": {
+        "minX": -2.49,
+        "maxX": 4.45,
+        "minY": -2.28,
+        "maxY": 2.28,
+        "minZ": -0.85,
+        "maxZ": 1.88
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_MiningLaserBlock",
+      "isMirrorVariant": true,
+      "connectors": [],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 5,
+      "hull": 10,
+      "powerKW": 3000,
+      "powerRole": "mining",
+      "shipStats": {
+        "rangeM": 125,
+        "damagePerSec": 10
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_MiningLaserBlock_B"
+    },
+    {
+      "id": "BPO_ShipLaserTurretBlock_01B",
+      "nameEn": "Point Defence Laser (Bottom)",
+      "nameZh": "点防御激光器（底挂）",
+      "descriptionZh": "短程光束武器，专门用于跟踪及拦截快速移动的目标。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": -4,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 0
+      },
+      "meshBoundsM": {
+        "minX": -3.16,
+        "maxX": 3.16,
+        "minY": -2.34,
+        "maxY": 2.34,
+        "minZ": -0.85,
+        "maxZ": 0.65
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_ShipLaserTurretBlock_01",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerRole": "none",
+      "shipStats": {
+        "rangeM": 250
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ShipLaserTurretBlock_01B"
+    },
+    {
+      "id": "BPO_Armour_01L",
+      "nameEn": "Armour Wing 2x1 (Left)",
+      "nameZh": "装甲翼2×1（左舷）",
+      "descriptionZh": "轻型装甲部件。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        2,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 0,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -8,
+        "maxX": 8,
+        "minY": -4,
+        "maxY": 0.25,
+        "minZ": -0.31,
+        "maxZ": 2.62
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_Armour_01R",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 1
+        },
+        {
+          "type": "ShipSide",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 1
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 6,
+      "hull": 20,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Armour_01L"
+    },
+    {
+      "id": "BPO_ArmourSlope_01B",
+      "nameEn": "Armour Slope 1×1 (Bottom)",
+      "nameZh": "装甲斜块1×1（底挂）",
+      "descriptionZh": "轻型装甲部件。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -4.25,
+        "maxX": 4.01,
+        "minY": -4,
+        "maxY": 4,
+        "minZ": -0.85,
+        "maxZ": 3.15
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_ArmourSlope_01T",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 10,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ArmourSlope_01B"
+    },
+    {
+      "id": "BPO_ArmourSlope_02B",
+      "nameEn": "Armour Slope 2×1 (Bottom)",
+      "nameZh": "装甲斜块2×1（底挂）",
+      "descriptionZh": "轻型装甲部件。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        2,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -8,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 8,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -8.25,
+        "maxX": 8,
+        "minY": -4,
+        "maxY": 4,
+        "minZ": -0.85,
+        "maxZ": 3.16
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_ArmourSlope_02T",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipTop",
+          "gx": 1,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        },
+        {
+          "type": "ShipTop",
+          "gx": -1,
+          "gy": 0,
+          "floorOffset": 1,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerRole": "none",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ArmourSlope_02B"
+    },
+    {
+      "id": "BPO_ShipShieldGenerator_01B",
+      "nameEn": "Shield Generator Mk. 1 (Bottom)",
+      "nameZh": "护盾生成器1型（底挂）",
+      "descriptionZh": "创建可汲取能量来充能的防护能量场。",
+      "categoryEn": "Defence",
+      "categoryZh": "防御",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": -4,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 0
+      },
+      "meshBoundsM": {
+        "minX": -3.83,
+        "maxX": 3.83,
+        "minY": -2.28,
+        "maxY": 2.28,
+        "minZ": -0.85,
+        "maxZ": 1.07
+      },
+      "heightSpanM": 4,
+      "canRotate": true,
+      "mirrorId": "BPO_ShipShieldGenerator_01",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipTop",
+          "gx": 0,
+          "gy": 0,
+          "floorOffset": 0,
+          "rotation": 0
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "powerKW": 3000,
+      "powerRole": "shield",
+      "shipStats": {
+        "shieldCapacity": 10,
+        "shieldRecharge": 0.5
+      },
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_ShipShieldGenerator_01B"
+    },
+    {
+      "id": "BPO_Thruster_02L",
+      "nameEn": "Small Thruster (Left)",
+      "nameZh": "小型推进器（左舷）",
+      "descriptionZh": "基础推进器，可提供少量推力。建造更多推进器可以提高飞船的最大速度。",
+      "categoryEn": "Thrusters",
+      "categoryZh": "推进器",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -10,
+        "maxX": 3.19,
+        "minY": -1.84,
+        "maxY": 4.01,
+        "minZ": -0.31,
+        "maxZ": 2.63
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_Thruster_02R",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 1
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "thrustKN": 20,
+      "boostThrustKN": 40,
+      "powerKW": 3000,
+      "powerRole": "thruster",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Thruster_02L"
+    },
+    {
+      "id": "BPO_Thruster_04L",
+      "nameEn": "Small Relic Thruster (Left)",
+      "nameZh": "小型遗迹推进器（左舷）",
+      "descriptionZh": "采用遗迹技术改装的小型推进器，可提供更强推力。",
+      "categoryEn": "Thrusters",
+      "categoryZh": "推进器",
+      "sizeUnits": [
+        1,
+        1,
+        1
+      ],
+      "blockBoundsM": {
+        "minX": -4,
+        "minY": -4,
+        "minZ": 0,
+        "maxX": 4,
+        "maxY": 4,
+        "maxZ": 4
+      },
+      "meshBoundsM": {
+        "minX": -14.61,
+        "maxX": 3.4,
+        "minY": -3.75,
+        "maxY": 4.03,
+        "minZ": -0.7,
+        "maxZ": 3
+      },
+      "heightSpanM": 4,
+      "canRotate": false,
+      "mirrorId": "BPO_Thruster_04R",
+      "isMirrorVariant": true,
+      "connectors": [
+        {
+          "type": "ShipSide",
+          "gx": 0,
+          "gy": 1,
+          "floorOffset": 0,
+          "rotation": 1
+        }
+      ],
+      "hasFactoryFloor": false,
+      "floors": [],
+      "weightT": 3,
+      "hull": 5,
+      "thrustKN": 60,
+      "boostThrustKN": 120,
+      "powerKW": 9000,
+      "powerRole": "thruster",
+      "sourceAsset": "/Game/Blueprints/BuildingBlocks/BPO_Thruster_04L"
+    }
   ]
 }

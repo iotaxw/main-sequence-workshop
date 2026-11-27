@@ -97,10 +97,15 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
           const hasContent = Boolean(info && (info.mods > 0 || info.blds > 0));
           const isCurrent = f === focusFloor;
           const isHiddenAbove = hideAbove && f > focusFloor;
+          const isShip = doc.category === 'ship';
           const tip = hasContent
-            ? isEn
-              ? `${formatFloorTag(f)} · ${info!.mods}M · ${info!.blds}B`
-              : `${formatFloorTag(f)} · ${info!.mods}模 · ${info!.blds}建`
+            ? isShip
+              ? isEn
+                ? `${formatFloorTag(f)} · ${info!.mods}M`
+                : `${formatFloorTag(f)} · ${info!.mods}模`
+              : isEn
+                ? `${formatFloorTag(f)} · ${info!.mods}M · ${info!.blds}B`
+                : `${formatFloorTag(f)} · ${info!.mods}模 · ${info!.blds}建`
             : `${formatFloorTag(f)} · ${t('空', 'Empty')}`;
           return (
             <button

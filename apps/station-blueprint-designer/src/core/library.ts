@@ -1,7 +1,17 @@
+import { getModuleDef } from './catalog';
 import { deserializeBlueprint, deserializeBlueprintObject, serializeBlueprint } from './codec';
 import { getDocumentFloorRange } from './geometry';
 import { DEFAULT_LIBRARY_PRESETS } from './presets';
-import type { BlueprintDocument, LibraryFileEntry, LibraryFolderEntry, LibraryNode } from './types';
+import type { BlueprintCategory, BlueprintDocument, LibraryFileEntry, LibraryFolderEntry, LibraryNode } from './types';
+
+function computeShipWeightSummary(doc: BlueprintDocument): number | undefined {
+  if (doc.category !== 'ship') return undefined;
+  let w = 0;
+  for (let i = 0; i < doc.modules.length; i++) {
+    w += getModuleDef(doc.modules[i].type)?.weightT ?? 0;
+  }
+  return Math.round(w * 10) / 10;
+}
 
 export interface BlueprintLibraryDriver {
   readonly mode: 'fs-local' | 'virtual-idb' | 'github-private';
@@ -192,14 +202,17 @@ function summarizeDoc(relPath: string, doc: BlueprintDocument, updatedAt: number
   const segs = relPath.split('/');
   const fileName = segs[segs.length - 1];
   const range = getDocumentFloorRange(doc);
+  const totalWeightT = computeShipWeightSummary(doc);
   return {
     kind: 'file',
     path: relPath,
     name: fileName.replace(/\.json$/i, ''),
     fileName,
     blueprintName: doc.name,
+    ...(doc.category === 'ship' ? { category: 'ship' as const } : {}),
     moduleCount: doc.modules.length,
     buildingCount: doc.buildings.length,
+    ...(totalWeightT !== undefined ? { totalWeightT } : {}),
     floorSpan: Math.max(1, range.max - range.min + 1),
     updatedAt,
   };
@@ -685,7 +698,15 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
   private shaByRelPath = new Map<string, string>();
   private metaByRelPath = new Map<
     string,
-    { sha: string; blueprintName: string; moduleCount: number; buildingCount: number; floorSpan: number }
+    {
+      sha: string;
+      blueprintName: string;
+      category?: BlueprintCategory;
+      moduleCount: number;
+      buildingCount: number;
+      totalWeightT?: number;
+      floorSpan: number;
+    }
   >();
 
   constructor(config: GitHubRepoConfig) {
@@ -828,8 +849,10 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
         name: fileName.replace(/\.json$/i, ''),
         fileName,
         blueprintName: validCached?.blueprintName ?? fileName.replace(/\.json$/i, ''),
+        ...(validCached?.category === 'ship' ? { category: 'ship' as const } : {}),
         moduleCount: validCached?.moduleCount ?? 0,
         buildingCount: validCached?.buildingCount ?? 0,
+        ...(validCached?.totalWeightT !== undefined ? { totalWeightT: validCached.totalWeightT } : {}),
         floorSpan: validCached?.floorSpan ?? 1,
         updatedAt: 0,
         contentHash: item.sha,
@@ -879,8 +902,10 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
     this.metaByRelPath.set(norm, {
       sha,
       blueprintName: decoded.doc.name,
+      ...(decoded.doc.category === 'ship' ? { category: 'ship' as const } : {}),
       moduleCount: decoded.doc.modules.length,
       buildingCount: decoded.doc.buildings.length,
+      totalWeightT: computeShipWeightSummary(decoded.doc),
       floorSpan: Math.max(1, range.max - range.min + 1),
     });
     return { doc: decoded.doc, warnings: decoded.warnings };
@@ -939,8 +964,10 @@ export class GitHubPrivateRepoDriver implements BlueprintLibraryDriver {
     this.metaByRelPath.set(finalRel, {
       sha: newSha,
       blueprintName: doc.name,
+      ...(doc.category === 'ship' ? { category: 'ship' as const } : {}),
       moduleCount: doc.modules.length,
       buildingCount: doc.buildings.length,
+      totalWeightT: computeShipWeightSummary(doc),
       floorSpan: Math.max(1, range.max - range.min + 1),
     });
   }

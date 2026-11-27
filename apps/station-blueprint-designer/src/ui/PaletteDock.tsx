@@ -8,12 +8,14 @@ import {
   type PaletteGroupDef,
 } from '../core/groups';
 import { useI18n } from '../core/i18n';
-import type { ActiveTool, ViewMode } from '../core/types';
+import type { ActiveTool, BlueprintCategory, ViewMode } from '../core/types';
 import { KeyHintList, type KeyHintItem } from './KeyHintBar';
 import { EntityGlyph } from './Schematics';
 
 interface PaletteDockProps {
   viewMode: ViewMode;
+  docCategory?: BlueprintCategory;
+  shipFreeRotate?: boolean;
   activeTool: ActiveTool;
   lastGroupMember: Record<string, string>;
   onSelectEntity: (entityId: string) => void;
@@ -29,6 +31,8 @@ interface HoverMeta {
 
 export const PaletteDock: React.FC<PaletteDockProps> = ({
   viewMode,
+  docCategory = 'station',
+  shipFreeRotate = false,
   activeTool,
   lastGroupMember,
   onSelectEntity,
@@ -36,39 +40,61 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
 }) => {
   const { lang, isEn, t } = useI18n();
   const [hoverMeta, setHoverMeta] = useState<HoverMeta | null>(null);
-  const groups = getGroupsForView(viewMode);
+  const isShip = docCategory === 'ship';
+  const groups = getGroupsForView(viewMode, docCategory);
 
   const activeEntityId =
-    viewMode === 'station' && activeTool.kind === 'place-module'
+    (viewMode === 'station' || isShip) && activeTool.kind === 'place-module'
       ? activeTool.moduleType
       : viewMode === 'building' && activeTool.kind === 'place-building'
         ? activeTool.buildingType
         : null;
 
   const activeGroup: PaletteGroupDef | undefined = activeEntityId
-    ? findGroupForEntity(viewMode, activeEntityId)
+    ? findGroupForEntity(viewMode, activeEntityId, docCategory)
     : undefined;
 
   useEffect(() => {
     setHoverMeta(null);
-  }, [viewMode, activeGroup?.id, lang]);
+  }, [viewMode, docCategory, activeGroup?.id, lang]);
 
   const buildMeta = (id: string, showTabHint: boolean): HoverMeta => {
-    if (viewMode === 'station') {
+    if (viewMode === 'station' || isShip) {
       const m = getModuleDef(id);
+      const canRot = !isShip || shipFreeRotate || m?.canRotate !== false;
+      const hasMirror = Boolean(m?.mirrorId);
       const hints: KeyHintItem[] = [
         ...(showTabHint ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),
-        { keys: 'R', label: t('旋转', 'Rotate') },
-        { keys: 'F', label: t('镜像', 'Mirror') },
+        ...(canRot
+          ? [{ keys: 'R', label: t('旋转', 'Rotate') }]
+          : [{ keys: 'R', label: t('原版锁向', 'Locked') }]),
+        ...(isShip
+          ? hasMirror
+            ? [{ keys: 'F', label: t('镜像', 'Mirror') }]
+            : []
+          : [{ keys: 'F', label: t('镜像', 'Mirror') }]),
       ];
+
+      let spec = '';
+      if (m) {
+        if (isShip) {
+          const parts: string[] = [];
+          if (m.weightT !== undefined) parts.push(`${m.weightT}t`);
+          if (m.thrustKN) parts.push(`${m.thrustKN}kN`);
+          if (m.powerGenKW) parts.push(`+${m.powerGenKW / 1000}MW`);
+          else if (m.powerKW) parts.push(`-${m.powerKW / 1000}MW`);
+          parts.push(`${m.sizeUnits[0]}×${m.sizeUnits[1]}`);
+          spec = parts.join(' · ');
+        } else {
+          spec = isEn
+            ? `${m.sizeUnits[0]}×${m.sizeUnits[1]} · ${m.sizeUnits[2]}F · ${m.connectors.length}P`
+            : `${m.sizeUnits[0]}×${m.sizeUnits[1]} · ${m.sizeUnits[2]}层 · ${m.connectors.length}口`;
+        }
+      }
       return {
         title: m ? getModuleName(m, lang) : id,
         sub: !isEn ? m?.nameEn : undefined,
-        spec: m
-          ? isEn
-            ? `${m.sizeUnits[0]}×${m.sizeUnits[1]} · ${m.sizeUnits[2]}F · ${m.connectors.length}P`
-            : `${m.sizeUnits[0]}×${m.sizeUnits[1]} · ${m.sizeUnits[2]}层 · ${m.connectors.length}口`
-          : '',
+        spec,
         hints,
       };
     }
@@ -124,7 +150,10 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
           <span className="s2-subtray-label">{getGroupName(activeGroup, lang)}</span>
           <div className="s2-subtray-items">
             {activeGroup.members.map((memberId) => {
-              const isCur = activeEntityId === memberId;
+              const activeDef = activeEntityId ? getModuleDef(activeEntityId) : undefined;
+              const isCur =
+                activeEntityId === memberId ||
+                Boolean(isShip && activeDef?.mirrorId && activeDef.mirrorId === memberId);
               return (
                 <button
                   key={memberId}

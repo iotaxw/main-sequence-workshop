@@ -12,7 +12,7 @@ import {
   type BeltStrokeTunnel,
   type BeltWaypoint,
 } from './core/belt-router';
-import { getBuildableDef, getItemName, getModuleDef, getRecipeDef, getRecipeName } from './core/catalog';
+import { canModuleRotate, getBuildableDef, getItemName, getModuleDef, getModuleName, getRecipeDef, getRecipeName } from './core/catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './core/codec';
 import { DEFAULT_LIBRARY_PRESETS } from './core/presets';
 import { cycleVariantInGroup, findGroupForEntity, getGroupsForView, getShortLabel } from './core/groups';
@@ -42,13 +42,13 @@ import {
   findBuildingAtCell,
   findModuleAtWorldPoint,
   getBuildingSizeCells,
+  getFrameGridSpec,
   getMirroredBuildingRotation,
   getMirroredModuleRotation,
   getModuleBoundsM,
   getModuleSizeUnits,
   getToggleablePorts,
   normalizeRotation,
-  STATION_UNIT_M,
 } from './core/geometry';
 import {
   BlueprintLibraryDriver,
@@ -65,6 +65,7 @@ import {
   VirtualFolderDriver,
 } from './core/library';
 import { exportNativeSav, importNativeSav } from './core/native-codec';
+import { computeShipStats } from './core/ship-stats';
 import { checkBlueprintWorkbench } from './core/workbench-check';
 import type {
   ActiveTool,
@@ -88,6 +89,7 @@ import { InspectorPanel } from './ui/InspectorPanel';
 import { ToolActionBar, type KeyHintItem } from './ui/KeyHintBar';
 import { LibrarySidebar } from './ui/LibrarySidebar';
 import { PaletteDock } from './ui/PaletteDock';
+import { ShipParamsHud } from './ui/ShipParamsHud';
 import { SimulationPanel, type CheckFocusTarget } from './ui/SimulationPanel';
 import { useHoverMenu } from './ui/useHoverMenu';
 
@@ -137,6 +139,7 @@ export const App: React.FC = () => {
   const [focusFloor, setFocusFloor] = useState(0);
   const [hideAbove, setHideAbove] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [shipFreeRotate, setShipFreeRotate] = useState(false);
   const [selectionLayerMode, setSelectionLayerMode] = useState<SelectionLayerMode>('focus');
   const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
   const [activeTool, setActiveTool] = useState<ActiveTool>({ kind: 'select' });
@@ -172,7 +175,10 @@ export const App: React.FC = () => {
     error: string | null;
   } | null>(null);
 
-  const simReport = useMemo(() => (simOpen ? checkBlueprintWorkbench(doc, lang) : null), [doc, simOpen, lang]);
+  const simReport = useMemo(
+    () => (simOpen && doc.category !== 'ship' ? checkBlueprintWorkbench(doc, lang) : null),
+    [doc, simOpen, lang]
+  );
   const simOverlayIssues = useMemo(() => {
     if (!simReport) return undefined;
     const markers: Array<{
@@ -266,10 +272,11 @@ export const App: React.FC = () => {
         return;
       }
 
+      const unitM = getFrameGridSpec(curDoc.category).unitM;
       const cx = Math.floor(world.x);
       const cy = Math.floor(world.y);
-      const gx = Math.floor(world.x / STATION_UNIT_M);
-      const gy = Math.floor(world.y / STATION_UNIT_M);
+      const gx = Math.floor(world.x / unitM);
+      const gy = Math.floor(world.y / unitM);
       const simTag = curSim ? `${curSim.errorCount}:${curSim.warnCount}:${curShowIo ? 1 : 0}` : '0';
       const key = vm === 'building' ? `b:${curLang}:${fl}:${cx},${cy}:${simTag}` : `m:${curLang}:${fl}:${gx},${gy}`;
 
@@ -455,8 +462,9 @@ export const App: React.FC = () => {
           : 'X --  Y --';
       }
       if (hudGridRef.current) {
+        const unitM = getFrameGridSpec(stateRef.current.doc.category).unitM;
         hudGridRef.current.textContent = world
-          ? `G(${Math.floor(world.x / STATION_UNIT_M)},${Math.floor(world.y / STATION_UNIT_M)})`
+          ? `G(${Math.floor(world.x / unitM)},${Math.floor(world.y / unitM)})`
           : 'G(-,-)';
       }
     }
@@ -480,6 +488,7 @@ export const App: React.FC = () => {
     focusFloor,
     hideAbove,
     cleanView,
+    shipFreeRotate,
     selection,
     selectionLayerMode,
     activeTool,
@@ -496,6 +505,7 @@ export const App: React.FC = () => {
     focusFloor,
     hideAbove,
     cleanView,
+    shipFreeRotate,
     selection,
     selectionLayerMode,
     activeTool,
@@ -793,6 +803,9 @@ export const App: React.FC = () => {
   ]);
 
   const switchViewMode = useCallback((nextMode: ViewMode, focusCenter?: [number, number]) => {
+    if (stateRef.current.doc.category === 'ship' && nextMode === 'building') {
+      return;
+    }
     setViewMode(nextMode);
     sceneRef.current?.rig.setViewMode(nextMode, true);
     if (focusCenter) {
@@ -810,7 +823,11 @@ export const App: React.FC = () => {
     if (!rig) return;
     const curDoc = stateRef.current.doc;
     if (curDoc.modules.length === 0) {
-      rig.focusPoint(16, 16, 76);
+      if (curDoc.category === 'ship') {
+        rig.focusPoint(4, 4, 42);
+      } else {
+        rig.focusPoint(16, 16, 76);
+      }
       return;
     }
     let minX = Infinity;
@@ -991,12 +1008,15 @@ export const App: React.FC = () => {
       clearBeltSession();
       const modDef = getModuleDef(entityId);
       if (modDef) {
-        const grp = findGroupForEntity('station', entityId);
+        const docCat = stateRef.current.doc.category ?? 'station';
+        const grp = findGroupForEntity('station', entityId, docCat);
         if (grp) setLastGroupMember((prev) => ({ ...prev, [grp.id]: entityId }));
+        const lockOrient =
+          docCat === 'ship' && !stateRef.current.shipFreeRotate && modDef.canRotate === false;
         setActiveTool((prev) => ({
           kind: 'place-module',
           moduleType: entityId,
-          rotation: opts?.rotation ?? (prev.kind === 'place-module' ? prev.rotation : 0),
+          rotation: lockOrient ? 0 : opts?.rotation ?? (prev.kind === 'place-module' ? prev.rotation : 0),
           ...(opts?.label ? { label: opts.label } : {}),
         }));
         return;
@@ -1046,6 +1066,19 @@ export const App: React.FC = () => {
       }
 
       if (tool.kind === 'place-module') {
+        const def = getModuleDef(tool.moduleType);
+        // Native MirrorClass swap (covers all 11 ship mirror pairs & station armour top/bottom!)
+        if (def?.mirrorId) {
+          const mirrorDef = getModuleDef(def.mirrorId);
+          selectEntityTool(def.mirrorId, { rotation: tool.rotation, label: tool.label });
+          showToast(
+            t(
+              `已镜像为 ${mirrorDef ? getModuleName(mirrorDef, 'zh') : def.mirrorId}`,
+              `Mirrored to ${mirrorDef ? getModuleName(mirrorDef, 'en') : def.mirrorId}`
+            )
+          );
+          return;
+        }
         if (tool.moduleType === 'BPO_StationArmour_01' || tool.moduleType === 'BPO_StationArmour_01B') {
           const flipped =
             tool.moduleType === 'BPO_StationArmour_01' ? 'BPO_StationArmour_01B' : 'BPO_StationArmour_01';
@@ -1057,7 +1090,10 @@ export const App: React.FC = () => {
           );
           return;
         }
-        const def = getModuleDef(tool.moduleType);
+        if (curDoc.category === 'ship' && !stateRef.current.shipFreeRotate && def?.canRotate === false) {
+          showToast(t('该飞船部件无原版镜像', 'No native mirror for this ship block'), 'info');
+          return;
+        }
         const nextRot = getMirroredModuleRotation(def, tool.rotation, axis);
         if (nextRot !== tool.rotation) {
           setActiveTool({ ...tool, rotation: nextRot });
@@ -1288,24 +1324,28 @@ export const App: React.FC = () => {
       }
       if (e.code === 'Backquote') {
         e.preventDefault();
+        if (stateRef.current.doc.category === 'ship') return;
         switchViewMode(stateRef.current.viewMode === 'station' ? 'building' : 'station');
         return;
       }
       if (e.key === 'Tab') {
         e.preventDefault();
-        const { activeTool: tool, viewMode: vm } = stateRef.current;
+        const { activeTool: tool, viewMode: vm, doc: curDoc } = stateRef.current;
+        const docCat = curDoc.category ?? 'station';
         const delta: 1 | -1 = e.shiftKey ? -1 : 1;
-        if (tool.kind === 'place-module' && vm === 'station') {
-          const next = cycleVariantInGroup('station', tool.moduleType, delta);
+        if (tool.kind === 'place-module' && (vm === 'station' || docCat === 'ship')) {
+          const next = cycleVariantInGroup('station', tool.moduleType, delta, docCat);
           if (next) selectEntityTool(next);
           return;
         }
-        if (tool.kind === 'place-building' && vm === 'building') {
-          const next = cycleVariantInGroup('building', tool.buildingType, delta);
+        if (tool.kind === 'place-building' && vm === 'building' && docCat !== 'ship') {
+          const next = cycleVariantInGroup('building', tool.buildingType, delta, 'station');
           if (next) selectEntityTool(next);
           return;
         }
-        switchViewMode(vm === 'station' ? 'building' : 'station');
+        if (docCat !== 'ship') {
+          switchViewMode(vm === 'station' ? 'building' : 'station');
+        }
         return;
       }
       if (e.key === 'F1' || e.key === '?') {
@@ -1429,8 +1469,18 @@ export const App: React.FC = () => {
           refreshBeltSessionPreview();
           return;
         }
-        const tool = stateRef.current.activeTool;
+        const { activeTool: tool, doc: curDoc, shipFreeRotate: freeRot, selection: curSel } = stateRef.current;
         if (tool.kind === 'place-module') {
+          if (curDoc.category === 'ship' && !canModuleRotate(tool.moduleType, freeRot)) {
+            showToast(
+              t(
+                '原版锁定朝向（按 F 镜像，或在「视角」开启自由旋转）',
+                'Orientation locked (F to mirror, or enable Free Rotate in View)'
+              ),
+              'info'
+            );
+            return;
+          }
           setActiveTool({ ...tool, rotation: normalizeRotation(tool.rotation + delta) });
         } else if (tool.kind === 'place-building') {
           setActiveTool({ ...tool, rotation: normalizeRotation(tool.rotation + delta) });
@@ -1441,7 +1491,23 @@ export const App: React.FC = () => {
             rotation: normalizeRotation(tool.rotation + delta),
           });
         } else {
-          const res = rotateSelectionInPlaceCmd(stateRef.current.doc, stateRef.current.selection, delta);
+          if (curDoc.category === 'ship' && !freeRot && curSel.moduleIds.length > 0) {
+            const hasLocked = curSel.moduleIds.some((mid) => {
+              const m = curDoc.modules.find((x) => x.id === mid);
+              return m ? !canModuleRotate(m.type, false) : false;
+            });
+            if (hasLocked) {
+              showToast(
+                t(
+                  '选区含原版锁定朝向部件（可在「视角」开启自由旋转）',
+                  'Selection includes orientation-locked blocks (enable Free Rotate in View)'
+                ),
+                'info'
+              );
+              return;
+            }
+          }
+          const res = rotateSelectionInPlaceCmd(curDoc, curSel, delta);
           if (res.changed) commitDoc(res.doc);
         }
         return;
@@ -1515,17 +1581,22 @@ export const App: React.FC = () => {
 
       if (/^[1-9]$/.test(e.key)) {
         const slot = Number(e.key);
-        const { viewMode: vm, activeTool: tool, lastGroupMember: mem } = stateRef.current;
-        const group = getGroupsForView(vm).find((g) => g.slot === slot);
+        const { viewMode: vm, activeTool: tool, lastGroupMember: mem, doc: curDoc } = stateRef.current;
+        const docCat = curDoc.category ?? 'station';
+        const group = getGroupsForView(vm, docCat).find((g) => g.slot === slot);
         if (!group) return;
         const curId =
-          vm === 'station' && tool.kind === 'place-module'
+          (vm === 'station' || docCat === 'ship') && tool.kind === 'place-module'
             ? tool.moduleType
             : vm === 'building' && tool.kind === 'place-building'
               ? tool.buildingType
               : null;
-        if (curId && group.members.includes(curId) && group.members.length > 1) {
-          const next = cycleVariantInGroup(vm, curId, e.shiftKey ? -1 : 1);
+        const curDef = curId ? getModuleDef(curId) : undefined;
+        const inGroup = Boolean(
+          curId && (group.members.includes(curId) || (curDef?.mirrorId && group.members.includes(curDef.mirrorId)))
+        );
+        if (curId && inGroup && group.members.length > 1) {
+          const next = cycleVariantInGroup(vm, curId, e.shiftKey ? -1 : 1, docCat);
           if (next) selectEntityTool(next);
         } else {
           const target = mem[group.id] ?? group.members[0];
@@ -1740,8 +1811,9 @@ export const App: React.FC = () => {
         };
         return;
       }
-      const gx = Math.floor(world.x / STATION_UNIT_M);
-      const gy = Math.floor(world.y / STATION_UNIT_M);
+      const unitM = getFrameGridSpec(curDoc.category).unitM;
+      const gx = Math.floor(world.x / unitM);
+      const gy = Math.floor(world.y / unitM);
       const res = placeModuleCmd(curDoc, {
         type: tool.moduleType,
         gx,
@@ -2108,8 +2180,9 @@ export const App: React.FC = () => {
       // Short Shift+Click while holding a module or machine -> perform force-replace placement!
       const { doc: curDoc, focusFloor: fl, activeTool: tool } = stateRef.current;
       if (tool.kind === 'place-module') {
-        const gx = Math.floor(world.x / STATION_UNIT_M);
-        const gy = Math.floor(world.y / STATION_UNIT_M);
+        const unitM = getFrameGridSpec(curDoc.category).unitM;
+        const gx = Math.floor(world.x / unitM);
+        const gy = Math.floor(world.y / unitM);
         const res = placeModuleCmd(curDoc, {
           type: tool.moduleType,
           gx,
@@ -2335,6 +2408,7 @@ export const App: React.FC = () => {
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (stateRef.current.cleanView || stateRef.current.activeTool.kind !== 'select') return;
+    if (stateRef.current.doc.category === 'ship') return;
     const world = clientToWorld(e.clientX, e.clientY);
     if (!world) return;
     if (stateRef.current.viewMode === 'station') {
@@ -2364,6 +2438,17 @@ export const App: React.FC = () => {
   const handleStampFromLibrary = async (file: LibraryFileEntry) => {
     try {
       const { doc: loaded } = await driver.readBlueprint(file.path);
+      const curCat = stateRef.current.doc.category ?? 'station';
+      const targetCat = loaded.category ?? 'station';
+      if (curCat !== targetCat) {
+        showToast(
+          targetCat === 'ship'
+            ? t('飞船蓝图不可盖章到空间站画布，请双击「打开」', 'Cannot stamp a ship onto a station; double-click to Open')
+            : t('空间站蓝图不可盖章到飞船画布，请双击「打开」', 'Cannot stamp a station onto a ship; double-click to Open'),
+          'warn'
+        );
+        return;
+      }
       setStampingLibPath(file.path);
       setActiveTool({
         kind: 'stamp-blueprint',
@@ -2388,6 +2473,12 @@ export const App: React.FC = () => {
       setSelection(EMPTY_SELECTION);
       setActiveTool({ kind: 'select' });
       setStampingLibPath(null);
+      if (loaded.category === 'ship') {
+        setViewMode('station');
+        setSimOpen(false);
+        setActiveSimIssueId(null);
+        sceneRef.current?.rig.setViewMode('station', false);
+      }
       showToast(warnings.length > 0 ? `已打开（提示：${warnings[0]}）` : `已打开「${loaded.name}」`);
       window.setTimeout(() => fitAllStation(), 60);
     } catch (err) {
@@ -2440,8 +2531,9 @@ export const App: React.FC = () => {
               sumX += (minX + maxX) * 0.5;
               sumY += (minY + maxY) * 0.5;
             } else {
-              sumX += m.gx * STATION_UNIT_M + STATION_UNIT_M * 0.5;
-              sumY += m.gy * STATION_UNIT_M + STATION_UNIT_M * 0.5;
+              const unitM = getFrameGridSpec(imported.category).unitM;
+              sumX += m.gx * unitM + unitM * 0.5;
+              sumY += m.gy * unitM + unitM * 0.5;
             }
             count++;
           }
@@ -2626,27 +2718,32 @@ export const App: React.FC = () => {
   };
 
   const handleNewBlueprint = (category: BlueprintCategory = 'station') => {
-    if (category === 'ship') {
-      showToast(
-        t('飞船蓝图功能已预留接口，敬请期待', 'Ship blueprints are coming soon (interface reserved)'),
-        'info'
-      );
-      return;
-    }
-    if (dirty && !window.confirm('当前画布有未保存更改，确定新建空白空间站吗？')) return;
-    const fresh = createEmptyBlueprint('新建空间站');
+    const label = category === 'ship' ? '飞船' : '空间站';
+    if (dirty && !window.confirm(`当前画布有未保存更改，确定新建空白${label}吗？`)) return;
+    const fresh = createEmptyBlueprint(category === 'ship' ? '新建飞船' : '新建空间站', category);
     setHistory(createHistory(fresh));
     setActiveSourcePath(null);
     setDirty(false);
     setSelection(EMPTY_SELECTION);
-    setActiveTool({ kind: 'place-module', moduleType: 'BPO_Station_02A', rotation: 0 });
+    setFocusFloor(0);
+    setSimOpen(false);
+    setActiveSimIssueId(null);
     setViewMode('station');
-    sceneRef.current?.rig.setViewMode('station', true);
-    sceneRef.current?.rig.focusPoint(16, 16, 76);
+    if (category === 'ship') {
+      setActiveTool({ kind: 'place-module', moduleType: 'BPO_Cockpit_01', rotation: 0 });
+      sceneRef.current?.rig.setViewMode('station', false);
+      sceneRef.current?.rig.focusPoint(4, 4, 42);
+    } else {
+      setActiveTool({ kind: 'place-module', moduleType: 'BPO_Station_02A', rotation: 0 });
+      sceneRef.current?.rig.setViewMode('station', true);
+      sceneRef.current?.rig.focusPoint(16, 16, 76);
+    }
   };
 
+  const isShip = doc.category === 'ship';
+  const shipStats = useMemo(() => (isShip ? computeShipStats(doc) : null), [isShip, doc]);
   const folderOptions = useMemo(() => collectFolderPaths(libraryTree), [libraryTree]);
-  const hasRightPanel = simOpen || selection.moduleIds.length > 0 || selection.buildingIds.length > 0;
+  const hasRightPanel = !isShip && (simOpen || selection.moduleIds.length > 0 || selection.buildingIds.length > 0);
   const saveTargetLabel =
     driver.mode === 'github-private'
       ? t('写入私有云库', 'Save to Cloud')
@@ -2676,16 +2773,23 @@ export const App: React.FC = () => {
 
     if (activeTool.kind === 'place-module') {
       const def = getModuleDef(activeTool.moduleType);
-      const grp = findGroupForEntity('station', activeTool.moduleType);
+      const docCat = doc.category ?? 'station';
+      const grp = findGroupForEntity('station', activeTool.moduleType, docCat);
       const isArmour =
         activeTool.moduleType === 'BPO_StationArmour_01' || activeTool.moduleType === 'BPO_StationArmour_01B';
+      const canRot = !isShip || shipFreeRotate || def?.canRotate !== false;
+      const showMirror = !isShip || Boolean(def?.mirrorId);
       return {
         mode: getShortLabel(activeTool.moduleType, isEn ? def?.nameEn : def?.nameZh, lang),
         badge: activeTool.label || undefined,
         tone: 'accent',
         hints: [
-          { keys: 'R', label: t('旋转', 'Rotate') },
-          { keys: 'F', label: isArmour ? t('翻转', 'Flip') : t('镜像', 'Mirror') },
+          ...(canRot
+            ? [{ keys: 'R', label: t('旋转', 'Rotate') }]
+            : [{ keys: 'R', label: t('原版锁向', 'Locked') }]),
+          ...(showMirror
+            ? [{ keys: 'F', label: isArmour || def?.mirrorId ? t('镜像', 'Mirror') : t('镜像', 'Mirror') }]
+            : []),
           { keys: 'Q/E', label: t('切层', 'Floor') },
           ...(grp && grp.members.length > 1 ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),
         ],
@@ -2776,7 +2880,7 @@ export const App: React.FC = () => {
         ...(!activeTool.fromCut ? [{ keys: 'Shift', label: t('覆盖', 'Overwrite') }] : []),
       ],
     };
-  }, [activeTool, beltHudFlags.reverse, beltHudFlags.tunnel, beltSessionMode, isEn, lang, t]);
+  }, [activeTool, beltHudFlags.reverse, beltHudFlags.tunnel, beltSessionMode, doc.category, isEn, isShip, lang, shipFreeRotate, t]);
 
   return (
     <div className={`cad-shell ${cleanView ? 'clean-view' : ''}`} data-theme={theme}>
@@ -2808,42 +2912,51 @@ export const App: React.FC = () => {
           </div>
 
           <div className="topbar-group topbar-center">
-            <div className="segmented">
-              <button
-                type="button"
-                className={`seg-btn ${viewMode === 'station' ? 'active' : ''}`}
-                onClick={() => switchViewMode('station')}
-                title={t('空间站视野 (` / Tab)', 'Station View (` / Tab)')}
-              >
-                {t('空间站', 'Station')}
-              </button>
-              <button
-                type="button"
-                className={`seg-btn ${viewMode === 'building' ? 'active' : ''}`}
-                onClick={() => switchViewMode('building')}
-                title={t('建筑视野 (` / Tab)', 'Building View (` / Tab)')}
-              >
-                {t('建筑', 'Building')}
-              </button>
-            </div>
+            {isShip ? (
+              <span className="topbar-mode-pill" aria-label={t('飞船模式', 'Ship mode')}>
+                {t('飞船设计', 'Ship Designer')}
+              </span>
+            ) : (
+              <div className="segmented">
+                <button
+                  type="button"
+                  className={`seg-btn ${viewMode === 'station' ? 'active' : ''}`}
+                  onClick={() => switchViewMode('station')}
+                  title={t('空间站视野 (` / Tab)', 'Station View (` / Tab)')}
+                >
+                  {t('空间站', 'Station')}
+                </button>
+                <button
+                  type="button"
+                  className={`seg-btn ${viewMode === 'building' ? 'active' : ''}`}
+                  onClick={() => switchViewMode('building')}
+                  title={t('建筑视野 (` / Tab)', 'Building View (` / Tab)')}
+                >
+                  {t('建筑', 'Building')}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="topbar-group right-aligned">
-            <button
-              type="button"
-              className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
-              onClick={() => setSimOpen((v) => !v)}
-            >
-              {simOpen
-                ? !simReport?.passed
-                  ? t(`体检 · ${simReport?.errorCount ?? 0}错`, `Check · ${simReport?.errorCount ?? 0} Err`)
-                  : (simReport?.warnCount ?? 0) > 0
-                    ? t(`体检 · ${simReport?.warnCount ?? 0}警`, `Check · ${simReport?.warnCount ?? 0} Warn`)
-                    : t('体检 · 正常', 'Check · OK')
-                : t('体检', 'Check')}
-            </button>
+            {!isShip && (
+              <button
+                type="button"
+                className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
+                onClick={() => setSimOpen((v) => !v)}
+              >
+                {simOpen
+                  ? !simReport?.passed
+                    ? t(`体检 · ${simReport?.errorCount ?? 0}错`, `Check · ${simReport?.errorCount ?? 0} Err`)
+                    : (simReport?.warnCount ?? 0) > 0
+                      ? t(`体检 · ${simReport?.warnCount ?? 0}警`, `Check · ${simReport?.warnCount ?? 0} Warn`)
+                      : t('体检 · 正常', 'Check · OK')
+                  : t('体检', 'Check')}
+              </button>
+            )}
 
             <GameInteropMenu
+              docCategory={doc.category}
               onImportFile={(f) => void handleImportJsonFile(f)}
               onExportNativeSav={(mode) => void handleExportNativeSav(mode)}
               onExportCanonicalJson={handleExportCanonicalJson}
@@ -2952,6 +3065,27 @@ export const App: React.FC = () => {
                           ? t('可见层', 'Visible')
                           : t('全部', 'All')}
                     </button>
+                    {isShip && (
+                      <button
+                        type="button"
+                        className={`cad-btn prefs-full ${shipFreeRotate ? 'accent' : ''}`}
+                        onClick={() => {
+                          setShipFreeRotate((v) => {
+                            const next = !v;
+                            showToast(
+                              next
+                                ? t('已开启飞船自由旋转（解除原版朝向锁）', 'Ship Free Rotate: ON (native lock bypassed)')
+                                : t('已恢复原版飞船朝向锁定（锁定件仅 F 镜像）', 'Ship Free Rotate: OFF (native orientation rules)')
+                            );
+                            return next;
+                          });
+                        }}
+                      >
+                        {shipFreeRotate
+                          ? t('飞船自由旋转 · 开', 'Free Rotate · On')
+                          : t('飞船自由旋转 · 关（原版）', 'Free Rotate · Off (Native)')}
+                      </button>
+                    )}
                   </div>
 
                   <div className="prefs-section">
@@ -3061,11 +3195,19 @@ export const App: React.FC = () => {
             <span className="hud-floor">{formatFloorTag(focusFloor)}</span>
           </div>
           <div className="hud-row secondary">
-            <span>{viewMode === 'station' ? t('空间站', 'Station') : t('建筑', 'Building')}</span>
+            <span>
+              {isShip ? t('飞船', 'Ship') : viewMode === 'station' ? t('空间站', 'Station') : t('建筑', 'Building')}
+            </span>
             <span ref={hudCamRef}>0°/64° · 76m</span>
             <span>{snapEnabled ? t('吸附', 'Snap') : t('自由', 'Free')}</span>
             <span>
-              {isEn ? `${doc.modules.length}M · ${doc.buildings.length}B` : `${doc.modules.length}模 · ${doc.buildings.length}建`}
+              {isShip
+                ? isEn
+                  ? `${doc.modules.length}M`
+                  : `${doc.modules.length}模`
+                : isEn
+                  ? `${doc.modules.length}M · ${doc.buildings.length}B`
+                  : `${doc.modules.length}模 · ${doc.buildings.length}建`}
             </span>
             {lastAutosaveAt && (
               <span title={t('自动恢复点', 'Autosave')}>{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
@@ -3082,53 +3224,59 @@ export const App: React.FC = () => {
           onToggleHideAbove={() => setHideAbove((v) => !v)}
         />
 
-        <InspectorPanel
-          doc={doc}
-          selection={selection}
-          onUpdateBuilding={(ids, patch) => {
-            const res = updateBuildingConfigCmd(doc, ids, patch);
-            if (res.changed) commitDoc(res.doc);
-          }}
-          onUpdateModuleConfig={(id, patch) => {
-            const res = updateModuleConfigCmd(doc, id, patch);
-            if (res.changed) commitDoc(res.doc);
-          }}
-          onCopySelection={() => copySelectionToGhost(false)}
-          onCutSelection={() => copySelectionToGhost(true)}
-          onSaveSelectionAsBlueprint={() => openSaveDialog(true)}
-          onRotateSelection={() => {
-            const res = rotateSelectionInPlaceCmd(doc, selection, 1);
-            if (res.changed) commitDoc(res.doc);
-          }}
-          onMirrorSelection={(vertical) => applyMirrorAction(Boolean(vertical))}
-          onDeleteSelection={() => requestDeleteSelection(selection)}
-          onClearSelection={() => setSelection(EMPTY_SELECTION)}
-        />
+        {isShip && shipStats && <ShipParamsHud stats={shipStats} />}
 
-        <SimulationPanel
-          open={simOpen}
-          report={simReport}
-          activeIssueId={activeSimIssueId}
-          showIoSpots={showIoSpots}
-          onToggleShowIoSpots={() => setShowIoSpots((v) => !v)}
-          onClose={() => {
-            setSimOpen(false);
-            setActiveSimIssueId(null);
-          }}
-          onFocusTarget={(target: CheckFocusTarget) => {
-            setActiveSimIssueId(target.id);
-            setFocusFloor(target.floor);
-            if (target.moduleId && !target.buildingId) {
-              switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
-              setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
-            } else {
-              switchViewMode('building', [target.x + 0.5, target.y + 0.5]);
-              if (target.buildingId) {
-                setSelection({ moduleIds: [], buildingIds: [target.buildingId] });
+        {!isShip && (
+          <InspectorPanel
+            doc={doc}
+            selection={selection}
+            onUpdateBuilding={(ids, patch) => {
+              const res = updateBuildingConfigCmd(doc, ids, patch);
+              if (res.changed) commitDoc(res.doc);
+            }}
+            onUpdateModuleConfig={(id, patch) => {
+              const res = updateModuleConfigCmd(doc, id, patch);
+              if (res.changed) commitDoc(res.doc);
+            }}
+            onCopySelection={() => copySelectionToGhost(false)}
+            onCutSelection={() => copySelectionToGhost(true)}
+            onSaveSelectionAsBlueprint={() => openSaveDialog(true)}
+            onRotateSelection={() => {
+              const res = rotateSelectionInPlaceCmd(doc, selection, 1);
+              if (res.changed) commitDoc(res.doc);
+            }}
+            onMirrorSelection={(vertical) => applyMirrorAction(Boolean(vertical))}
+            onDeleteSelection={() => requestDeleteSelection(selection)}
+            onClearSelection={() => setSelection(EMPTY_SELECTION)}
+          />
+        )}
+
+        {!isShip && (
+          <SimulationPanel
+            open={simOpen}
+            report={simReport}
+            activeIssueId={activeSimIssueId}
+            showIoSpots={showIoSpots}
+            onToggleShowIoSpots={() => setShowIoSpots((v) => !v)}
+            onClose={() => {
+              setSimOpen(false);
+              setActiveSimIssueId(null);
+            }}
+            onFocusTarget={(target: CheckFocusTarget) => {
+              setActiveSimIssueId(target.id);
+              setFocusFloor(target.floor);
+              if (target.moduleId && !target.buildingId) {
+                switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
+                setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
+              } else {
+                switchViewMode('building', [target.x + 0.5, target.y + 0.5]);
+                if (target.buildingId) {
+                  setSelection({ moduleIds: [], buildingIds: [target.buildingId] });
+                }
               }
-            }
-          }}
-        />
+            }}
+          />
+        )}
 
         {toolBannerSpec && (
           <ToolActionBar
@@ -3141,6 +3289,8 @@ export const App: React.FC = () => {
 
         <PaletteDock
           viewMode={viewMode}
+          docCategory={doc.category}
+          shipFreeRotate={shipFreeRotate}
           activeTool={activeTool}
           lastGroupMember={lastGroupMember}
           onSelectEntity={(id) => selectEntityTool(id)}

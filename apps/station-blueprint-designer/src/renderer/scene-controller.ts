@@ -15,7 +15,9 @@ import {
   getBuildingCenterM,
   getBuildingSizeCells,
   getBuildingSpatialIndex,
+  getDocCategory,
   getDocSpatialIndex,
+  getFrameGridSpec,
   getModuleBoundsM,
   getModuleCenterM,
   getModuleSizeUnits,
@@ -32,6 +34,7 @@ import {
 import { getShortLabel } from '../core/groups';
 import type {
   ActiveTool,
+  BlueprintCategory,
   BlueprintDocument,
   PlacedBuilding,
   PlacedModule,
@@ -47,6 +50,7 @@ import { CrispLineBatcher, createCrispLineSegments, setLineViewportResolution, t
 import {
   buildIndustrialDockGantryArt,
   buildMachineLineArt,
+  buildShipModuleArt,
   buildStationModuleArt,
 } from './line-art';
 import { CadPerfMetrics, type CadPerfSnapshot } from './perf-metrics';
@@ -361,9 +365,9 @@ class FloorRenderBucket {
   private appliedMicroLod = -1;
   private appliedExtrusion = -1;
 
-  constructor(floor: number) {
+  constructor(floor: number, private readonly floorSpacing = FLOOR_VISUAL_SPACING) {
     this.floor = floor;
-    this.baseY = floor * FLOOR_VISUAL_SPACING;
+    this.baseY = floor * floorSpacing;
     this.root.position.set(0, this.baseY, 0);
     // Keep extrudedAlways pivot cleanly above floor (+0.005) & machine base plate (+0.032) so 89° flat 2D lines never sink below floor!
     this.extrudedAlways.position.y = 0.038;
@@ -686,7 +690,7 @@ class FloorRenderBucket {
       this.worldBounds.min.set(this.minX - 2, this.baseY - 1, this.minZ - 2);
       this.worldBounds.max.set(
         this.maxX + 2,
-        this.baseY + Math.max(FLOOR_VISUAL_SPACING, this.maxYRel + 2),
+        this.baseY + Math.max(this.floorSpacing, this.maxYRel + 2),
         this.maxZ + 2
       );
     }
@@ -842,6 +846,9 @@ export class CadSceneController {
   private bpRevIds = new WeakMap<BlueprintDocument, number>();
   private nextBpRevId = 1;
   private activePalette: CadThemePalette = CAD_THEMES['platinum-gold'];
+  private activeCategory: BlueprintCategory = 'station';
+  private activeUnitM = STATION_UNIT_M;
+  private activeFloorSpacing = FLOOR_VISUAL_SPACING;
   private maxAniso = 16;
 
   private ghostExtrudeTargets: THREE.Group[] = [];
@@ -1003,17 +1010,19 @@ export class CadSceneController {
   private buildMinimalReferenceAxes(palette: CadThemePalette): void {
     this.clearGroup(this.referenceGroup);
     const pts: number[] = [];
-    const extent = 16 * 30; // ±480m macro drafting axes
+    const unitM = this.activeUnitM;
+    const extent = unitM * 30;
     pts.push(-extent, 0, 0, extent, 0, 0);
     pts.push(0, 0, -extent, 0, 0, extent);
 
     for (let gx = -10; gx <= 10; gx++) {
       for (let gz = -10; gz <= 10; gz++) {
         if (gx === 0 && gz === 0) continue;
-        const x = gx * STATION_UNIT_M;
-        const z = gz * STATION_UNIT_M;
-        pts.push(x - 0.55, 0, z, x + 0.55, 0, z);
-        pts.push(x, 0, z - 0.55, x, 0, z + 0.55);
+        const x = gx * unitM;
+        const z = gz * unitM;
+        const tick = unitM >= 16 ? 0.55 : 0.35;
+        pts.push(x - tick, 0, z, x + tick, 0, z);
+        pts.push(x, 0, z - tick, x, 0, z + tick);
       }
     }
     this.referenceGroup.add(
@@ -1023,6 +1032,23 @@ export class CadSceneController {
         widthPx: 1.0,
       })
     );
+
+    // Subtle bow (+X forward) centerline indicator for ship blueprints
+    if (this.activeCategory === 'ship') {
+      const bowPts: number[] = [];
+      const tipX = unitM * 4.5;
+      const tailX = unitM * 2.5;
+      bowPts.push(tailX, 0.02, 0, tipX, 0.02, 0);
+      bowPts.push(tipX - 2.2, 0.02, -1.6, tipX, 0.02, 0);
+      bowPts.push(tipX - 2.2, 0.02, 1.6, tipX, 0.02, 0);
+      this.referenceGroup.add(
+        createCrispLineSegments(bowPts, {
+          color: palette.lineDetail,
+          opacity: 0.72,
+          widthPx: 1.15,
+        })
+      );
+    }
   }
 
   private applyThemeToScene(palette: CadThemePalette): void {
@@ -1073,7 +1099,7 @@ export class CadSceneController {
   private getOrCreateStationFloorBucket(floor: number): FloorRenderBucket {
     let bucket = this.stationFloorBuckets.get(floor);
     if (!bucket) {
-      bucket = new FloorRenderBucket(floor);
+      bucket = new FloorRenderBucket(floor, this.activeFloorSpacing);
       this.stationFloorBuckets.set(floor, bucket);
       this.worldGroup.add(bucket.root);
     }
@@ -1084,7 +1110,7 @@ export class CadSceneController {
     const key = packMachineBucketKey(floor, chunkKey);
     let bucket = this.machineChunkBuckets.get(key);
     if (!bucket) {
-      bucket = new FloorRenderBucket(floor);
+      bucket = new FloorRenderBucket(floor, this.activeFloorSpacing);
       this.machineChunkBuckets.set(key, bucket);
       this.worldGroup.add(bucket.root);
     }
@@ -1144,8 +1170,8 @@ export class CadSceneController {
     if (tool.kind === 'select') {
       if (state.boxSelectRect) return 'none';
       if (state.viewMode === 'station') {
-        const gx = Math.floor(cursor.x / STATION_UNIT_M);
-        const gy = Math.floor(cursor.y / STATION_UNIT_M);
+        const gx = Math.floor(cursor.x / this.activeUnitM);
+        const gy = Math.floor(cursor.y / this.activeUnitM);
         return `hov:m:${state.focusFloor}:${gx},${gy}`;
       }
       const cx = Math.floor(cursor.x);
@@ -1155,8 +1181,8 @@ export class CadSceneController {
     if (tool.kind === 'demolish') {
       if (state.boxSelectRect) return 'none';
       if (state.viewMode === 'station') {
-        const gx = Math.floor(cursor.x / STATION_UNIT_M);
-        const gy = Math.floor(cursor.y / STATION_UNIT_M);
+        const gx = Math.floor(cursor.x / this.activeUnitM);
+        const gy = Math.floor(cursor.y / this.activeUnitM);
         return `dem:m:${state.focusFloor}:${gx},${gy}`;
       }
       const cx = Math.floor(cursor.x);
@@ -1164,8 +1190,8 @@ export class CadSceneController {
       return `dem:b:${state.focusFloor}:${cx},${cy}`;
     }
     if (tool.kind === 'place-module') {
-      const gx = Math.floor(cursor.x / STATION_UNIT_M);
-      const gy = Math.floor(cursor.y / STATION_UNIT_M);
+      const gx = Math.floor(cursor.x / this.activeUnitM);
+      const gy = Math.floor(cursor.y / this.activeUnitM);
       return `mod:${tool.moduleType}:${tool.rotation}:${state.focusFloor}:${gx},${gy}`;
     }
     if (tool.kind === 'place-building') {
@@ -1178,8 +1204,8 @@ export class CadSceneController {
     }
     // stamp-blueprint
     const hasMods = tool.blueprint.modules.length > 0;
-    const ax = hasMods ? Math.floor(cursor.x / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.x);
-    const ay = hasMods ? Math.floor(cursor.y / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.y);
+    const ax = hasMods ? Math.floor(cursor.x / this.activeUnitM) * this.activeUnitM : Math.floor(cursor.x);
+    const ay = hasMods ? Math.floor(cursor.y / this.activeUnitM) * this.activeUnitM : Math.floor(cursor.y);
     const bpRev = this.getBlueprintRevId(tool.blueprint);
     return `stamp:${bpRev}:${tool.rotation}:${tool.floorOffset}:${state.focusFloor}:${state.forceReplaceHeld ? 1 : 0}:${ax},${ay}`;
   }
@@ -1189,8 +1215,8 @@ export class CadSceneController {
     const isPlacingMod = tool.kind === 'place-module';
     const isStampingMods = tool.kind === 'stamp-blueprint' && tool.blueprint.modules.length > 0;
     if (!isPlacingMod && !isStampingMods) return 'none';
-    const gx = cursor ? Math.floor(cursor.x / STATION_UNIT_M) : -99999;
-    const gy = cursor ? Math.floor(cursor.y / STATION_UNIT_M) : -99999;
+    const gx = cursor ? Math.floor(cursor.x / this.activeUnitM) : -99999;
+    const gy = cursor ? Math.floor(cursor.y / this.activeUnitM) : -99999;
     if (tool.kind === 'place-module') {
       return `mod:${tool.moduleType}:${tool.rotation}:${state.focusFloor}:${gx},${gy}`;
     }
@@ -1284,19 +1310,34 @@ export class CadSceneController {
 
     const palette = CAD_THEMES[effState.theme];
     const themeChanged = !prev || prev.theme !== effState.theme;
+    const nextCategory = getDocCategory(effState.doc);
+    const categoryChanged = !prev || nextCategory !== this.activeCategory;
+    if (categoryChanged) {
+      const spec = getFrameGridSpec(nextCategory);
+      this.activeCategory = nextCategory;
+      this.activeUnitM = spec.unitM;
+      this.activeFloorSpacing = spec.visualFloorSpacing;
+      this.rig.setFrameSpacing(spec.visualFloorSpacing, nextCategory === 'ship');
+      if (!themeChanged) {
+        this.buildMinimalReferenceAxes(palette);
+      }
+    }
     if (themeChanged) {
       this.applyThemeToScene(palette);
     }
 
     this.rig.setFocusFloor(effState.focusFloor);
-    this.referenceGroup.position.y = effState.focusFloor * FLOOR_VISUAL_SPACING - 0.06;
+    this.referenceGroup.position.y = effState.focusFloor * this.activeFloorSpacing - 0.06;
 
     // Incremental 3-layer world rebuild: station floors, 64m belt chunks, and 64m machine chunks rebuild independently!
     const geometryDocChanged =
-      !prev || prev.doc.modules !== effState.doc.modules || prev.doc.buildings !== effState.doc.buildings;
+      !prev ||
+      categoryChanged ||
+      prev.doc.modules !== effState.doc.modules ||
+      prev.doc.buildings !== effState.doc.buildings;
     const docOrThemeChanged = themeChanged || geometryDocChanged;
     if (docOrThemeChanged) {
-      this.rebuildWorldBatches(effState.doc, palette, themeChanged ? null : prev?.doc ?? null);
+      this.rebuildWorldBatches(effState.doc, palette, themeChanged || categoryChanged ? null : prev?.doc ?? null);
     }
 
     const visibilityChanged =
@@ -1610,7 +1651,7 @@ export class CadSceneController {
     // 4. Rebuild Layer 3 (64m spatial chunks for non-belt machines + underground links)
     const touchedMachineKeys = new Set<string>();
     const ingestMachineList = (floor: number, ck: number, list: PlacedBuilding[]) => {
-      const baseY = floor * FLOOR_VISUAL_SPACING;
+      const baseY = floor * this.activeFloorSpacing;
       let bucket: FloorRenderBucket | null = null;
       for (let i = 0; i < list.length; i++) {
         const b = list[i];
@@ -1699,16 +1740,19 @@ export class CadSceneController {
     const bucket = baseAllowed ? this.getOrCreateStationFloorBucket(mod.floor) : null;
     const [cx, cy] = getModuleCenterM(mod, def);
     const [wu, du, hu] = getModuleSizeUnits(def, mod.rotation);
-    const wM = wu * STATION_UNIT_M;
-    const dM = du * STATION_UNIT_M;
-    const baseY = mod.floor * FLOOR_VISUAL_SPACING;
+    const wM = wu * this.activeUnitM;
+    const dM = du * this.activeUnitM;
+    const baseY = mod.floor * this.activeFloorSpacing;
     const rotY = -mod.rotation * (Math.PI / 2);
 
     let labelRoofHeight = 0.02;
 
     if (!def.hasFactoryFloor) {
       if (bucket) {
-        const art = buildStationModuleArt(mod, def, baseY, 1.0, false, palette);
+        const art =
+          def.domain === 'ship'
+            ? buildShipModuleArt(mod, def, baseY, 1.0, false, palette)
+            : buildStationModuleArt(mod, def, baseY, 1.0, false, palette);
         labelRoofHeight = art.roofHeight;
         bucket.ingestObject(art.root, art.extrudeGroup, 'always');
       }
@@ -1808,7 +1852,7 @@ export class CadSceneController {
         const surfFloor = mod.floor + surf.floorOffset;
         if (allowedFloors && !allowedFloors.has(surfFloor)) continue;
         const surfBucket = this.getOrCreateStationFloorBucket(surfFloor);
-        const surfY = surfFloor * FLOOR_VISUAL_SPACING;
+        const surfY = surfFloor * this.activeFloorSpacing;
 
         const floorGeo = createFloorShapeGeometry(surf, 3.0);
         const floorMat = new THREE.MeshBasicMaterial({
@@ -1842,7 +1886,7 @@ export class CadSceneController {
 
       // Double-height corner wireframe guides
       if (bucket && hu > 1) {
-        const topRelY = (hu - 1) * FLOOR_VISUAL_SPACING;
+        const topRelY = (hu - 1) * this.activeFloorSpacing;
         const hw = wM / 2 - 0.25;
         const hd = dM / 2 - 0.25;
         const pts = [
@@ -1867,7 +1911,7 @@ export class CadSceneController {
     for (const c of getModuleWorldConnectors(mod, def)) {
       if (allowedFloors && !allowedFloors.has(c.floor)) continue;
       const cBucket = this.getOrCreateStationFloorBucket(c.floor);
-      const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.05;
+      const cyWorld = c.floor * this.activeFloorSpacing + 0.05;
       if (c.type.startsWith('Vertical')) {
         const r = c.type === 'Vertical2x2' ? 3.2 : 1.7;
         const pts = [
@@ -1945,7 +1989,7 @@ export class CadSceneController {
         const op = this.layerOpacityFor(mod.floor, state.focusFloor, state.hideAbove);
         if (op <= 0.01) continue;
         const [x0, z0, x1, z1] = getModuleBoundsM(mod, def);
-        const y = mod.floor * FLOOR_VISUAL_SPACING + 0.11;
+        const y = mod.floor * this.activeFloorSpacing + 0.11;
         const yf = y - 0.012;
         const pad = 0.08;
         const fx0 = x0 + pad;
@@ -1987,7 +2031,7 @@ export class CadSceneController {
         const op = this.layerOpacityFor(b.floor, state.focusFloor, state.hideAbove);
         if (op <= 0.01) continue;
         const [w, d] = getBuildingSizeCells(def, b.rotation);
-        const y = b.floor * FLOOR_VISUAL_SPACING + 0.125;
+        const y = b.floor * this.activeFloorSpacing + 0.125;
         const yf = y - 0.012;
         const x0 = b.x + 0.04;
         const z0 = b.y + 0.04;
@@ -2036,7 +2080,7 @@ export class CadSceneController {
       for (const issue of simIssues) {
         const op = this.layerOpacityFor(issue.floor, state.focusFloor, state.hideAbove);
         if (op <= 0.01) continue;
-        const y = issue.floor * FLOOR_VISUAL_SPACING + 0.16;
+        const y = issue.floor * this.activeFloorSpacing + 0.16;
         const x0 = issue.x + 0.08;
         const z0 = issue.y + 0.08;
         const x1 = issue.x + 0.92;
@@ -2159,8 +2203,8 @@ export class CadSceneController {
       if (!def) return;
       for (const c of def.connectors) heldTypes.add(c.type);
       if (state.cursorWorld) {
-        const gx = Math.floor(state.cursorWorld.x / STATION_UNIT_M);
-        const gy = Math.floor(state.cursorWorld.y / STATION_UNIT_M);
+        const gx = Math.floor(state.cursorWorld.x / this.activeUnitM);
+        const gy = Math.floor(state.cursorWorld.y / this.activeUnitM);
         ghostModules = [{
           id: '__ghost_mod',
           type: def.id,
@@ -2174,8 +2218,8 @@ export class CadSceneController {
       ghostModules = tool.blueprint.modules;
       if (state.cursorWorld) {
         ghostOffset = {
-          gx: Math.floor(Math.floor(state.cursorWorld.x) / STATION_UNIT_M),
-          gy: Math.floor(Math.floor(state.cursorWorld.y) / STATION_UNIT_M),
+          gx: Math.floor(Math.floor(state.cursorWorld.x) / this.activeUnitM),
+          gy: Math.floor(Math.floor(state.cursorWorld.y) / this.activeUnitM),
           floor: state.focusFloor + tool.floorOffset,
         };
       } else {
@@ -2214,7 +2258,7 @@ export class CadSceneController {
       }
 
       const compatible = heldTypes.size === 0 || heldTypes.has(c.type);
-      const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.13;
+      const cyWorld = c.floor * this.activeFloorSpacing + 0.13;
 
       if (isVertical) {
         if (isLockedNow) {
@@ -2302,7 +2346,7 @@ export class CadSceneController {
     offset: { gx: number; gy: number; floor: number } = { gx: 0, gy: 0, floor: 0 }
   ): void {
     for (const c of getModuleWorldConnectors(mod, def, offset)) {
-      const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.1;
+      const cyWorld = c.floor * this.activeFloorSpacing + 0.1;
       if (c.type.startsWith('Vertical')) {
         const r = c.type === 'Vertical2x2' ? 3.2 : 1.7;
         const pts = [
@@ -2453,10 +2497,10 @@ export class CadSceneController {
   private updateRoundedGrid(state: SceneRenderState): void {
     const u = this.roundedGrid.uniforms;
     const mesh = this.roundedGrid.mesh;
-    mesh.position.y = state.focusFloor * FLOOR_VISUAL_SPACING + 0.018;
+    mesh.position.y = state.focusFloor * this.activeFloorSpacing + 0.018;
 
     const isStation = state.viewMode === 'station';
-    const cellSize = isStation ? STATION_UNIT_M : 1.0;
+    const cellSize = isStation ? this.activeUnitM : 1.0;
     const cursorRadius = isStation ? 44.0 : 6.8;
     u.uCellSize.value = cellSize;
     u.uCursorRadius.value = cursorRadius;
@@ -2505,8 +2549,8 @@ export class CadSceneController {
     } else if (cursor && state.activeTool.kind === 'stamp-blueprint') {
       const bounds = getBlueprintBoundsM(state.activeTool.blueprint);
       const hasMods = state.activeTool.blueprint.modules.length > 0;
-      const ax = hasMods ? Math.floor(cursor.x / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.x);
-      const ay = hasMods ? Math.floor(cursor.y / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.y);
+      const ax = hasMods ? Math.floor(cursor.x / this.activeUnitM) * this.activeUnitM : Math.floor(cursor.x);
+      const ay = hasMods ? Math.floor(cursor.y / this.activeUnitM) * this.activeUnitM : Math.floor(cursor.y);
       u.uFocusRect.value.set(ax, ay, ax + bounds.width, ay + bounds.depth);
       hasFocusRect = true;
     }
@@ -2570,7 +2614,7 @@ export class CadSceneController {
     if (state.beltPreview.length > 0 && state.activeTool.kind === 'place-building') {
       const beltType = state.activeTool.buildingType;
       const ugType = getMatchingUndergroundType(beltType) ?? beltType;
-      const baseY = state.focusFloor * FLOOR_VISUAL_SPACING + 0.07;
+      const baseY = state.focusFloor * this.activeFloorSpacing + 0.07;
       const lines = this.previewLineBatch!;
       const validPadTris: number[] = [];
       const invalidPadTris: number[] = [];
@@ -2665,7 +2709,7 @@ export class CadSceneController {
     }
 
     if (!state.cursorWorld) return;
-    const baseY = state.focusFloor * FLOOR_VISUAL_SPACING;
+    const baseY = state.focusFloor * this.activeFloorSpacing;
 
     // 1a. Select mode live hover highlight (shapez 2 whisper-light outline around hovered machine/belt/module)
     if (state.activeTool.kind === 'select') {
@@ -2785,13 +2829,13 @@ export class CadSceneController {
             this.previewLineBatch!.add(pts, { color: col, opacity: 0.98, widthPx: 2.2 });
           }
         } else {
-          const gx = Math.floor(state.cursorWorld.x / STATION_UNIT_M);
-          const gy = Math.floor(state.cursorWorld.y / STATION_UNIT_M);
+          const gx = Math.floor(state.cursorWorld.x / this.activeUnitM);
+          const gy = Math.floor(state.cursorWorld.y / this.activeUnitM);
           this.addFlatRectGhost(
-            gx * STATION_UNIT_M + 0.3,
-            gy * STATION_UNIT_M + 0.3,
-            (gx + 1) * STATION_UNIT_M - 0.3,
-            (gy + 1) * STATION_UNIT_M - 0.3,
+            gx * this.activeUnitM + 0.3,
+            gy * this.activeUnitM + 0.3,
+            (gx + 1) * this.activeUnitM - 0.3,
+            (gy + 1) * this.activeUnitM - 0.3,
             baseY + 0.12,
             col,
             0.35
@@ -2806,8 +2850,8 @@ export class CadSceneController {
       const def = getModuleDef(state.activeTool.moduleType);
       if (!def) return;
       const [wu, du, hu] = getModuleSizeUnits(def, state.activeTool.rotation);
-      const gx = Math.floor(state.cursorWorld.x / STATION_UNIT_M);
-      const gy = Math.floor(state.cursorWorld.y / STATION_UNIT_M);
+      const gx = Math.floor(state.cursorWorld.x / this.activeUnitM);
+      const gy = Math.floor(state.cursorWorld.y / this.activeUnitM);
       const issue = validateModulePlacement(state.doc, {
         type: def.id,
         gx,
@@ -2816,10 +2860,10 @@ export class CadSceneController {
         rotation: state.activeTool.rotation,
       });
       const col = issue ? palette.invalidGhost : palette.validGhost;
-      const x0 = gx * STATION_UNIT_M + 0.12;
-      const z0 = gy * STATION_UNIT_M + 0.12;
-      const x1 = (gx + wu) * STATION_UNIT_M - 0.12;
-      const z1 = (gy + du) * STATION_UNIT_M - 0.12;
+      const x0 = gx * this.activeUnitM + 0.12;
+      const z0 = gy * this.activeUnitM + 0.12;
+      const x1 = (gx + wu) * this.activeUnitM - 0.12;
+      const z1 = (gy + du) * this.activeUnitM - 0.12;
 
       const ghostMod: PlacedModule = {
         id: '__ghost_mod',
@@ -2832,7 +2876,10 @@ export class CadSceneController {
       };
 
       if (!def.hasFactoryFloor) {
-        const ghostArt = buildStationModuleArt(ghostMod, def, baseY + 0.04, 0.96, false, palette, col);
+        const ghostArt =
+          def.domain === 'ship'
+            ? buildShipModuleArt(ghostMod, def, baseY + 0.04, 0.96, false, palette, col)
+            : buildStationModuleArt(ghostMod, def, baseY + 0.04, 0.96, false, palette, col);
         ghostArt.extrudeGroup.scale.y = yScale;
         this.ghostExtrudeTargets.push(ghostArt.extrudeGroup);
         this.previewGroup.add(ghostArt.root);
@@ -2859,7 +2906,7 @@ export class CadSceneController {
       } else {
         this.addFlatRectGhost(x0, z0, x1, z1, baseY + 0.08, col, 0.94);
         if (hu > 1) {
-          this.addFlatRectGhost(x0, z0, x1, z1, baseY + FLOOR_VISUAL_SPACING + 0.08, col, 0.5);
+          this.addFlatRectGhost(x0, z0, x1, z1, baseY + this.activeFloorSpacing + 0.08, col, 0.5);
         }
       }
 
@@ -2942,10 +2989,10 @@ export class CadSceneController {
         forceReplace: state.forceReplaceHeld,
       });
       const hasModules = bp.modules.length > 0;
-      const shiftGx = hasModules ? Math.floor(anchor.x / STATION_UNIT_M) : 0;
-      const shiftGy = hasModules ? Math.floor(anchor.y / STATION_UNIT_M) : 0;
-      const shiftX = hasModules ? shiftGx * STATION_UNIT_M : anchor.x;
-      const shiftY = hasModules ? shiftGy * STATION_UNIT_M : anchor.y;
+      const shiftGx = hasModules ? Math.floor(anchor.x / this.activeUnitM) : 0;
+      const shiftGy = hasModules ? Math.floor(anchor.y / this.activeUnitM) : 0;
+      const shiftX = hasModules ? shiftGx * this.activeUnitM : anchor.x;
+      const shiftY = hasModules ? shiftGy * this.activeUnitM : anchor.y;
       const moduleOffset = { gx: shiftGx, gy: shiftGy, floor: anchor.floor };
       const validPts: number[] = [];
       const invalidPts: number[] = [];
@@ -2956,11 +3003,11 @@ export class CadSceneController {
         if (!def) continue;
         const isBad = Boolean(validation.moduleIssues[i] && !state.forceReplaceHeld);
         const [wu, du] = getModuleSizeUnits(def, m.rotation);
-        const minX = (m.gx + shiftGx) * STATION_UNIT_M;
-        const minY = (m.gy + shiftGy) * STATION_UNIT_M;
-        const maxX = (m.gx + shiftGx + wu) * STATION_UNIT_M;
-        const maxY = (m.gy + shiftGy + du) * STATION_UNIT_M;
-        const y = (m.floor + anchor.floor) * FLOOR_VISUAL_SPACING + 0.08;
+        const minX = (m.gx + shiftGx) * this.activeUnitM;
+        const minY = (m.gy + shiftGy) * this.activeUnitM;
+        const maxX = (m.gx + shiftGx + wu) * this.activeUnitM;
+        const maxY = (m.gy + shiftGy + du) * this.activeUnitM;
+        const y = (m.floor + anchor.floor) * this.activeFloorSpacing + 0.08;
         const dst = isBad ? invalidPts : validPts;
         dst.push(
           minX + 0.15, y, minY + 0.15, maxX - 0.15, y, minY + 0.15,
@@ -2991,7 +3038,7 @@ export class CadSceneController {
         const x = b.x + shiftX;
         const y = b.y + shiftY;
         const floor = b.floor + anchor.floor;
-        const drawY = floor * FLOOR_VISUAL_SPACING + 0.09;
+        const drawY = floor * this.activeFloorSpacing + 0.09;
         const dst = isBad ? invalidPts : validPts;
         dst.push(
           x + 0.1, drawY, y + 0.1, x + w - 0.1, drawY, y + 0.1,
@@ -3039,8 +3086,8 @@ export class CadSceneController {
       highFloor = Math.max(state.focusFloor + 2, 3);
     }
 
-    const y0 = lowFloor * FLOOR_VISUAL_SPACING - 0.05;
-    const y1 = highFloor * FLOOR_VISUAL_SPACING + (highFloor === lowFloor ? 0.6 : 1.6);
+    const y0 = lowFloor * this.activeFloorSpacing - 0.05;
+    const y1 = highFloor * this.activeFloorSpacing + (highFloor === lowFloor ? 0.6 : 1.6);
     const h = Math.max(0.55, y1 - y0);
 
     const boxColor =

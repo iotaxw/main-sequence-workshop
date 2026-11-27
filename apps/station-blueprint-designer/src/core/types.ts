@@ -34,14 +34,41 @@ export interface StationFloorSurfaceDef {
   note?: string;
 }
 
+export type ShipPowerRole =
+  | 'generator'
+  | 'thruster'
+  | 'shield'
+  | 'weapon'
+  | 'mining'
+  | 'workstation'
+  | 'other'
+  | 'none';
+
+export interface ShipModuleExtraStats {
+  shieldCapacity?: number;
+  shieldRecharge?: number;
+  rangeM?: number;
+  damagePerShot?: number;
+  damagePerSec?: number;
+  energyPerShotMJ?: number;
+  missileSilos?: number;
+  reloadSec?: number;
+  warpSpeedMS?: number;
+  interstellarWarp?: boolean;
+  stackBonusPct?: number;
+  tractorRangeM?: number;
+}
+
 export interface StationModuleDef {
   id: string;
+  /** Runtime domain tagged by catalog loader ('station' | 'ship'). */
+  domain?: BlueprintCategory;
   nameEn: string;
   nameZh: string;
   descriptionZh: string;
   categoryEn: string;
   categoryZh: string;
-  sizeUnits: [number, number, number]; // [width16m, depth16m, floorSpan]
+  sizeUnits: [number, number, number]; // [widthUnits, depthUnits, floorSpan] (station: 16m/8m, ship: 8m/4m)
   blockBoundsM: {
     minX: number;
     minY: number;
@@ -50,15 +77,39 @@ export interface StationModuleDef {
     maxY: number;
     maxZ: number;
   } | null;
+  /** Verified Build 26639889 primary StaticMesh 3D vertex bounds in meters */
+  meshBoundsM?: {
+    minX: number;
+    minY: number;
+    minZ: number;
+    maxX: number;
+    maxY: number;
+    maxZ: number;
+  };
   heightSpanM: number;
   canRotate: boolean;
+  /** Native MirrorClass partner ID (toggled by F in native designer) */
+  mirrorId?: string;
+  isMirrorVariant?: boolean;
+  /** Native FunctionalType (e.g. PilotBlock, DockingCollar, WarpDrive, hangar) */
+  functionalType?: string;
   connectors: StationConnectorDef[];
   hasFactoryFloor: boolean;
   floors: StationFloorSurfaceDef[];
+  /** Verified Build 26639889 ship mass in tonnes */
+  weightT?: number;
+  /** Verified Build 26639889 ship hull durability points */
+  hull?: number;
+  /** Verified Build 26639889 normal thruster output in kN */
+  thrustKN?: number;
+  /** Verified Build 26639889 boosting thruster output in kN */
+  boostThrustKN?: number;
   /** Verified Build 26639889 steady/peak power consumption in kW (1000 kW = 1 MW) */
   powerKW?: number;
-  /** Verified Build 26639889 maximum power generation in kW (e.g. Solar Panels I/II/III) */
+  /** Verified Build 26639889 maximum power generation in kW (e.g. Solar Panels / Ship Reactor) */
   powerGenKW?: number;
+  powerRole?: ShipPowerRole;
+  shipStats?: ShipModuleExtraStats;
   sourceAsset: string;
 }
 
@@ -126,6 +177,7 @@ export interface GameCatalog {
     source: string;
   };
   stationModules: StationModuleDef[];
+  shipModules?: StationModuleDef[];
   buildables: BuildableDef[];
   recipes: RecipeDef[];
 }
@@ -187,6 +239,8 @@ export interface PlacedBuilding {
 export interface BlueprintDocument {
   format: 'station-blueprint-designer';
   formatVersion: 2;
+  /** Blueprint carrier type (omitted defaults to 'station' for full backward compatibility) */
+  category?: BlueprintCategory;
   id: string;
   name: string;
   description?: string;
@@ -240,8 +294,10 @@ export interface LibraryFileEntry {
   name: string;
   fileName: string;
   blueprintName: string;
+  category?: BlueprintCategory;
   moduleCount: number;
   buildingCount: number;
+  totalWeightT?: number;
   floorSpan: number;
   updatedAt: number;
   /** Optional remote blob SHA / revision tag so cache invalidates accurately on cloud refresh/save */

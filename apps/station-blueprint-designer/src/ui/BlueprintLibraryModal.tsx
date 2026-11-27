@@ -357,6 +357,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                   const loadedDoc = docCache[cacheKey] ?? null;
                   const isEditing = activeSourcePath === file.path;
                   const isStamping = stampingPath === file.path;
+                  const isShipCard = (loadedDoc?.category ?? file.category) === 'ship';
                   const modCount = loadedDoc ? loadedDoc.modules.length : file.moduleCount;
                   const bldCount = loadedDoc ? loadedDoc.buildings.length : file.buildingCount;
                   const displayName = file.blueprintName || file.name;
@@ -399,11 +400,15 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                         </div>
                         <div className="bpm-card-meta">
                           <div className="bpm-card-sub">
-                            {modCount > 0 || bldCount > 0
+                            {isShipCard
                               ? isEn
-                                ? `${modCount}M · ${bldCount}B`
-                                : `${modCount}模 · ${bldCount}建`
-                              : '—'}
+                                ? `Ship · ${modCount}M${file.totalWeightT ? ` · ${file.totalWeightT}t` : ''}`
+                                : `飞船 · ${modCount}模${file.totalWeightT ? ` · ${file.totalWeightT}t` : ''}`
+                              : modCount > 0 || bldCount > 0
+                                ? isEn
+                                  ? `${modCount}M · ${bldCount}B`
+                                  : `${modCount}模 · ${bldCount}建`
+                                : '—'}
                           </div>
                           <div className="bpm-card-actions" onClick={(e) => e.stopPropagation()}>
                             <button
@@ -416,13 +421,15 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                             >
                               {t('打开', 'Open')}
                             </button>
-                            <button
-                              type="button"
-                              className="bpm-card-btn"
-                              onClick={() => onExportSavFromLibrary(file)}
-                            >
-                              .sav
-                            </button>
+                            {!isShipCard && (
+                              <button
+                                type="button"
+                                className="bpm-card-btn"
+                                onClick={() => onExportSavFromLibrary(file)}
+                              >
+                                .sav
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="bpm-card-btn"

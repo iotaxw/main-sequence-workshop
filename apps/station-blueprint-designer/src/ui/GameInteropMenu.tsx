@@ -1,19 +1,23 @@
 import React, { useRef } from 'react';
 import { useI18n } from '../core/i18n';
+import type { BlueprintCategory } from '../core/types';
 import { useHoverMenu } from './useHoverMenu';
 
 interface GameInteropMenuProps {
+  docCategory?: BlueprintCategory;
   onImportFile: (file: File) => void;
   onExportNativeSav: (mode: 'station' | 'preset') => void;
   onExportCanonicalJson: () => void;
 }
 
 export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
+  docCategory = 'station',
   onImportFile,
   onExportNativeSav,
   onExportCanonicalJson,
 }) => {
   const { t } = useI18n();
+  const isShip = docCategory === 'ship';
   const { open, close, wrapRef, containerProps, onTriggerClick } = useHoverMenu();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -59,31 +63,35 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
 
           <div className="interop-section">
             <div className="interop-section-title">{t('导出', 'Export')}</div>
+            {!isShip && (
+              <>
+                <button
+                  type="button"
+                  className="interop-action-btn row primary"
+                  onClick={() => {
+                    close();
+                    onExportNativeSav('station');
+                  }}
+                >
+                  <span className="interop-action-main">{t('游戏整站', 'Station Save')}</span>
+                  <span className="interop-tag">.sav</span>
+                </button>
+                <button
+                  type="button"
+                  className="interop-action-btn row"
+                  onClick={() => {
+                    close();
+                    onExportNativeSav('preset');
+                  }}
+                >
+                  <span className="interop-action-main">{t('局部预设', 'Section Preset')}</span>
+                  <span className="interop-tag">.preset.sav</span>
+                </button>
+              </>
+            )}
             <button
               type="button"
-              className="interop-action-btn row primary"
-              onClick={() => {
-                close();
-                onExportNativeSav('station');
-              }}
-            >
-              <span className="interop-action-main">{t('游戏整站', 'Station Save')}</span>
-              <span className="interop-tag">.sav</span>
-            </button>
-            <button
-              type="button"
-              className="interop-action-btn row"
-              onClick={() => {
-                close();
-                onExportNativeSav('preset');
-              }}
-            >
-              <span className="interop-action-main">{t('局部预设', 'Section Preset')}</span>
-              <span className="interop-tag">.preset.sav</span>
-            </button>
-            <button
-              type="button"
-              className="interop-action-btn row"
+              className={`interop-action-btn row ${isShip ? 'primary' : ''}`}
               onClick={() => {
                 close();
                 onExportCanonicalJson();

@@ -434,6 +434,238 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
       );
     }
 
+    // === Ship Modules (1:1 matched to 3D top-down CAD silhouettes) ===
+    if (id.startsWith('BPO_Cockpit_')) {
+      const big = id !== 'BPO_Cockpit_01';
+      return (
+        <>
+          <polygon points="4,6.5 14,6.5 20.5,10 20.5,14 14,17.5 4,17.5" {...s} />
+          <polyline points="12.5,8.5 17,12 12.5,15.5" {...dim} />
+          {big && <line x1="8" y1="7" x2="8" y2="17" {...dim} />}
+        </>
+      );
+    }
+    if (id === 'BPO_DockingCollar') {
+      return (
+        <>
+          <rect x="4" y="6" width="16" height="8" rx="1.5" {...s} />
+          <circle cx="12" cy="10" r="2.2" {...s} />
+          <line x1="7" y1="17" x2="17" y2="17" {...dim} />
+        </>
+      );
+    }
+    if (id === 'BPO_Body_01' || id === 'BPO_Body_02') {
+      return (
+        <>
+          <rect x="4" y="4" width="16" height="16" rx="2.5" {...s} />
+          <rect x="7.5" y="7.5" width="9" height="9" rx="1" {...dim} />
+          {id === 'BPO_Body_02' && <line x1="6" y1="20" x2="18" y2="20" strokeWidth={2.2} stroke="currentColor" />}
+        </>
+      );
+    }
+    if (id === 'BPO_ShipCorner_01') {
+      return (
+        <>
+          <polygon points="4,4 20,4 20,10 10,20 4,20" {...s} />
+          <line x1="18.5" y1="11.5" x2="11.5" y2="18.5" {...dim} />
+        </>
+      );
+    }
+    if (id === 'BPO_WindowBlock') {
+      return (
+        <>
+          <rect x="6" y="5" width="7" height="14" rx="1.5" {...s} />
+          <line x1="13" y1="8" x2="18" y2="8" {...dim} />
+          <line x1="13" y1="16" x2="18" y2="16" {...dim} />
+        </>
+      );
+    }
+    if (id === 'BPO_Frame_01' || id.startsWith('BPO_FrameSlope_')) {
+      return (
+        <>
+          <rect x="4.5" y="4.5" width="15" height="15" rx="1.2" {...s} />
+          {id === 'BPO_Frame_01' ? (
+            <>
+              <line x1="5" y1="5" x2="19" y2="19" {...dim} />
+              <line x1="19" y1="5" x2="5" y2="19" {...dim} />
+            </>
+          ) : (
+            <line x1="5" y1="18.5" x2="19" y2="5.5" {...s} />
+          )}
+        </>
+      );
+    }
+    if (id === 'BPO_LadderBlock') {
+      return (
+        <>
+          <rect x="4.5" y="4.5" width="15" height="15" rx="2" {...dim} />
+          <line x1="9" y1="5.5" x2="9" y2="18.5" {...s} />
+          <line x1="15" y1="5.5" x2="15" y2="18.5" {...s} />
+          <line x1="9" y1="9" x2="15" y2="9" {...s} />
+          <line x1="9" y1="12" x2="15" y2="12" {...s} />
+          <line x1="9" y1="15" x2="15" y2="15" {...s} />
+        </>
+      );
+    }
+    if (id === 'BPO_LandingGear_01') {
+      return (
+        <>
+          <rect x="6" y="4.5" width="12" height="7" rx="1.5" {...s} />
+          <line x1="9" y1="11.5" x2="7" y2="18.5" {...s} />
+          <line x1="15" y1="11.5" x2="17" y2="18.5" {...s} />
+          <line x1="4.5" y1="18.5" x2="19.5" y2="18.5" {...s} />
+        </>
+      );
+    }
+    if (id.startsWith('BPO_Thruster_')) {
+      const large = id === 'BPO_Thruster_05';
+      const med = id === 'BPO_Thruster_03';
+      return (
+        <>
+          <polygon points="8.5,5.5 19.5,7.5 19.5,16.5 8.5,18.5" {...s} />
+          <line x1="4" y1="8.5" x2="8" y2="8.5" {...s} />
+          <line x1="3" y1="12" x2="8" y2="12" {...s} />
+          <line x1="4" y1="15.5" x2="8" y2="15.5" {...s} />
+          {(large || med) && <line x1="14" y1="6.8" x2="14" y2="17.2" {...dim} />}
+          {large && <line x1="11" y1="6.2" x2="11" y2="17.8" {...dim} />}
+        </>
+      );
+    }
+    if (id === 'BPO_ReactorBlock_Small') {
+      return (
+        <>
+          <rect x="4" y="4" width="16" height="16" rx="3" {...dim} />
+          <circle cx="12" cy="12" r="5.5" {...s} />
+          <circle cx="12" cy="12" r="2.2" {...s} />
+        </>
+      );
+    }
+    if (id === 'BPO_WarpDriveBlock' || id === 'BPO_InterstellarWarpDriveBlock') {
+      const inter = id === 'BPO_InterstellarWarpDriveBlock';
+      return (
+        <>
+          <circle cx="12" cy="12" r="7.5" {...s} />
+          <circle cx="12" cy="12" r="4.2" {...dim} />
+          <polygon points="12,9 15,12 12,15 9,12" {...s} />
+          {inter && (
+            <>
+              <line x1="3" y1="7" x2="3" y2="17" {...s} />
+              <line x1="21" y1="7" x2="21" y2="17" {...s} />
+            </>
+          )}
+        </>
+      );
+    }
+    if (id === 'BPO_ShipContainerBlock') {
+      return (
+        <>
+          <rect x="4" y="4" width="16" height="16" rx="2" {...s} />
+          <line x1="12" y1="4.5" x2="12" y2="19.5" {...dim} />
+          <line x1="4.5" y1="12" x2="19.5" y2="12" {...dim} />
+        </>
+      );
+    }
+    if (id === 'BPO_WorkstationBlock') {
+      return (
+        <>
+          <rect x="4" y="6" width="16" height="12" rx="2" {...s} />
+          <line x1="7.5" y1="10" x2="16.5" y2="10" {...dim} />
+          <line x1="7.5" y1="14" x2="13" y2="14" {...dim} />
+        </>
+      );
+    }
+    if (id === 'BPO_Hangar_2') {
+      return (
+        <>
+          <rect x="3.5" y="4" width="17" height="16" rx="2" {...s} />
+          <rect x="6.5" y="7" width="11" height="10" rx="1" {...dim} />
+          <polyline points="10.5,9.5 14,12 10.5,14.5" {...s} />
+        </>
+      );
+    }
+    if (id === 'BPO_AstronomicScanner' || id === 'BPO_BiosampleCollector') {
+      return (
+        <>
+          <circle cx="12" cy="12" r="7" {...s} />
+          <circle cx="12" cy="12" r="3" {...dim} />
+          {id === 'BPO_AstronomicScanner' ? (
+            <line x1="12" y1="5" x2="17.5" y2="12" {...s} />
+          ) : (
+            <>
+              <circle cx="12" cy="8.2" r="1" {...s} />
+              <circle cx="8.8" cy="14" r="1" {...s} />
+              <circle cx="15.2" cy="14" r="1" {...s} />
+            </>
+          )}
+        </>
+      );
+    }
+    if (id.startsWith('BPO_CannonBlock') || id.startsWith('BPO_MiningLaserBlock')) {
+      return (
+        <>
+          <rect x="4" y="7.5" width="9" height="9" rx="2" {...s} />
+          <line x1="13" y1="10" x2="20.5" y2="10" {...s} />
+          <line x1="13" y1="14" x2="20.5" y2="14" {...s} />
+          {id.startsWith('BPO_MiningLaserBlock') && <line x1="17" y1="12" x2="21" y2="12" {...dim} />}
+        </>
+      );
+    }
+    if (id === 'BPO_LanceBlock') {
+      return (
+        <>
+          <rect x="3" y="8" width="15" height="8" rx="1.5" {...dim} />
+          <line x1="4" y1="10.5" x2="21" y2="10.5" {...s} />
+          <line x1="4" y1="13.5" x2="21" y2="13.5" {...s} />
+          <polyline points="18,9.5 21,12 18,14.5" {...s} />
+        </>
+      );
+    }
+    if (id === 'BPO_MissileLauncherBlock_01') {
+      return (
+        <>
+          <rect x="4" y="4" width="16" height="16" rx="2" {...dim} />
+          <circle cx="9" cy="9" r="2" {...s} />
+          <circle cx="15" cy="9" r="2" {...s} />
+          <circle cx="9" cy="15" r="2" {...s} />
+          <circle cx="15" cy="15" r="2" {...s} />
+        </>
+      );
+    }
+    if (id.startsWith('BPO_ShipLaserTurretBlock')) {
+      return (
+        <>
+          <circle cx="10.5" cy="12" r="5" {...s} />
+          <line x1="15.5" y1="12" x2="21" y2="12" {...s} />
+          <circle cx="10.5" cy="12" r="1.6" {...dim} />
+        </>
+      );
+    }
+    if (id.startsWith('BPO_TractorBeamBlock')) {
+      return (
+        <>
+          <rect x="4.5" y="7.5" width="7.5" height="9" rx="2" {...s} />
+          <path d="M14,7.5 A6,6 0 0,1 14,16.5" {...s} />
+          <path d="M17.5,5.5 A8.5,8.5 0 0,1 17.5,18.5" {...dim} />
+        </>
+      );
+    }
+    if (id.startsWith('BPO_ShipShieldGenerator_01')) {
+      return (
+        <>
+          <path d="M12,3.5 L19,6.5 V12.5 C19,16.5 16,19.2 12,20.5 C8,19.2 5,16.5 5,12.5 V6.5 Z" {...s} />
+          <circle cx="12" cy="11.5" r="2.6" {...dim} />
+        </>
+      );
+    }
+    if (id.startsWith('BPO_Armour_01') || id.startsWith('BPO_ArmourSlope_')) {
+      return (
+        <>
+          <polygon points="4,17 20,17 16,7 7,7" {...s} />
+          <line x1="12" y1="7" x2="12" y2="17" {...dim} />
+        </>
+      );
+    }
+
     // Default clean architectural square
     return (
       <>

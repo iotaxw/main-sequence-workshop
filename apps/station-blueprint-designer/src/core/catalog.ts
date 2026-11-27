@@ -2,11 +2,29 @@ import rawCatalog from '../data/catalog-26639889.json';
 import type { Lang } from './i18n';
 import type { BuildableDef, GameCatalog, RecipeDef, StationModuleDef } from './types';
 
-export const CATALOG: GameCatalog = rawCatalog as GameCatalog;
+export const CATALOG: GameCatalog = rawCatalog as unknown as GameCatalog;
 
 const moduleMap = new Map<string, StationModuleDef>();
 for (const m of CATALOG.stationModules) {
+  m.domain = 'station';
   moduleMap.set(m.id, m);
+}
+for (const m of CATALOG.shipModules ?? []) {
+  m.domain = 'ship';
+  moduleMap.set(m.id, m);
+}
+
+export const SHIP_MODULES: StationModuleDef[] = CATALOG.shipModules ?? [];
+
+export function getModuleMirrorId(id: string): string | null {
+  return moduleMap.get(id)?.mirrorId ?? null;
+}
+
+export function canModuleRotate(id: string, freeRotate = false): boolean {
+  if (freeRotate) return true;
+  const def = moduleMap.get(id);
+  if (!def) return true;
+  return def.canRotate !== false;
 }
 
 const buildableMap = new Map<string, BuildableDef>();

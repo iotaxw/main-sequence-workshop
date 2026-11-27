@@ -18,9 +18,12 @@ import {
 } from './belt-router';
 import {
   CATALOG,
+  SHIP_MODULES,
+  canModuleRotate,
   getBuildableDef,
   getItemName,
   getModuleDef,
+  getModuleMirrorId,
   getRecipeDef,
   getRecipeName,
   getRecipesForCrafter,
@@ -50,9 +53,14 @@ import {
   validateStampBlueprintPlacement,
 } from './commands';
 import {
+  SHIP_FLOOR_HEIGHT_M,
+  SHIP_FLOOR_VISUAL_SPACING,
+  SHIP_UNIT_M,
+  areWorldConnectorsMated,
   collectOpenGhostConnectors,
   computeUndergroundLinks,
   findMatchedDockConnectors,
+  getFrameGridSpec,
   getMirroredBuildingRotation,
   getMirroredModuleRotation,
   getModuleFloorShift,
@@ -64,7 +72,15 @@ import {
   validateBuildingPlacement,
   validateModulePlacement,
 } from './geometry';
-import { BUILDING_GROUPS, cycleVariantInGroup, getShortLabel, STATION_GROUPS } from './groups';
+import {
+  BUILDING_GROUPS,
+  SHIP_GROUPS,
+  STATION_GROUPS,
+  cycleVariantInGroup,
+  findGroupForEntity,
+  getShortLabel,
+} from './groups';
+import { computeShipStats } from './ship-stats';
 import {
   clearSavedGitHubConfig,
   clearWorkspaceAutosave,
@@ -2875,5 +2891,147 @@ describe('Shapez 2 F / Shift+F Mirror Symmetry (geometry + commands + camera)', 
       if (prevLS === undefined) delete (globalThis as { localStorage?: Storage }).localStorage;
       else (globalThis as { localStorage?: Storage }).localStorage = prevLS;
     }
+  });
+});
+
+describe('Ship Blueprint Mode (Phase 1-3)', () => {
+  it('registers all 45 binary-verified ship blocks with symmetric mirror pairs, native rotate locks, and 100% dock group coverage', () => {
+    expect(SHIP_MODULES.length).toBe(45);
+    let lockedCount = 0;
+    let mirroredCount = 0;
+    for (const def of SHIP_MODULES) {
+      expect(getModuleDef(def.id)?.domain).toBe('ship');
+      if (!canModuleRotate(def.id, false)) lockedCount += 1;
+      // Hidden Free Rotate toggle must unlock every ship block
+      expect(canModuleRotate(def.id, true)).toBe(true);
+      const mirror = getModuleMirrorId(def.id);
+      if (mirror) {
+        mirroredCount += 1;
+        expect(getModuleMirrorId(mirror), `${def.id} <-> ${mirror} mirror must be symmetric`).toBe(def.id);
+      }
+      // Every single ship block (canonical or mirror variant) must resolve to one of the 6 SHIP_GROUPS
+      expect(findGroupForEntity('station', def.id, 'ship'), `${def.id} group`).not.toBeNull();
+    }
+    expect(lockedCount).toBe(20);
+    expect(mirroredCount).toBe(22); // 11 mirror pairs
+    expect(SHIP_GROUPS.length).toBe(6);
+
+    // Specific native rotation lock checks (Build 26639889 bAllowRotate)
+    expect(canModuleRotate('BPO_Cockpit_01', false)).toBe(false);
+    expect(canModuleRotate('BPO_Thruster_02R', false)).toBe(false);
+    expect(canModuleRotate('BPO_CannonBlock', false)).toBe(false);
+    expect(canModuleRotate('BPO_DockingCollar', false)).toBe(false);
+    expect(canModuleRotate('BPO_Body_01', false)).toBe(true);
+    expect(canModuleRotate('BPO_ReactorBlock_Small', false)).toBe(true);
+    expect(getModuleMirrorId('BPO_Thruster_02R')).toBe('BPO_Thruster_02L');
+    expect(getModuleMirrorId('BPO_CannonBlock')).toBe('BPO_CannonBlock_B');
+  });
+
+  it('uses exact 8m x 8m x 4m ship grid scale, connector mating, and bottom-hung _B floor shift', () => {
+    const spec = getFrameGridSpec('ship');
+    expect(spec.unitM).toBe(SHIP_UNIT_M);
+    expect(spec.unitM).toBe(8);
+    expect(spec.floorHeightM).toBe(SHIP_FLOOR_HEIGHT_M);
+    expect(spec.floorHeightM).toBe(4);
+    expect(spec.visualFloorSpacing).toBe(SHIP_FLOOR_VISUAL_SPACING);
+
+    let doc = createEmptyBlueprint('测试护卫舰', 'ship');
+    expect(doc.category).toBe('ship');
+    doc = placeModuleCmd(doc, { type: 'BPO_Cockpit_01', gx: 1, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_Body_01', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+
+    // Overlapping placement on same 8m cell must be rejected
+    const overlapRes = placeModuleCmd(doc, { type: 'BPO_ReactorBlock_Small', gx: 0, gy: 0, floor: 0, rotation: 0 });
+    expect(overlapRes.changed).toBe(false);
+
+    // Side connector mating between cockpit (gx=1, x=[8..16]) and body (gx=0, x=[0..8])
+    const cockpitConns = getModuleWorldConnectors(doc.modules[0], getModuleDef(doc.modules[0].type)!);
+    const bodyConns = getModuleWorldConnectors(doc.modules[1], getModuleDef(doc.modules[1].type)!);
+    const hasSideMate = cockpitConns.some((a) => bodyConns.some((b) => areWorldConnectorsMated(a, b)));
+    expect(hasSideMate).toBe(true);
+
+    // Bottom-hung cannon `_B` at floor 0 shifts down by 1 floor (to floor -1, Z in [-4, 0]) and mates ShipTop <-> ShipBottom
+    expect(getModuleFloorShift(getModuleDef('BPO_CannonBlock_B')!)).toBe(1);
+    const cannonTop = placeModuleCmd(doc, { type: 'BPO_CannonBlock', gx: 0, gy: 0, floor: 1, rotation: 0 });
+    expect(cannonTop.changed).toBe(true);
+    const topMod = cannonTop.doc.modules[cannonTop.doc.modules.length - 1];
+    const cannonTopConns = getModuleWorldConnectors(topMod, getModuleDef(topMod.type)!);
+    const hasTopMate = bodyConns.some((a) => cannonTopConns.some((b) => areWorldConnectorsMated(a, b)));
+    expect(hasTopMate).toBe(true);
+  });
+
+  it('computes binary-verified mass, hull, thrust, flight/boost/warp speed, itemized power, and alerts', () => {
+    let doc = createEmptyBlueprint('迅捷巡航舰', 'ship');
+    // Cockpit, Body_01, Reactor (+24MW), DockingCollar,
+    // 2x Thruster_04 Medium (2x 9MW = 18MW), WarpDrive, Shield (3MW), Cannon (3MW)
+    expect(getModuleDef('BPO_Thruster_02R')?.powerKW).toBe(3000);
+    expect(getModuleDef('BPO_Thruster_04R')?.powerKW).toBe(9000);
+    doc = placeModuleCmd(doc, { type: 'BPO_Cockpit_01', gx: 2, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_Body_01', gx: 1, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_ReactorBlock_Small', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_DockingCollar', gx: 1, gy: 1, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_Thruster_04R', gx: 0, gy: 1, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_Thruster_04L', gx: 0, gy: -1, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_WarpDriveBlock', gx: 1, gy: -1, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_ShipShieldGenerator_01', gx: 1, gy: 0, floor: 1, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_CannonBlock', gx: 2, gy: 0, floor: 1, rotation: 0 }).doc;
+
+    const stats = computeShipStats(doc);
+    expect(stats.moduleCount).toBe(9);
+    expect(stats.alerts).toEqual([]);
+    expect(stats.shipyardTier).toBe('t1');
+
+    // Exact speed formula: 30 * (totalThrust / totalWeight)
+    const expectedSpeed = Math.min(6000, Math.round((30 * stats.totalThrustKN) / stats.totalWeightT));
+    const expectedBoost = Math.min(6000, Math.round((30 * stats.totalBoostThrustKN) / stats.totalWeightT));
+    expect(stats.totalBoostThrustKN).toBeCloseTo(stats.totalThrustKN * 2, 3);
+    expect(Math.round(stats.maxSpeedMS)).toBe(expectedSpeed);
+    expect(Math.round(stats.boostSpeedMS)).toBe(expectedBoost);
+
+    // Warp drive gives 9000 m/s fueled warp speed, non-interstellar
+    expect(stats.warp.hasWarp).toBe(true);
+    expect(stats.warp.interstellar).toBe(false);
+    expect(stats.warp.warpSpeedMS).toBe(9000);
+
+    // Power table: 1 reactor = 24 MW; 2x Thruster_04 = 18 MW; Shield = 3 MW; Cannon = 3 MW -> peak 24 MW <= 24 MW (surplus)
+    expect(stats.power.genMW).toBe(24);
+    expect(stats.power.cruiseMaxMW).toBe(18);
+    expect(stats.power.peakMaxMW).toBe(24);
+    expect(stats.power.status).toBe('surplus');
+    expect(stats.power.buckets.map((b) => b.role)).toEqual(['thruster', 'shield', 'weapon']);
+
+    // Adding a Plasma Lance (2x1, +7.5 MW) on an open deck pushes peak to 31.5 MW > 24 MW while cruise (18 MW) <= 24 MW -> 'peak-warn'
+    const withLanceRes = placeModuleCmd(doc, { type: 'BPO_LanceBlock', gx: 0, gy: -1, floor: 1, rotation: 0 });
+    expect(withLanceRes.changed).toBe(true);
+    const statsLance = computeShipStats(withLanceRes.doc);
+    expect(statsLance.power.peakMaxMW).toBe(31.5);
+    expect(statsLance.power.status).toBe('peak-warn');
+
+    // Removing the reactor triggers 'no-power'
+    const reactorId = doc.modules.find((m) => m.type === 'BPO_ReactorBlock_Small')!.id;
+    const noReactor = deleteSelectionCmd(doc, { moduleIds: [reactorId], buildingIds: [] }).doc;
+    expect(computeShipStats(noReactor).power.status).toBe('no-power');
+
+    // Missing cockpit or duplicate docking collar triggers hard validation alerts
+    const cockpitId = doc.modules.find((m) => m.type === 'BPO_Cockpit_01')!.id;
+    const noCockpit = deleteSelectionCmd(doc, { moduleIds: [cockpitId], buildingIds: [] }).doc;
+    expect(computeShipStats(noCockpit).alerts.some((a) => a.code === 'missing-pilot')).toBe(true);
+  });
+
+  it('round-trips ship blueprint JSON and swaps native mirrorId pairs on mirrorSelectionInPlaceCmd', () => {
+    let doc = createEmptyBlueprint('对称战机', 'ship');
+    const rThr = placeModuleCmd(doc, { type: 'BPO_Thruster_02R', gx: 0, gy: 1, floor: 0, rotation: 0 });
+    doc = rThr.doc;
+    const text = serializeBlueprint(doc);
+    const decoded = deserializeBlueprint(text);
+    expect(decoded.ok).toBe(true);
+    if (decoded.ok) {
+      expect(decoded.doc.category).toBe('ship');
+      expect(decoded.doc.modules[0].type).toBe('BPO_Thruster_02R');
+    }
+
+    const mirrored = mirrorSelectionInPlaceCmd(doc, { moduleIds: [rThr.addedModuleIds![0]], buildingIds: [] }, 'y');
+    expect(mirrored.changed).toBe(true);
+    expect(mirrored.doc.modules[0].type).toBe('BPO_Thruster_02L');
   });
 });

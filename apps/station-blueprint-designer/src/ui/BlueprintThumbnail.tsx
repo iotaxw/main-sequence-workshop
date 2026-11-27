@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { getBuildableDef, getModuleDef } from '../core/catalog';
-import { getBuildingSizeCells, getModuleBoundsM, getModuleSizeUnits, STATION_UNIT_M } from '../core/geometry';
+import { getBuildingSizeCells, getFrameGridSpec, getModuleBoundsM, getModuleSizeUnits } from '../core/geometry';
 import { useI18n } from '../core/i18n';
 import type { BlueprintDocument } from '../core/types';
 import type { CadThemeId } from '../renderer/theme';
@@ -74,11 +74,12 @@ export function renderBlueprintThumbnailDataUrl(doc: BlueprintDocument, theme: C
   let minFloor = Infinity;
   let maxFloor = -Infinity;
 
+  const unitM = getFrameGridSpec(doc.category).unitM;
   for (const m of doc.modules) {
     const def = getModuleDef(m.type);
     const [x0, y0, x1, y1] = def
       ? getModuleBoundsM(m, def)
-      : [m.gx * STATION_UNIT_M, m.gy * STATION_UNIT_M, (m.gx + 1) * STATION_UNIT_M, (m.gy + 1) * STATION_UNIT_M];
+      : [m.gx * unitM, m.gy * unitM, (m.gx + 1) * unitM, (m.gy + 1) * unitM];
     if (x0 < minX) minX = x0;
     if (y0 < minY) minY = y0;
     if (x1 > maxX) maxX = x1;
@@ -131,7 +132,7 @@ export function renderBlueprintThumbnailDataUrl(doc: BlueprintDocument, theme: C
     const def = getModuleDef(m.type);
     const [x0, y0, x1, y1] = def
       ? getModuleBoundsM(m, def)
-      : [m.gx * STATION_UNIT_M, m.gy * STATION_UNIT_M, (m.gx + 1) * STATION_UNIT_M, (m.gy + 1) * STATION_UNIT_M];
+      : [m.gx * unitM, m.gy * unitM, (m.gx + 1) * unitM, (m.gy + 1) * unitM];
     const rx = toX(x0);
     const ry = toY(y0);
     const rw = Math.max(2, (x1 - x0) * scale);

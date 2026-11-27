@@ -58,6 +58,8 @@ export class CadCameraRig {
   private curDistance = 76;
 
   private focusFloor = 0;
+  private floorVisualSpacing = FLOOR_VISUAL_SPACING;
+  private lockStationView = false;
   private viewMode: ViewMode = 'station';
   private onAutoViewModeChange?: (mode: ViewMode) => void;
   private onTelemetryChange?: (info: { yawDeg: number; pitchDeg: number; distance: number }) => void;
@@ -111,9 +113,18 @@ export class CadCameraRig {
     this.camera.updateProjectionMatrix();
   }
 
+  setFrameSpacing(spacing: number, lockStation: boolean): void {
+    this.floorVisualSpacing = spacing;
+    this.lockStationView = lockStation;
+    this.targetFloorY = this.focusFloor * this.floorVisualSpacing;
+    if (lockStation && this.viewMode !== 'station') {
+      this.viewMode = 'station';
+    }
+  }
+
   setFocusFloor(floor: number): void {
     this.focusFloor = floor;
-    this.targetFloorY = floor * FLOOR_VISUAL_SPACING;
+    this.targetFloorY = floor * this.floorVisualSpacing;
   }
 
   setViewMode(mode: ViewMode, animateDistance = false): void {
@@ -227,13 +238,15 @@ export class CadCameraRig {
       this.targetPitch = THREE.MathUtils.lerp(this.targetPitch, (64 * Math.PI) / 180, 0.08);
     }
 
-    // Hysteresis view-mode switching
-    if (this.viewMode === 'station' && nextDist < ZOOM_ENTER_BUILDING) {
-      this.viewMode = 'building';
-      this.onAutoViewModeChange?.('building');
-    } else if (this.viewMode === 'building' && nextDist > ZOOM_EXIT_TO_STATION) {
-      this.viewMode = 'station';
-      this.onAutoViewModeChange?.('station');
+    // Hysteresis view-mode switching (disabled for ship blueprints which have no interior building layer)
+    if (!this.lockStationView) {
+      if (this.viewMode === 'station' && nextDist < ZOOM_ENTER_BUILDING) {
+        this.viewMode = 'building';
+        this.onAutoViewModeChange?.('building');
+      } else if (this.viewMode === 'building' && nextDist > ZOOM_EXIT_TO_STATION) {
+        this.viewMode = 'station';
+        this.onAutoViewModeChange?.('station');
+      }
     }
   }
 
@@ -270,7 +283,7 @@ export class CadCameraRig {
   intersectFocusPlane(ndcX: number, ndcY: number): THREE.Vector3 | null {
     this.ndcVec.set(ndcX, ndcY);
     this.raycaster.setFromCamera(this.ndcVec, this.camera);
-    this.focusPlane.constant = -(this.focusFloor * FLOOR_VISUAL_SPACING);
+    this.focusPlane.constant = -(this.focusFloor * this.floorVisualSpacing);
     return this.raycaster.ray.intersectPlane(this.focusPlane, this.hitVec) ? this.hitVec : null;
   }
 

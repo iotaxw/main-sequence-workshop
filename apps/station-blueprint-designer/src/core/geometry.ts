@@ -1,5 +1,6 @@
 import { getBuildableDef, getModuleDef } from './catalog';
 import type {
+  BlueprintCategory,
   BlueprintDocument,
   BuildableDef,
   CardinalSide,
@@ -15,7 +16,50 @@ import type {
 export const STATION_UNIT_M = 16; // 1 station grid unit = 16 meters (= 16 building cells)
 export const FLOOR_HEIGHT_M = 8; // 1 station floor = 8 meters (real game step)
 export const FLOOR_VISUAL_SPACING = 10; // Clean visual spacing in 3D CAD view
+export const SHIP_UNIT_M = 8; // 1 ship grid unit = 8 meters (exact half of station unit)
+export const SHIP_FLOOR_HEIGHT_M = 4; // 1 ship deck = 4 meters (exact half of station floor)
+export const SHIP_FLOOR_VISUAL_SPACING = 5.5; // Clean vertical spacing for multi-deck ships
 export const BUILDING_CHUNK_SIZE_M = 64; // 64m spatial chunk size for incremental rendering & box queries
+
+export interface FrameGridSpec {
+  category: BlueprintCategory;
+  unitM: number;
+  floorHeightM: number;
+  visualFloorSpacing: number;
+  nativeUnitsPerCell: number;
+}
+
+const STATION_GRID_SPEC: FrameGridSpec = {
+  category: 'station',
+  unitM: STATION_UNIT_M,
+  floorHeightM: FLOOR_HEIGHT_M,
+  visualFloorSpacing: FLOOR_VISUAL_SPACING,
+  nativeUnitsPerCell: 4,
+};
+
+const SHIP_GRID_SPEC: FrameGridSpec = {
+  category: 'ship',
+  unitM: SHIP_UNIT_M,
+  floorHeightM: SHIP_FLOOR_HEIGHT_M,
+  visualFloorSpacing: SHIP_FLOOR_VISUAL_SPACING,
+  nativeUnitsPerCell: 2,
+};
+
+export function getDocCategory(doc?: Pick<BlueprintDocument, 'category'> | null): BlueprintCategory {
+  return doc?.category === 'ship' ? 'ship' : 'station';
+}
+
+export function getFrameGridSpec(category?: BlueprintCategory): FrameGridSpec {
+  return category === 'ship' ? SHIP_GRID_SPEC : STATION_GRID_SPEC;
+}
+
+export function getModuleUnitM(def?: Pick<StationModuleDef, 'domain'> | null): number {
+  return def?.domain === 'ship' ? SHIP_UNIT_M : STATION_UNIT_M;
+}
+
+export function getModuleFloorSpacing(def?: Pick<StationModuleDef, 'domain'> | null): number {
+  return def?.domain === 'ship' ? SHIP_FLOOR_VISUAL_SPACING : FLOOR_VISUAL_SPACING;
+}
 
 export function buildingChunkCoord(v: number): number {
   return Math.floor(v / BUILDING_CHUNK_SIZE_M);
@@ -243,9 +287,10 @@ export function getBuildingSizeCells(def: BuildableDef, rotation: Rotation): [nu
 /** World meter center of a placed module (on its base floor) */
 export function getModuleCenterM(mod: PlacedModule, def: StationModuleDef): [number, number] {
   const [wu, du] = getModuleSizeUnits(def, mod.rotation);
+  const unitM = getModuleUnitM(def);
   return [
-    (mod.gx + wu / 2) * STATION_UNIT_M,
-    (mod.gy + du / 2) * STATION_UNIT_M,
+    (mod.gx + wu / 2) * unitM,
+    (mod.gy + du / 2) * unitM,
   ];
 }
 
@@ -258,11 +303,12 @@ export function getBuildingCenterM(b: PlacedBuilding, def: BuildableDef): [numbe
 /** World meter bounds of a placed module: [minX, minY, maxX, maxY] */
 export function getModuleBoundsM(mod: PlacedModule, def: StationModuleDef): [number, number, number, number] {
   const [wu, du] = getModuleSizeUnits(def, mod.rotation);
+  const unitM = getModuleUnitM(def);
   return [
-    mod.gx * STATION_UNIT_M,
-    mod.gy * STATION_UNIT_M,
-    (mod.gx + wu) * STATION_UNIT_M,
-    (mod.gy + du) * STATION_UNIT_M,
+    mod.gx * unitM,
+    mod.gy * unitM,
+    (mod.gx + wu) * unitM,
+    (mod.gy + du) * unitM,
   ];
 }
 
@@ -284,8 +330,9 @@ export interface WorldConnector {
  */
 export function getModuleOriginOffsetM(def: StationModuleDef): [number, number] {
   if (!def.blockBoundsM) return [0, 0];
-  const rawOx = def.blockBoundsM.minX + (def.sizeUnits[0] * STATION_UNIT_M) / 2;
-  const rawOy = def.blockBoundsM.minY + (def.sizeUnits[1] * STATION_UNIT_M) / 2;
+  const unitM = getModuleUnitM(def);
+  const rawOx = def.blockBoundsM.minX + (def.sizeUnits[0] * unitM) / 2;
+  const rawOy = def.blockBoundsM.minY + (def.sizeUnits[1] * unitM) / 2;
   const ox = Math.abs(rawOx) < 0.5 ? 0 : Math.round(rawOx * 2) / 2;
   const oy = Math.abs(rawOy) < 0.5 ? 0 : Math.round(rawOy * 2) / 2;
   return [ox, oy];
@@ -384,23 +431,35 @@ export function getModuleWorldConnectors(
   offset: { gx: number; gy: number; floor: number } = { gx: 0, gy: 0, floor: 0 }
 ): WorldConnector[] {
   const [wu, du] = getModuleSizeUnits(def, mod.rotation);
-  const cx = (mod.gx + offset.gx + wu / 2) * STATION_UNIT_M;
-  const cy = (mod.gy + offset.gy + du / 2) * STATION_UNIT_M;
+  const unitM = getModuleUnitM(def);
+  const cx = (mod.gx + offset.gx + wu / 2) * unitM;
+  const cy = (mod.gy + offset.gy + du / 2) * unitM;
   const [ox, oy] = getModuleOriginOffsetM(def);
+  const zShift = getModuleFloorShift(def);
   return def.connectors.map((c) => {
-    // Native GridLocation unit = 4m (16m module has edge at ±2 native units = ±8m), shifted to centered module frame
+    // Native GridLocation unit = 4m (both station and ship blocks share 4m native connector coordinates)
     const lx = c.gx * 4 - ox;
     const ly = c.gy * 4 - oy;
     const [rx, ry] = rotateVec2(lx, ly, mod.rotation);
-    const isVert = c.type.startsWith('Vertical');
+    const isVert = c.type.startsWith('Vertical') || c.type === 'ShipTop' || c.type === 'ShipBottom';
+    const verticalFace =
+      c.type === 'ShipTop'
+        ? 'top'
+        : c.type === 'ShipBottom'
+          ? 'bottom'
+          : isVert
+            ? c.floorOffset > 0
+              ? 'top'
+              : 'bottom'
+            : undefined;
     return {
       moduleId: mod.id,
       type: c.type,
       x: cx + rx,
       y: cy + ry,
-      floor: mod.floor + offset.floor + c.floorOffset,
+      floor: mod.floor + offset.floor + c.floorOffset + zShift,
       rotation: normalizeRotation(c.rotation + mod.rotation),
-      ...(isVert ? { verticalFace: c.floorOffset > 0 ? 'top' : 'bottom' } : {}),
+      ...(verticalFace ? { verticalFace } : {}),
     };
   });
 }
@@ -412,6 +471,9 @@ export function getWorldConnectorKey(c: Pick<WorldConnector, 'x' | 'y' | 'floor'
 
 /** Whether two world connectors at the same position/floor mate flush (type + opposite facing). */
 export function areWorldConnectorsMated(a: WorldConnector, b: WorldConnector): boolean {
+  if ((a.type === 'ShipTop' && b.type === 'ShipBottom') || (a.type === 'ShipBottom' && b.type === 'ShipTop')) {
+    return true;
+  }
   if (a.type !== b.type) return false;
   if (a.type.startsWith('Vertical')) {
     return a.verticalFace !== undefined && b.verticalFace !== undefined
@@ -568,7 +630,7 @@ export function isCellBuildable(
   return null;
 }
 
-/** Find station module covering world point (wx, wy) on `floor` — O(1) via module spatial index */
+/** Find module covering world point (wx, wy) on `floor` — O(1) via module spatial index */
 export function findModuleAtWorldPoint(
   doc: BlueprintDocument,
   wx: number,
@@ -578,8 +640,9 @@ export function findModuleAtWorldPoint(
   const idx = getModuleSpatialIndex(doc.modules);
   const grid = idx.moduleGridByFloor.get(floor);
   if (!grid) return null;
-  const ugx = Math.floor(wx / STATION_UNIT_M);
-  const ugy = Math.floor(wy / STATION_UNIT_M);
+  const unitM = getFrameGridSpec(doc.category).unitM;
+  const ugx = Math.floor(wx / unitM);
+  const ugy = Math.floor(wy / unitM);
   const candidates = grid.get(packCellKey(ugx, ugy));
   if (candidates) {
     for (let i = 0; i < candidates.length; i++) {
@@ -593,8 +656,8 @@ export function findModuleAtWorldPoint(
     }
   }
   // Handle exact maxX / maxY edge clicks
-  const onXEdge = wx === ugx * STATION_UNIT_M;
-  const onYEdge = wy === ugy * STATION_UNIT_M;
+  const onXEdge = wx === ugx * unitM;
+  const onYEdge = wy === ugy * unitM;
   if (onXEdge || onYEdge) {
     const floorMods = idx.modulesByFloor.get(floor);
     if (floorMods) {
