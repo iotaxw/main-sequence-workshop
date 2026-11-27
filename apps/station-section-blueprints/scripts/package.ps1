@@ -11,8 +11,12 @@ if ($Version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
 
 $project = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $source = Join-Path $project 'Mods/StationSectionBlueprints/Scripts'
+$payload = Join-Path $project 'Mods/StationSectionBlueprints/Binaries/ms-blueprint-codec.exe'
 if (-not (Test-Path -LiteralPath (Join-Path $source 'main.lua') -PathType Leaf)) {
     throw "Mod entrypoint not found: $source"
+}
+if (-not (Test-Path -LiteralPath $payload -PathType Leaf)) {
+    throw "Payload helper not found: $payload"
 }
 
 $staging = Join-Path $project '.runtime/package'
@@ -21,7 +25,10 @@ if (Test-Path -LiteralPath $staging) {
 }
 $modTarget = Join-Path $staging 'Mods/StationSectionBlueprints'
 $scriptsTarget = Join-Path $modTarget 'Scripts'
+$binariesTarget = Join-Path $modTarget 'Binaries'
 New-Item -ItemType Directory -Path $scriptsTarget -Force | Out-Null
+New-Item -ItemType Directory -Path $binariesTarget -Force | Out-Null
+Copy-Item -LiteralPath $payload -Destination $binariesTarget
 
 Get-ChildItem -LiteralPath $source -Recurse -File -Filter '*.lua' | Where-Object {
     $_.Name -notin @('ssb_dev_runner.lua', 'ssb_designer_probe.lua', 'ssb_probe.lua')
@@ -33,11 +40,12 @@ Get-ChildItem -LiteralPath $source -Recurse -File -Filter '*.lua' | Where-Object
 }
 
 Copy-Item -LiteralPath (Join-Path $project 'INSTALL.md') -Destination (Join-Path $staging 'INSTALL.md')
+Copy-Item -LiteralPath (Join-Path $project 'THIRD_PARTY_NOTICES.txt') -Destination (Join-Path $staging 'THIRD_PARTY_NOTICES.txt')
 $toolsTarget = Join-Path $staging 'tools'
 New-Item -ItemType Directory -Path $toolsTarget -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $project 'scripts/mod-manager.ps1') -Destination $toolsTarget
 
-foreach ($license in Get-ChildItem -LiteralPath $project -File | Where-Object { $_.Name -match '^LICENSE(\..*)?$' }) {
+foreach ($license in Get-ChildItem -LiteralPath $project -File | Where-Object { $_.Name -match '^LICENSE($|[-.])' }) {
     Copy-Item -LiteralPath $license.FullName -Destination $staging
 }
 

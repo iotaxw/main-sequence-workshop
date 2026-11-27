@@ -142,6 +142,9 @@ local function normalized_entry(metadata)
     if type(metadata) ~= "table" then
         return nil, "invalid_metadata"
     end
+    if metadata.includes_machines ~= nil and type(metadata.includes_machines) ~= "boolean" then
+        return nil, "invalid_machine_flag"
+    end
     local name, name_error = M.normalize_name(metadata.name)
     if not name then
         return nil, name_error

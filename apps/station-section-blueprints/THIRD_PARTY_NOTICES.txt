@@ -1,0 +1,52 @@
+Third-party notices for ms-blueprint-codec
+
+The ms-blueprint-codec executable contains the following Rust packages. The
+corresponding license texts are included in this distribution. Packages
+with a license choice are distributed under the MIT option, except foldhash
+(Zlib) and unicode-ident (MIT AND Unicode-3.0).
+
+MIT:
+- anstream 1.0.0
+- anstyle 1.0.14
+- anstyle-parse 1.0.0
+- anstyle-query 1.1.5
+- anstyle-wincon 3.0.11
+- anyhow 1.0.104
+- bitflags 2.13.2
+- byteorder 1.5.0
+- clap 4.6.9
+- clap_builder 4.6.7
+- clap_derive 4.6.9
+- clap_lex 1.1.2
+- colorchoice 1.0.5
+- equivalent 1.0.3
+- hashbrown 0.17.1
+- heck 0.5.0
+- indexmap 2.14.2
+- is_terminal_polyfill 1.70.2
+- itoa 1.0.19
+- memchr 2.8.3
+- once_cell_polyfill 1.70.2
+- proc-macro2 1.0.107
+- quote 1.0.47
+- serde 1.0.229
+- serde_core 1.0.229
+- serde_derive 1.0.229
+- serde_json 1.0.154
+- strsim 0.11.1
+- syn 2.0.119
+- syn 3.0.10
+- thiserror 1.0.69
+- thiserror-impl 1.0.69
+- unicode-ident 1.0.27 (also Unicode-3.0)
+- utf8parse 0.2.2
+- uesave 0.7.1 (copyright Truman Kilen; see LICENSE-uesave)
+- windows-link 0.2.1
+- windows-sys 0.61.2
+- zmij 1.0.23
+
+Zlib:
+- foldhash 0.2.0
+
+The original Main Sequence game, its assets, names, recipes and trademarks
+are not covered by these licenses and are not included in this package.

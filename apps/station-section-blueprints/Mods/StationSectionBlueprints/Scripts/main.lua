@@ -13,47 +13,33 @@ local function load_module(name)
 end
 
 local native = load_module("ssb_native")
+load_module("ssb_json")
+load_module("ssb_catalog_data")
 load_module("ssb_library")
 local designer_native = load_module("ssb_native_designer")
+load_module("ssb_docking")
+local machine_paste = load_module("ssb_machine_paste")
 local store_module = load_module("ssb_store")
 local ui = load_module("ssb_ui")
 local development_command_file = os.getenv("SSB_DEV_COMMAND_FILE")
 local development = development_command_file ~= nil and development_command_file ~= ""
 local store
 local attached
+local last_designer_ui
 local failed_hud
+local designer_active = false
 
 local function find_hud()
-    local session = designer_native.find_session()
-    if session then
-        return session.hud
-    end
-
-    local found = {}
-    ForEachUObject(function(object)
-        if native.class_name(object) ~= "WBP_DesignerHUD_C" then
-            return
-        end
-        local full_name = native.full_name(object)
-        if full_name:find("Default__", 1, true) or not full_name:find("GameInstance", 1, true) then
-            return
-        end
-        found[object:GetAddress()] = object
-    end)
-    local hud
-    for _, object in pairs(found) do
-        if hud then
-            return nil, "multiple_designer_huds"
-        end
-        hud = object
-    end
-    return hud
+    local session, session_error = designer_native.find_session()
+    if not session then return nil, session_error end
+    return session.hud
 end
 
 local function try_attach()
     local hud = find_hud()
     if not native.is_valid(hud) then
         if attached then
+            last_designer_ui = attached
             ui.detach(attached)
             attached = nil
         end
@@ -61,12 +47,14 @@ local function try_attach()
         return
     end
     if attached then
+        ui.poll(attached)
         local same_hud = attached.hud:GetAddress() == hud:GetAddress()
         local same_tree = native.is_valid(attached.widget_tree)
             and attached.widget_tree:GetAddress() == hud.WidgetTree:GetAddress()
         if same_hud and same_tree and native.is_valid(attached.library_button) then
             return
         end
+        last_designer_ui = attached
         ui.detach(attached)
         attached = nil
     end
@@ -96,17 +84,34 @@ local function try_attach()
         return
     end
     attached = state
+    last_designer_ui = state
     print("[StationSectionBlueprints] Native designer UI attached\n")
 end
 
 local function poll()
     ExecuteInGameThread(function()
-        local ok, err = xpcall(try_attach, debug.traceback)
+        local ok, err = xpcall(function()
+            local session = designer_native.find_session()
+            if session then
+                designer_active = true
+            elseif designer_active then
+                local previous = attached or last_designer_ui
+                if previous then
+                    ui.on_designer_exit(previous)
+                    ui.mount_pending_machine_bar(previous)
+                end
+                designer_active = false
+            end
+            try_attach()
+            if not session and machine_paste.ready_machine_count() > 0 then
+                ui.mount_pending_machine_bar(last_designer_ui)
+            end
+        end, debug.traceback)
         if not ok then
             print("[StationSectionBlueprints] UI update failed: " .. tostring(err) .. "\n")
         end
     end)
-    ExecuteWithDelay(2000, poll)
+    ExecuteWithDelay(200, poll)
 end
 
 if os.getenv("SSB_DISABLE_UI") ~= "1" then

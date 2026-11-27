@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -32,6 +32,38 @@ pub struct CatalogBlockBoundsM {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct CatalogDoorway {
+    pub side: String,
+    pub start: f64,
+    pub end: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CatalogFloorSurface {
+    #[serde(rename = "floorOffset")]
+    pub floor_offset: i32,
+    pub shape: String,
+    #[serde(rename = "minX")]
+    pub min_x: f64,
+    #[serde(rename = "maxX")]
+    pub max_x: f64,
+    #[serde(rename = "minY")]
+    pub min_y: f64,
+    #[serde(rename = "maxY")]
+    pub max_y: f64,
+    #[serde(rename = "holeMinX")]
+    pub hole_min_x: Option<f64>,
+    #[serde(rename = "holeMaxX")]
+    pub hole_max_x: Option<f64>,
+    #[serde(rename = "holeMinY")]
+    pub hole_min_y: Option<f64>,
+    #[serde(rename = "holeMaxY")]
+    pub hole_max_y: Option<f64>,
+    #[serde(default)]
+    pub doorways: Vec<CatalogDoorway>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct CatalogModule {
     pub id: String,
     #[serde(rename = "sizeUnits")]
@@ -39,6 +71,10 @@ pub struct CatalogModule {
     #[serde(rename = "blockBoundsM")]
     pub block_bounds_m: Option<CatalogBlockBoundsM>,
     pub connectors: Vec<CatalogConnector>,
+    #[serde(default, rename = "hasFactoryFloor")]
+    pub has_factory_floor: bool,
+    #[serde(default)]
+    pub floors: Vec<CatalogFloorSurface>,
     #[serde(rename = "sourceAsset")]
     pub source_asset: String,
 }
@@ -56,11 +92,23 @@ pub fn module_native_pivot_offset(module_type: &str) -> (i32, i32, i32) {
     };
     let raw_ox = b.min_x + (def.size_units[0] as f64) * 8.0;
     let raw_oy = b.min_y + (def.size_units[1] as f64) * 8.0;
-    let ox = if raw_ox.abs() < 0.5 { 0.0 } else { (raw_ox * 2.0).round() / 2.0 };
-    let oy = if raw_oy.abs() < 0.5 { 0.0 } else { (raw_oy * 2.0).round() / 2.0 };
+    let ox = if raw_ox.abs() < 0.5 {
+        0.0
+    } else {
+        (raw_ox * 2.0).round() / 2.0
+    };
+    let oy = if raw_oy.abs() < 0.5 {
+        0.0
+    } else {
+        (raw_oy * 2.0).round() / 2.0
+    };
     let dux = (-ox / 4.0).round() as i32;
     let duy = (-oy / 4.0).round() as i32;
-    let z_shift = if b.max_z <= 0.05 && b.min_z < -0.5 { 2 } else { 0 };
+    let z_shift = if b.max_z <= 0.05 && b.min_z < -0.5 {
+        2
+    } else {
+        0
+    };
     (dux, duy, z_shift)
 }
 
@@ -78,10 +126,17 @@ pub struct CatalogBuildable {
     #[serde(rename = "objectClass")]
     pub object_class: String,
     pub kind: String,
+    pub tier: i32,
     pub size: [i32; 2],
     pub ports: Vec<CatalogPort>,
     #[serde(rename = "maxLength")]
     pub max_length: Option<i32>,
+    #[serde(rename = "buildableAsset")]
+    pub buildable_asset: Option<String>,
+    #[serde(rename = "dataAsset")]
+    pub data_asset: Option<String>,
+    #[serde(rename = "sourceAsset")]
+    pub source_asset: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -105,7 +160,8 @@ struct RawCatalog {
     recipes: Vec<CatalogRecipe>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MachineConfigKind {
     None,
     Assembler,
@@ -232,11 +288,10 @@ fn build_catalog_index() -> CatalogIndex {
     let mut item_canonical_to_native = HashMap::new();
 
     for r in &raw.recipes {
-        let default_native = r
-            .id
-            .strip_prefix("REC_")
-            .unwrap_or(&r.id)
-            .to_ascii_lowercase();
+        let default_native =
+            r.id.strip_prefix("REC_")
+                .unwrap_or(&r.id)
+                .to_ascii_lowercase();
         recipe_native_to_canonical.insert(default_native.clone(), r.id.clone());
         recipe_canonical_to_native.insert(r.id.clone(), default_native);
 
@@ -304,7 +359,11 @@ pub fn buildable_class_path(buildable_id: &str) -> String {
 }
 
 pub fn machine_config_kind(buildable_id: &str) -> MachineConfigKind {
-    match catalog().buildables_by_id.get(buildable_id).map(|b| b.kind.as_str()) {
+    match catalog()
+        .buildables_by_id
+        .get(buildable_id)
+        .map(|b| b.kind.as_str())
+    {
         Some("crafter") => MachineConfigKind::Assembler,
         Some("container") => MachineConfigKind::Container,
         Some("splitter") => MachineConfigKind::Splitter,
@@ -377,21 +436,13 @@ const EMPTY_MINING_CONFIG: &[u8] = &[1, 0, 0, 0, 0, 0];
 const EMPTY_SHIPYARD_DOCK_CONFIG: &[u8] = &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 // StationBlockDock CDO has 2 empty FDockFilter slots (each: i32(0) empty FString + u32(0) bLoading)
 const EMPTY_STATION_DOCK_CONFIG: &[u8] = &[
-    1, 0, 0, 0, 0, 0, 2, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
+    1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 // IndustrialDock CDO has 8 empty FDockFilter slots
 const EMPTY_INDUSTRIAL_DOCK_CONFIG: &[u8] = &[
-    1, 0, 0, 0, 0, 0, 8, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
+    1, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 // DeepSpaceObservatoryMachine inherits AssemblerObject with 2 ports ([1, 1])
 const EMPTY_OBSERVATORY_CONFIG: &[u8] = &[1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 1];

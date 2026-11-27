@@ -34,7 +34,7 @@
    pwsh -File tools/mod-manager.ps1 -Action enable -Name StationSectionBlueprints -ModsRoot "<game>\Windows\MainSequence\Binaries\Win64\ue4ss\Mods"
    ```
 
-5. 启动游戏。原生设计图、存档和产线配平器不属于安装步骤，不需要修改。
+5. 启动游戏。包内已包含 `Binaries/ms-blueprint-codec.exe`，用于提取独立 `DesignSaveGame` 工作副本并生成机台搭建计划；不需要安装 Cargo、Rust、额外 GVAS 工具或私有 UE SDK。原生设计图、存档和产线配平器不属于安装步骤，不需要修改。
 
 ## 管理器
 

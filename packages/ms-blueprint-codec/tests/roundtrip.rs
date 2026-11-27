@@ -645,6 +645,7 @@ fn stateful_edits_and_clears_after_sav_import_never_leak_stale_native_meta() {
     assert_eq!((c2_lf[1].item_id.as_str(), c2_lf[1].amount, c2_lf[1].action), ("ITEM_TitaniumPlates", 0, 0));
 }
 
+
 #[test]
 fn class_level_block_bounds_pivot_aligns_asymmetric_and_ceiling_modules() {
     use ms_blueprint_codec::connectors::{module_to_native_transform, synthesize_connectors};

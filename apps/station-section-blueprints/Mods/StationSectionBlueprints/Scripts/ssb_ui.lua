@@ -1,12 +1,15 @@
 local native = require("ssb_native")
+local designer_native = require("ssb_native_designer")
 local blueprint_library = require("ssb_library")
+local docking = require("ssb_docking")
+local machine_paste = require("ssb_machine_paste")
 
 local M = {}
 
 local BUTTON_CLASS = "/Game/Blueprints/Widgets/Basic/WBP_Button_Text.WBP_Button_Text_C"
 local runtime = _G.__StationSectionBlueprintsUIRuntime
 if not runtime then
-    runtime = { actions = {}, keybind_registered = false }
+    runtime = { actions = {}, keybind_registered = false, machine_reports = {} }
     _G.__StationSectionBlueprintsUIRuntime = runtime
 end
 
@@ -126,12 +129,56 @@ local function dispatch_hovered()
     end
 end
 
+local function dispatch_designer_key(action)
+    ExecuteInGameThread(function()
+        if runtime.on_key then runtime.on_key(action) end
+    end)
+end
+
 local function ensure_keybind()
     if runtime.keybind_registered then return true end
     local ok, err = pcall(RegisterKeyBind, Key.LEFT_MOUSE_BUTTON, function()
         ExecuteInGameThread(dispatch_hovered)
     end)
     if not ok then return nil, err end
+    local bindings = {
+        { key = Key.LEFT_MOUSE_BUTTON, modifiers = { ModifierKey.SHIFT }, action = "shift_left" },
+        { key = Key.H, action = "lock" },
+        { key = Key.MIDDLE_MOUSE_BUTTON, action = "lock" },
+        { key = Key.TAB, action = "next_candidate" },
+        { key = Key.TAB, modifiers = { ModifierKey.SHIFT }, action = "previous_candidate" },
+        { key = Key.R, action = "rotate" },
+        { key = Key.F, action = "mirror" },
+        { key = Key.UP_ARROW, action = "forward" },
+        { key = Key.DOWN_ARROW, action = "backward" },
+        { key = Key.LEFT_ARROW, action = "left" },
+        { key = Key.RIGHT_ARROW, action = "right" },
+        { key = Key.PAGE_UP, action = "floor_up" },
+        { key = Key.PAGE_DOWN, action = "floor_down" },
+        { key = Key.RETURN, action = "confirm" },
+        { key = Key.ALT or ModifierKey.ALT, action = "alt" },
+    }
+    for _, binding in ipairs(bindings) do
+        if type(binding.key) ~= "number" then
+            return nil, "missing_keybind_code:" .. tostring(binding.action)
+        end
+        local registered, register_error
+        if binding.modifiers then
+            for _, mod_key in ipairs(binding.modifiers) do
+                if type(mod_key) ~= "number" then
+                    return nil, "missing_modifier_code:" .. tostring(binding.action)
+                end
+            end
+            registered, register_error = pcall(RegisterKeyBind, binding.key, binding.modifiers, function()
+                dispatch_designer_key(binding.action)
+            end)
+        else
+            registered, register_error = pcall(RegisterKeyBind, binding.key, function()
+                dispatch_designer_key(binding.action)
+            end)
+        end
+        if not registered then return nil, register_error end
+    end
     runtime.keybind_registered = true
     return true
 end
@@ -372,6 +419,7 @@ local function parent_folder(folder)
 end
 
 local refresh_library
+local start_paste
 
 local function select_blueprint(state, entry)
     state.selected_id = entry.id
@@ -473,10 +521,10 @@ local function build_save_form(state)
     state.machine_checkbox = b:make("/Script/UMG.CheckBox", "machine_checkbox")
     if not b.error then
         state.machine_checkbox:SetIsChecked(false)
-        state.machine_checkbox:SetIsEnabled(false)
+        state.machine_checkbox:SetIsEnabled(true)
     end
     b:add(machine_row, state.machine_checkbox, "machine_checkbox")
-    b:add(machine_row, b:label("包含内部机器（尚未通过原生验证）", "machine_label"), "machine_label")
+    b:add(machine_row, b:label("包含内部机器（自动剔除跨模块边缘建筑）", "machine_label"), "machine_label")
     b:add(form, machine_row, "machine_row")
 
     b:add(form, b:button("保存选中积木", function()
@@ -496,21 +544,27 @@ local function build_save_form(state)
                 end
             end
         end
-        if state.machine_checkbox:IsChecked() then
-            set_status(state, "机器保存尚未通过原生验证，请保持机器选项关闭")
-            return
-        end
-        local entry, err = state.store_api.save_selection(state.store, state.designer, {
+        local entry, report_or_error = state.store_api.save_selection(state.store, state.designer, {
             name = from_text(state.name_input:GetText()),
             folder = folder,
-            includes_machines = false,
+            includes_machines = state.machine_checkbox:IsChecked(),
         })
         if not entry then
-            set_status(state, error_message(err))
+            set_status(state, error_message(report_or_error))
             return
         end
+        state.designer:ResetSelection()
         state.current_folder = entry.folder
-        set_status(state, string.format("已保存 %s：%d 积木，%d 机器", entry.name, entry.blocks, entry.machines))
+        local message = string.format("已保存 %s：%d 积木，%d 机器", entry.name, entry.blocks, entry.machines)
+        local report = report_or_error
+        if type(report) == "table" then
+            local excluded = (report.excluded_cross_boundary or 0) + (report.excluded_unpaired or 0)
+            if excluded > 0 then
+                message = message .. string.format("；剔除跨边界 %d，未配对地下带 %d",
+                    report.excluded_cross_boundary or 0, report.excluded_unpaired or 0)
+            end
+        end
+        set_status(state, message)
         refresh_library(state)
     end, "submit"), "submit")
     return b:finish(form)
@@ -617,12 +671,7 @@ local function build_library_panel(state)
         refresh_library(state)
     end, "move"), "move")
     b:add(state.details, b:button("用原版规划预览粘贴", function()
-        local preview, err = state.store_api.paste(state.store, state.designer, state.selected_id)
-        if not preview then
-            set_status(state, error_message(err))
-            return
-        end
-        set_status(state, string.format("已交给原版规划系统：%d 个预览；请使用原版确认或取消", preview.previews))
+        start_paste(state)
     end, "paste"), "paste")
     state.delete_button = b:button("删除蓝图", function()
         if state.confirm_delete ~= state.selected_id then
@@ -646,9 +695,408 @@ local function build_library_panel(state)
     return b:finish(panel)
 end
 
+local function block_map(blocks)
+    local result = {}
+    for _, block in ipairs(blocks or {}) do
+        result[tostring(block.id)] = block
+    end
+    return result
+end
+
+local function count_new_blocks(before_blocks, after_blocks)
+    local before = block_map(before_blocks)
+    local count = 0
+    for _, block in ipairs(after_blocks or {}) do
+        if not before[tostring(block.id)] then count = count + 1 end
+    end
+    return count
+end
+
+local function blocks_signature(blocks)
+    local values = {}
+    for _, block in ipairs(blocks or {}) do
+        values[#values + 1] = table.concat({
+            tostring(block.id), tostring(block.class_name), tostring(block.gx), tostring(block.gy),
+            tostring(block.height), tostring(block.rot), tostring(block.palette_id),
+        }, ":")
+    end
+    table.sort(values)
+    return table.concat(values, "|")
+end
+
+local function end_paste(state, cancel_native)
+    if not state.paste then return end
+    local paste = state.paste
+    state.paste = nil
+    if paste.preview_hook then
+        local removed, remove_error = designer_native.remove_preview_hook(paste.preview_hook)
+        if not removed then log("preview hook cleanup: " .. tostring(remove_error)) end
+    end
+    if cancel_native and native.is_valid(state.designer) then
+        designer_native.cancel_preview(state.designer)
+    end
+    visibility(state.paste_status, false)
+end
+
+local function read_local_parameter(parameter)
+    if parameter == nil then return nil end
+    local ok, value = pcall(function() return parameter:Get() end)
+    return ok and value or nil
+end
+
+local function preview_resolver(state, designer, intersect_val, hit_val)
+    local paste = state.paste
+    if not paste then return nil end
+    local frame = designer_native.frame_actor_transform(designer)
+    if not frame then return nil end
+    local intersect = read_local_parameter(intersect_val)
+    if not intersect then return nil end
+    local native_cursor = docking.world_to_grid(frame.origin, frame.rotation, intersect)
+    local cursor = {
+        gx = native_cursor.gx / 4,
+        gy = native_cursor.gy / 4,
+        floor = native_cursor.height / 2,
+    }
+    local target
+    local actor = designer.ViewTarget
+    if native.is_valid(actor) then
+        local id = designer_native.block_id_for_actor(designer, actor)
+        if id then target = paste.block_by_id[tostring(id)] end
+    end
+    local hit_dir
+    local hit = read_local_parameter(hit_val)
+    if hit then
+        local normal = hit.Normal or hit.ImpactNormal
+        if normal then
+            local local_normal = docking.world_to_grid({ X = 0, Y = 0, Z = 0 }, frame.rotation, normal)
+            hit_dir = { x = local_normal.gx, y = local_normal.gy }
+        end
+    end
+    local pose = paste.controller:update_hover(
+        target, paste.before_blocks, cursor, hit_dir, paste.alt_held
+    )
+    local world = docking.grid_to_world(
+        frame.origin, frame.rotation, pose.dgx * 4, pose.dgy * 4, pose.dfloor * 2
+    )
+    if native.is_valid(state.paste_status) then
+        set_text(state.paste_status, paste.controller:status_text())
+    end
+    return { x = world.X, y = world.Y, z = world.Z, suppress_snapping = true }
+end
+
+start_paste = function(state)
+    if state.paste then
+        set_status(state, "请先确认或取消当前局部蓝图预览")
+        return
+    end
+    local before, before_error = designer_native.snapshot_frame_blocks(state.designer)
+    if not before then
+        set_status(state, "无法记录粘贴前积木：" .. tostring(before_error))
+        return
+    end
+    local preview, entry_or_error, section_doc, json_path = state.store_api.paste(
+        state.store, state.designer, state.selected_id
+    )
+    if not preview then
+        set_status(state, error_message(entry_or_error))
+        return
+    end
+    local entry = entry_or_error
+    local station_id_ok, station_id = pcall(function() return state.designer.Frame.ID end)
+    state.paste = {
+        entry = entry,
+        section_doc = section_doc,
+        json_path = json_path,
+        before_blocks = before,
+        block_by_id = block_map(before),
+        controller = docking.new_controller(section_doc or { modules = {}, buildings = {} }, {
+            includes_machines = entry.includes_machines,
+        }),
+        station_id = station_id_ok and station_id or nil,
+        alt_held = false,
+    }
+    local hook, hook_error = designer_native.install_preview_hook(state.designer, function(designer, intersect, hit)
+        return preview_resolver(state, designer, intersect, hit)
+    end)
+    if not hook then
+        state.paste = nil
+        designer_native.cancel_preview(state.designer)
+        set_status(state, "无法接管局部预览：" .. tostring(hook_error))
+        return
+    end
+    state.paste.preview_hook = hook
+    visibility(state.paste_status, true)
+    set_text(state.paste_status, state.paste.controller:status_text())
+    set_status(state, string.format("局部预览已启动：%d 个预览；H锁定，Tab方案，R旋转",
+        preview.previews))
+end
+
+function M.poll(state)
+    if not state or state.detached then return end
+    local session = designer_native.find_session()
+    if not session or not native.is_valid(state.designer)
+        or session.designer:GetAddress() ~= state.designer:GetAddress() then
+        return
+    end
+    local snapshot = designer_native.snapshot_frame_blocks(state.designer)
+    if snapshot then state.last_blocks = snapshot end
+    local paste = state.paste
+    if not paste then return end
+    local ok, preview_count = pcall(function() return #state.designer.PlacementPreviews end)
+    if not ok then return end
+    if preview_count > 0 then
+        paste.empty_preview_polls = 0
+        return
+    end
+    local after = snapshot
+    local added = after and count_new_blocks(paste.before_blocks, after) or 0
+    if added == 0 and (paste.empty_preview_polls or 0) < 1 then
+        paste.empty_preview_polls = 1
+        return
+    end
+    end_paste(state, false)
+    if added == 0 then
+        set_status(state, "局部预览已取消")
+        return
+    end
+    local transform, infer_error = docking.infer_placed_transform(
+        paste.before_blocks, after, paste.section_doc or { modules = {} }
+    )
+    if paste.entry.includes_machines and paste.entry.machines > 0 then
+        if not paste.section_doc then
+            set_status(state, "壳体已确认，但缺少 Canonical JSON，室内机台未排队")
+            return
+        elseif not transform then
+            set_status(state, "壳体已确认，但放置变换无法唯一闭合：" .. tostring(infer_error))
+            return
+        elseif type(paste.station_id) ~= "number" or paste.station_id <= 0 then
+            set_status(state, "壳体已确认，但空间站 ID 无效，室内机台未排队")
+            return
+        end
+        local queued, queue_error = machine_paste.queue_pending_job({
+            json_path = paste.json_path,
+            transform = transform,
+            station_id = paste.station_id,
+            machine_count = paste.entry.machines,
+            creative_mode = false,
+        })
+        if not queued then
+            set_status(state, "室内机台任务排队失败：" .. tostring(queue_error))
+            return
+        end
+        set_status(state, string.format("壳体已确认；退出并应用设计后可搭建 %d 台室内机台",
+            paste.entry.machines))
+    else
+        set_status(state, "局部蓝图壳体已确认")
+    end
+end
+
+function M.on_designer_exit(state)
+    if not state or state.exit_processed then return end
+    state.exit_processed = true
+    end_paste(state, false)
+    local before = blocks_signature(state.entry_baseline_blocks)
+    local after = blocks_signature(state.last_blocks)
+    if before == "missing" or after == "missing" then
+        machine_paste.discard_pending_jobs()
+        log("designer block baseline unavailable; pending machine jobs discarded")
+    elseif before ~= after then
+        local count = machine_paste.commit_pending_jobs()
+        log(string.format("designer changes applied; committed %d machine jobs", count))
+    else
+        local count = machine_paste.discard_pending_jobs()
+        log(string.format("designer changes discarded; discarded %d machine jobs", count))
+    end
+end
+
+local function unmount_pending_machine_bar()
+    runtime.pending_log_count = nil
+    local bar = runtime.pending_bar
+    if not bar then return end
+    runtime.pending_bar = nil
+    bar.state.detached = true
+    for address, record in pairs(bar.state.action_records) do
+        if runtime.actions[address] == record then runtime.actions[address] = nil end
+    end
+    for _, item in ipairs(bar.state.mounted) do
+        if native.is_valid(item.parent) and native.is_valid(item.child) then
+            pcall(function() item.parent:RemoveChild(item.child) end)
+        end
+    end
+end
+
+local function mount_pending_machine_bar(state)
+    local count = machine_paste.ready_machine_count()
+    if count == 0 then
+        unmount_pending_machine_bar()
+        return
+    end
+    if runtime.pending_bar then
+        set_text(runtime.pending_bar.count_label,
+            string.format("待建室内机台：%d 台 [开始搭建] [忽略]", count))
+        return
+    end
+    if not state or not native.is_valid(state.hud)
+        or not native.is_valid(state.hud.SaveOptionsContainer) then
+        if runtime.pending_log_count ~= count then
+            runtime.pending_log_count = count
+            log(string.format("待建室内机台：%d 台；可调用 confirm_pending_machines()", count))
+        end
+        return
+    end
+    runtime.pending_log_count = nil
+    local bar_state = {
+        hud = state.hud,
+        owner = state.owner,
+        detached = false,
+        mounted = {},
+        action_records = {},
+    }
+    local parent = state.hud.SaveOptionsContainer
+    local count_label = label(bar_state,
+        string.format("待建室内机台：%d 台 [开始搭建] [忽略]", count))
+    if not count_label then return end
+    mount(bar_state, parent, count_label, "machines/pending_count")
+    local confirm = button(bar_state, "开始搭建", function() M.confirm_pending_machines() end)
+    local dismiss = button(bar_state, "忽略", function() M.dismiss_pending_machines() end)
+    if confirm then mount(bar_state, parent, confirm, "machines/confirm") end
+    if dismiss then mount(bar_state, parent, dismiss, "machines/dismiss") end
+    for address, record in pairs(bar_state.action_records) do
+        runtime.actions[address] = record
+    end
+    runtime.pending_bar = { state = bar_state, count_label = count_label }
+end
+
+function M.mount_pending_machine_bar(state)
+    return mount_pending_machine_bar(state)
+end
+
+function M.confirm_pending_machines()
+    if runtime.machine_executing then return nil, "machine_job_already_active" end
+    local jobs = machine_paste.take_ready_jobs()
+    if #jobs == 0 then
+        unmount_pending_machine_bar()
+        return true
+    end
+    runtime.machine_executing = true
+    runtime.machine_reports = {}
+    unmount_pending_machine_bar()
+    local index = 1
+    local function run_next()
+        local job = jobs[index]
+        if not job then
+            runtime.machine_executing = false
+            local built, configured, errors = 0, 0, 0
+            for _, report in ipairs(runtime.machine_reports) do
+                built = built + (report.built or 0)
+                configured = configured + (report.configured or 0)
+                errors = errors + (report.config_errors or 0)
+            end
+            log(string.format("machine jobs complete: built=%d configured=%d config_errors=%d",
+                built, configured, errors))
+            return
+        end
+        index = index + 1
+        local started, start_error = machine_paste.execute_job(job, function(progress)
+            log(string.format("machine job %d/%d %s", index - 1, #jobs,
+                tostring(progress.phase or "progress")))
+        end, function(report)
+            runtime.machine_reports[#runtime.machine_reports + 1] = report
+            run_next()
+        end)
+        if not started then
+            runtime.machine_reports[#runtime.machine_reports + 1] = {
+                built = 0, configured = 0, config_errors = 1, start_error = start_error,
+            }
+            run_next()
+        end
+    end
+    run_next()
+    return true
+end
+
+function M.dismiss_pending_machines()
+    if runtime.machine_executing then return nil, "machine_job_already_active" end
+    local jobs = machine_paste.take_ready_jobs()
+    unmount_pending_machine_bar()
+    return #jobs
+end
+
+local function camera_yaw(session)
+    local manager = session.controller.PlayerCameraManager
+    if not native.is_valid(manager) then return nil end
+    local ok, rotation = pcall(function() return manager:GetCameraRotation() end)
+    return ok and rotation.Yaw or nil
+end
+
+runtime.on_key = function(action)
+    local session = designer_native.find_session()
+    if not session then return end
+    local state = runtime.attached
+    if not state or state.detached or not native.is_valid(state.designer)
+        or state.designer:GetAddress() ~= session.designer:GetAddress() then
+        return
+    end
+    local designer = session.designer
+    if action == "shift_left" then
+        local actor = designer.ViewTarget
+        if not native.is_valid(actor) then return end
+        local result, toggle_error = designer_native.toggle_block_in_selection(designer, actor)
+        if result then
+            set_status(state, string.format("%s积木 %d；当前选中 %d",
+                result.action == "added" and "已选择" or "已取消", result.id, result.count))
+        else
+            set_status(state, "无法切换选区：" .. tostring(toggle_error))
+        end
+        return
+    end
+    local paste = state.paste
+    if not paste then return end
+    local controller = paste.controller
+    if action == "lock" then
+        controller:toggle_lock()
+    elseif action == "next_candidate" or action == "previous_candidate" then
+        local _, cycle_error = controller:cycle_candidate(action == "next_candidate" and 1 or -1)
+        if cycle_error then set_status(state, "当前没有可轮换的对接候选") end
+    elseif action == "rotate" then
+        controller:rotate_cw()
+    elseif action == "mirror" then
+        if not controller:can_mirror() then
+            set_status(state, "包含室内机台时禁止镜像，以保护端口方向")
+            return
+        end
+    elseif action == "alt" then
+        paste.alt_held = not paste.alt_held
+    elseif action == "confirm" then
+        if controller.mode ~= "locked" then
+            set_status(state, "Enter 仅在 H 锁定后确认；悬浮时可直接左键")
+            return
+        end
+        local confirmed, confirm_error = designer_native.confirm_preview(designer)
+        if not confirmed then set_status(state, "原生确认失败：" .. tostring(confirm_error)) end
+    elseif action == "left" or action == "right" or action == "forward" or action == "backward"
+        or action == "floor_up" or action == "floor_down" then
+        local yaw = camera_yaw(session)
+        if not yaw then
+            set_status(state, "无法读取相机朝向，未执行微调")
+            return
+        end
+        local right = action == "right" and 1 or action == "left" and -1 or 0
+        local forward = action == "forward" and 1 or action == "backward" and -1 or 0
+        local floor = action == "floor_up" and 1 or action == "floor_down" and -1 or 0
+        local _, nudge_error = controller:nudge(right, forward, floor, yaw)
+        if nudge_error then set_status(state, "请先按 H 锁定预览再微调") end
+    end
+    if native.is_valid(state.paste_status) then
+        set_text(state.paste_status, controller:status_text())
+    end
+end
+
 function M.detach(state)
     if not state or state.detached then return true end
+    end_paste(state, false)
     state.detached = true
+    if runtime.attached == state then runtime.attached = nil end
     for address, record in pairs(state.action_records or {}) do
         if runtime.actions[address] == record then
             runtime.actions[address] = nil
@@ -687,6 +1135,8 @@ local function attach_internal(hud, designer, store_api, store)
     end
     local owner_ok, owner = pcall(function() return hud:GetOwningPlayer() end)
     if not owner_ok or not native.is_valid(owner) then return nil, "missing_owning_player" end
+    local baseline, baseline_error = designer_native.snapshot_frame_blocks(designer)
+    if not baseline then return nil, "designer_baseline_failed:" .. tostring(baseline_error) end
 
     local state = {
         hud = hud,
@@ -700,6 +1150,8 @@ local function attach_internal(hud, designer, store_api, store)
         action_records = {},
         list_pool = {},
         list_refresh_index = 0,
+        entry_baseline_blocks = baseline,
+        last_blocks = baseline,
     }
     attaching_state = state
     local save_form, save_form_error = build_save_form(state)
@@ -708,10 +1160,15 @@ local function attach_internal(hud, designer, store_api, store)
     local library_panel, library_error = build_library_panel(state)
     if not library_panel then return fail_attach(state, library_error) end
     state.library_panel = library_panel
-    state.status = label(state, "粘贴交给原版预览与确认；机器、材料与联机边界仍在验证")
+    state.status = label(state, "原生局部预览与两阶段室内机台搭建（实机核验待完成）")
     if not state.status then return fail_attach(state, "status_label_failed") end
 
     state.save_button = button(state, "保存局部蓝图", function()
+        local selected, select_error = designer_native.activate_select_tool(state.designer, state.hud)
+        if not selected then
+            set_status(state, "无法进入原生多选模式：" .. tostring(select_error))
+            return
+        end
         visibility(state.library_panel, false)
         visibility(state.save_form, true)
         set_text(state.save_folder_input, state.current_folder)
@@ -733,6 +1190,11 @@ local function attach_internal(hud, designer, store_api, store)
     if not mounted then return fail_attach(state, mount_error) end
     mounted, mount_error = mount(state, hud.SaveOptionsContainer, state.library_button, "mount/library_entry")
     if not mounted then return fail_attach(state, mount_error) end
+    state.paste_status = label(state, "局部蓝图粘贴")
+    if not state.paste_status then return fail_attach(state, "paste_status_failed") end
+    mounted, mount_error = mount(state, hud.SaveOptionsContainer, state.paste_status, "mount/paste_status")
+    if not mounted then return fail_attach(state, mount_error) end
+    visibility(state.paste_status, false)
     visibility(save_form, false)
     visibility(library_panel, false)
     visibility(state.details, false)
@@ -744,6 +1206,7 @@ local function attach_internal(hud, designer, store_api, store)
     local bound, bind_error = ensure_keybind()
     if not bound then return fail_attach(state, bind_error) end
     attaching_state = nil
+    runtime.attached = state
     return state
 end
 

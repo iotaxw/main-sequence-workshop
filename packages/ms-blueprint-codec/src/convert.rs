@@ -101,7 +101,10 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
         .pointer("/root/properties/Blueprint_0")
         .context("DesignSaveGame missing Blueprint_0 property")?;
 
-    let frame_type = bp.get("Type_0").and_then(Value::as_str).map(ToOwned::to_owned);
+    let frame_type = bp
+        .get("Type_0")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
     let version = bp.get("Version_0").and_then(Value::as_i64);
     let name = read_display_name(bp);
     let mut warnings = Vec::new();
@@ -123,7 +126,9 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
             .cloned()
             .unwrap_or_else(|| {
                 let fallback = short.strip_suffix("_C").unwrap_or(short).to_owned();
-                warnings.push(format!("未知空间站模块类 `{short}`，已按原名 `{fallback}` 保留。"));
+                warnings.push(format!(
+                    "未知空间站模块类 `{short}`，已按原名 `{fallback}` 保留。"
+                ));
                 fallback
             });
 
@@ -143,8 +148,14 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
         let gy = gy_num.div_euclid(4);
         let floor = (bh - z_shift).div_euclid(2);
 
-        let block_id = blk.get("BlockID_0").and_then(Value::as_i64).map(|x| x as i32);
-        let palette_id = blk.get("PaletteID_0").and_then(Value::as_i64).map(|x| x as i32);
+        let block_id = blk
+            .get("BlockID_0")
+            .and_then(Value::as_i64)
+            .map(|x| x as i32);
+        let palette_id = blk
+            .get("PaletteID_0")
+            .and_then(Value::as_i64)
+            .map(|x| x as i32);
 
         // Extract DefaultMachines & promote useful gameplay config (miningItem / dockName / dockPorts / recipeId / elevator label)
         let mut mining_item = None;
@@ -159,8 +170,13 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
             let blk_half_y = by * 8;
             let blk_half_h = bh * 8;
             for dm in dms {
-                let dm_cls = dm.get("Class_0").and_then(Value::as_str).unwrap_or("").to_owned();
-                let (dmx, dmy, dmh, dmrot) = read_transform(dm.get("Transform_0").unwrap_or(&Value::Null));
+                let dm_cls = dm
+                    .get("Class_0")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let (dmx, dmy, dmh, dmrot) =
+                    read_transform(dm.get("Transform_0").unwrap_or(&Value::Null));
                 // Inverse-rotate world delta back to module-local relative coords
                 let inv_rot = (4 - rot) % 4;
                 let (rel_x, rel_y) = rotate_xy(dmx - blk_half_x, dmy - blk_half_y, inv_rot);
@@ -217,8 +233,14 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
                     rel_y,
                     rel_height,
                     rel_rotation,
-                    machine_id: dm.get("MachineID_0").and_then(Value::as_i64).map(|x| x as i32),
-                    palette_id: dm.get("PaletteID_0").and_then(Value::as_i64).map(|x| x as i32),
+                    machine_id: dm
+                        .get("MachineID_0")
+                        .and_then(Value::as_i64)
+                        .map(|x| x as i32),
+                    palette_id: dm
+                        .get("PaletteID_0")
+                        .and_then(Value::as_i64)
+                        .map(|x| x as i32),
                     raw_config: raw_cfg,
                 });
             }
@@ -268,7 +290,9 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
             .cloned()
             .unwrap_or_else(|| {
                 let fallback = short.strip_suffix("_C").unwrap_or(short).to_owned();
-                warnings.push(format!("未知室内建筑类 `{short}`，已按原名 `{fallback}` 保留。"));
+                warnings.push(format!(
+                    "未知室内建筑类 `{short}`，已按原名 `{fallback}` 保留。"
+                ));
                 fallback
             });
 
@@ -279,8 +303,14 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
         let y = (my - d + 16).div_euclid(2);
         let floor = mh.div_euclid(16);
 
-        let machine_id = mac.get("MachineID_0").and_then(Value::as_i64).map(|v| v as i32);
-        let palette_id = mac.get("PaletteID_0").and_then(Value::as_i64).map(|v| v as i32);
+        let machine_id = mac
+            .get("MachineID_0")
+            .and_then(Value::as_i64)
+            .map(|v| v as i32);
+        let palette_id = mac
+            .get("PaletteID_0")
+            .and_then(Value::as_i64)
+            .map(|v| v as i32);
         let raw_cfg = read_byte_array(mac.get("SerializedMachineConfig_0"));
         let kind = machine_config_kind(&building_type);
         let base_id = match machine_id {
@@ -291,7 +321,9 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
         // Special case: Native UndergroundBelt is 1 object with Length -> expand to canonical (in + out) pair!
         if kind == MachineConfigKind::Underground {
             let length = decode_underground_length(&raw_cfg).unwrap_or_else(|e| {
-                warnings.push(format!("地下带 `{base_id}` 配置解析失败 ({e})，已按默认长度 2 展开。"));
+                warnings.push(format!(
+                    "地下带 `{base_id}` 配置解析失败 ({e})，已按默认长度 2 展开。"
+                ));
                 2
             });
             let (dx, dy) = rot_delta(rot);
@@ -359,28 +391,28 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
         };
 
         match kind {
-            MachineConfigKind::Assembler => {
-                match decode_assembler_config(&raw_cfg) {
-                    Ok(cfg) => {
-                        if !cfg.recipe_native.is_empty() {
-                            recipe_id = Some(recipe_native_to_canonical(&cfg.recipe_native));
-                        }
-                        let dis: Vec<i32> = cfg
-                            .port_states
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(i, &st)| if st == 0 { Some(i as i32) } else { None })
-                            .collect();
-                        if !dis.is_empty() {
-                            disabled_ports = Some(dis);
-                        }
+            MachineConfigKind::Assembler => match decode_assembler_config(&raw_cfg) {
+                Ok(cfg) => {
+                    if !cfg.recipe_native.is_empty() {
+                        recipe_id = Some(recipe_native_to_canonical(&cfg.recipe_native));
                     }
-                    Err(e) => {
-                        warnings.push(format!("制造机 `{base_id}` 配置解析失败 ({e})，已原样保留原始字节。"));
-                        b_meta.raw_config = Some(raw_cfg);
+                    let dis: Vec<i32> = cfg
+                        .port_states
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, &st)| if st == 0 { Some(i as i32) } else { None })
+                        .collect();
+                    if !dis.is_empty() {
+                        disabled_ports = Some(dis);
                     }
                 }
-            }
+                Err(e) => {
+                    warnings.push(format!(
+                        "制造机 `{base_id}` 配置解析失败 ({e})，已原样保留原始字节。"
+                    ));
+                    b_meta.raw_config = Some(raw_cfg);
+                }
+            },
             MachineConfigKind::Container => {
                 match decode_container_config(&raw_cfg, item_native_to_canonical) {
                     Ok(cfg) => {
@@ -388,7 +420,8 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
                             b_meta.b_creative = Some(true);
                         }
                         if !cfg.creative_item_native.is_empty() {
-                            b_meta.creative_item = Some(item_native_to_canonical(&cfg.creative_item_native));
+                            b_meta.creative_item =
+                                Some(item_native_to_canonical(&cfg.creative_item_native));
                         }
                         if cfg.b_creative_consume {
                             b_meta.b_creative_consume = Some(true);
@@ -416,13 +449,19 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
                         }
                     }
                     Err(e) => {
-                        warnings.push(format!("储物箱 `{base_id}` 配置解析失败 ({e})，已保留原始字节。"));
+                        warnings.push(format!(
+                            "储物箱 `{base_id}` 配置解析失败 ({e})，已保留原始字节。"
+                        ));
                         b_meta.raw_config = Some(raw_cfg);
                     }
                 }
             }
             MachineConfigKind::Splitter | MachineConfigKind::Balancer => {
-                let out_offset: i32 = if kind == MachineConfigKind::Balancer { 2 } else { 1 };
+                let out_offset: i32 = if kind == MachineConfigKind::Balancer {
+                    2
+                } else {
+                    1
+                };
                 match decode_splitter_config(&raw_cfg) {
                     Ok(cfg) => {
                         if cfg.priority_input_index >= 0 {
@@ -460,7 +499,9 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
                         }
                     }
                     Err(e) => {
-                        warnings.push(format!("分流/平衡器 `{base_id}` 配置解析失败 ({e})，已保留原始字节。"));
+                        warnings.push(format!(
+                            "分流/平衡器 `{base_id}` 配置解析失败 ({e})，已保留原始字节。"
+                        ));
                         b_meta.raw_config = Some(raw_cfg);
                     }
                 }
@@ -541,7 +582,11 @@ pub fn sav_bytes_to_canonical(sav_bytes: &[u8]) -> Result<(BlueprintDocument, Co
     Ok((doc, report))
 }
 
-fn encode_default_machine_config(m: &PlacedModule, class_path: &str, fallback_bytes: &[u8]) -> Vec<u8> {
+fn encode_default_machine_config(
+    m: &PlacedModule,
+    class_path: &str,
+    fallback_bytes: &[u8],
+) -> Vec<u8> {
     if class_path.contains("MiningDroneBay") {
         let item_nat = m
             .mining_item
@@ -604,6 +649,153 @@ fn encode_default_machine_config(m: &PlacedModule, class_path: &str, fallback_by
         });
     }
     fallback_bytes.to_vec()
+}
+
+pub(crate) fn encode_building_config(
+    building: &PlacedBuilding,
+    kind: MachineConfigKind,
+) -> Vec<u8> {
+    if let Some(raw) = building
+        .native_meta
+        .as_ref()
+        .and_then(|meta| meta.raw_config.as_ref())
+    {
+        return raw.clone();
+    }
+
+    let port_count = catalog()
+        .buildables_by_id
+        .get(&building.building_type)
+        .map(|def| def.ports.len())
+        .unwrap_or(0);
+    let disabled_set: HashSet<i32> = building
+        .disabled_ports
+        .as_ref()
+        .map(|ports| ports.iter().copied().collect())
+        .unwrap_or_default();
+
+    match kind {
+        MachineConfigKind::Assembler => {
+            let recipe_native = building
+                .recipe_id
+                .as_deref()
+                .map(recipe_canonical_to_native)
+                .unwrap_or_default();
+            let mut port_states = vec![1u8; port_count];
+            for (index, state) in port_states.iter_mut().enumerate() {
+                if disabled_set.contains(&(index as i32)) {
+                    *state = 0;
+                }
+            }
+            encode_assembler_config(&AssemblerConfig {
+                recipe_native,
+                port_states,
+            })
+        }
+        MachineConfigKind::Container => {
+            let mut port_states = vec![1u8; port_count];
+            for (index, state) in port_states.iter_mut().enumerate() {
+                if disabled_set.contains(&(index as i32)) {
+                    *state = 0;
+                }
+            }
+            let meta = building.native_meta.as_ref();
+            let meta_by_item: HashMap<&str, &LogisticFilterEntry> = meta
+                .map(|native_meta| {
+                    native_meta
+                        .logistic_filters
+                        .iter()
+                        .map(|filter| (filter.item_id.as_str(), filter))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let logistic_filters = if let Some(items) = &building.filter_items {
+                items
+                    .iter()
+                    .map(|item| {
+                        if let Some(previous) = meta_by_item.get(item.as_str()) {
+                            (*previous).clone()
+                        } else {
+                            LogisticFilterEntry {
+                                item_id: item.clone(),
+                                amount: 0,
+                                action: 0,
+                            }
+                        }
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            encode_container_config(
+                &ContainerConfig {
+                    b_creative: meta
+                        .and_then(|native_meta| native_meta.b_creative)
+                        .unwrap_or(false),
+                    creative_item_native: meta
+                        .and_then(|native_meta| native_meta.creative_item.as_deref())
+                        .map(item_canonical_to_native)
+                        .unwrap_or_default(),
+                    b_creative_consume: meta
+                        .and_then(|native_meta| native_meta.b_creative_consume)
+                        .unwrap_or(false),
+                    logistic_filters,
+                    port_states,
+                },
+                item_canonical_to_native,
+            )
+        }
+        MachineConfigKind::Splitter | MachineConfigKind::Balancer => {
+            let (output_offset, output_count): (i32, usize) = if kind == MachineConfigKind::Balancer
+            {
+                (2, 2)
+            } else {
+                (1, 3)
+            };
+            let mut filters_native = vec![String::new(); output_count];
+            if let Some(port_filters) = &building.port_filters {
+                for (port, item_id) in port_filters {
+                    if let Ok(port_index) = port.parse::<i32>() {
+                        let slot = port_index - output_offset;
+                        if slot >= 0 && (slot as usize) < output_count {
+                            filters_native[slot as usize] = item_canonical_to_native(item_id);
+                        }
+                    }
+                }
+            }
+            let mut port_states = vec![1u8; output_count];
+            for (index, state) in port_states.iter_mut().enumerate() {
+                if disabled_set.contains(&(index as i32 + output_offset)) {
+                    *state = 0;
+                }
+            }
+            let priority_output_index = building
+                .priority_out
+                .map(|priority| {
+                    let slot = priority - output_offset;
+                    if slot >= 0 && (slot as usize) < output_count {
+                        slot
+                    } else {
+                        -1
+                    }
+                })
+                .unwrap_or(-1);
+            let priority_input_index = building.priority_in.unwrap_or(-1);
+            encode_splitter_config(&SplitterConfig {
+                filters_native,
+                priority_output_index,
+                priority_input_index,
+                port_states,
+            })
+        }
+        MachineConfigKind::Teleporter => {
+            encode_elevator_or_teleporter_label(building.label.as_deref())
+        }
+        MachineConfigKind::None => Vec::new(),
+        MachineConfigKind::Underground => {
+            unreachable!("underground config requires a resolved pair length")
+        }
+    }
 }
 
 pub fn canonical_to_sav_bytes(
@@ -672,7 +864,8 @@ pub fn canonical_to_sav_bytes(
             for tpl in default_machines_for_module(&m.module_type) {
                 let (rx, ry) = rotate_xy(tpl.rel_x, tpl.rel_y, rot);
                 let dm_id = alloc_id(None);
-                let cfg_bytes = encode_default_machine_config(m, tpl.class_path, tpl.default_config);
+                let cfg_bytes =
+                    encode_default_machine_config(m, tpl.class_path, tpl.default_config);
 
                 dms_json.push(json!({
                     "Class_0": tpl.class_path,
@@ -809,131 +1002,7 @@ pub fn canonical_to_sav_bytes(
         }
 
         let mid = alloc_id(b.native_meta.as_ref().and_then(|nm| nm.machine_id));
-        let port_count = catalog()
-            .buildables_by_id
-            .get(&b.building_type)
-            .map(|def| def.ports.len())
-            .unwrap_or(0);
-        let disabled_set: HashSet<i32> = b
-            .disabled_ports
-            .as_ref()
-            .map(|v| v.iter().copied().collect())
-            .unwrap_or_default();
-
-        let cfg_bytes: Vec<u8> = if let Some(raw) = b.native_meta.as_ref().and_then(|nm| nm.raw_config.as_ref()) {
-            raw.clone()
-        } else {
-            match kind {
-                MachineConfigKind::Assembler => {
-                    let recipe_native = b
-                        .recipe_id
-                        .as_deref()
-                        .map(recipe_canonical_to_native)
-                        .unwrap_or_default();
-                    let mut port_states = vec![1u8; port_count];
-                    for (i, st) in port_states.iter_mut().enumerate() {
-                        if disabled_set.contains(&(i as i32)) {
-                            *st = 0;
-                        }
-                    }
-                    encode_assembler_config(&AssemblerConfig {
-                        recipe_native,
-                        port_states,
-                    })
-                }
-                MachineConfigKind::Container => {
-                    let mut port_states = vec![1u8; port_count];
-                    for (i, st) in port_states.iter_mut().enumerate() {
-                        if disabled_set.contains(&(i as i32)) {
-                            *st = 0;
-                        }
-                    }
-                    let nm = b.native_meta.as_ref();
-                    let meta_by_item: HashMap<&str, &LogisticFilterEntry> = nm
-                        .map(|n| {
-                            n.logistic_filters
-                                .iter()
-                                .map(|lf| (lf.item_id.as_str(), lf))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let logistic_filters = if let Some(items) = &b.filter_items {
-                        items
-                            .iter()
-                            .map(|it| {
-                                if let Some(prev) = meta_by_item.get(it.as_str()) {
-                                    (*prev).clone()
-                                } else {
-                                    LogisticFilterEntry {
-                                        item_id: it.clone(),
-                                        amount: 0,
-                                        action: 0,
-                                    }
-                                }
-                            })
-                            .collect()
-                    } else {
-                        Vec::new()
-                    };
-                    encode_container_config(
-                        &ContainerConfig {
-                            b_creative: nm.and_then(|n| n.b_creative).unwrap_or(false),
-                            creative_item_native: nm
-                                .and_then(|n| n.creative_item.as_deref())
-                                .map(item_canonical_to_native)
-                                .unwrap_or_default(),
-                            b_creative_consume: nm.and_then(|n| n.b_creative_consume).unwrap_or(false),
-                            logistic_filters,
-                            port_states,
-                        },
-                        item_canonical_to_native,
-                    )
-                }
-                MachineConfigKind::Splitter | MachineConfigKind::Balancer => {
-                    let (out_offset, out_count): (i32, usize) = if kind == MachineConfigKind::Balancer {
-                        (2, 2)
-                    } else {
-                        (1, 3)
-                    };
-                    let mut filters_native = vec![String::new(); out_count];
-                    if let Some(pf) = &b.port_filters {
-                        for (k, item_id) in pf {
-                            if let Ok(port_idx) = k.parse::<i32>() {
-                                let slot = port_idx - out_offset;
-                                if slot >= 0 && (slot as usize) < out_count {
-                                    filters_native[slot as usize] = item_canonical_to_native(item_id);
-                                }
-                            }
-                        }
-                    }
-                    let mut port_states = vec![1u8; out_count];
-                    for (i, st) in port_states.iter_mut().enumerate() {
-                        if disabled_set.contains(&(i as i32 + out_offset)) {
-                            *st = 0;
-                        }
-                    }
-                    let priority_output_index = b
-                        .priority_out
-                        .map(|p| {
-                            let s = p - out_offset;
-                            if s >= 0 && (s as usize) < out_count { s } else { -1 }
-                        })
-                        .unwrap_or(-1);
-                    let priority_input_index = b.priority_in.unwrap_or(-1);
-                    encode_splitter_config(&SplitterConfig {
-                        filters_native,
-                        priority_output_index,
-                        priority_input_index,
-                        port_states,
-                    })
-                }
-                MachineConfigKind::Teleporter => {
-                    encode_elevator_or_teleporter_label(b.label.as_deref())
-                }
-                MachineConfigKind::None => Vec::new(),
-                MachineConfigKind::Underground => unreachable!(),
-            }
-        };
+        let cfg_bytes = encode_building_config(b, kind);
 
         machines_json.push(json!({
             "Class_0": class_path,
@@ -1003,11 +1072,22 @@ pub fn canonical_to_sav_bytes(
             })
         }
         NativeExportMode::StationPreset => {
-            json!({
+            let mut preset = json!({
                 "Type_0": "EBuildingFrameType::STATION_PRESET",
                 "Blocks_0": blocks_json,
                 "Machines_0": machines_json
-            })
+            });
+            if let Some(palettes) = doc
+                .native_meta
+                .as_ref()
+                .and_then(|meta| meta.colour_palettes.clone())
+            {
+                preset
+                    .as_object_mut()
+                    .context("STATION_PRESET payload must be a JSON object")?
+                    .insert("ColourPalettes_0".to_owned(), palettes);
+            }
+            preset
         }
     };
 
