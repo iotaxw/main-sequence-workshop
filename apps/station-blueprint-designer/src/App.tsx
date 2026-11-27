@@ -89,6 +89,7 @@ import { ToolActionBar, type KeyHintItem } from './ui/KeyHintBar';
 import { LibrarySidebar } from './ui/LibrarySidebar';
 import { PaletteDock } from './ui/PaletteDock';
 import { SimulationPanel, type CheckFocusTarget } from './ui/SimulationPanel';
+import { useHoverMenu } from './ui/useHoverMenu';
 
 const EMPTY_SELECTION: SelectionState = { moduleIds: [], buildingIds: [] };
 type PointerSample = Pick<React.PointerEvent<HTMLDivElement>, 'clientX' | 'clientY'>;
@@ -145,12 +146,17 @@ export const App: React.FC = () => {
 
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [libraryModalOpen, setLibraryModalOpen] = useState(false);
-  const [prefsMenuOpen, setPrefsMenuOpen] = useState(false);
+  const {
+    open: prefsMenuOpen,
+    setOpen: setPrefsMenuOpen,
+    wrapRef: prefsMenuRef,
+    containerProps: prefsMenuContainerProps,
+    onTriggerClick: onPrefsTriggerClick,
+  } = useHoverMenu();
   const [cleanView, setCleanView] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [simOpen, setSimOpen] = useState(false);
   const [showIoSpots, setShowIoSpots] = useState(false);
-  const prefsMenuRef = useRef<HTMLDivElement | null>(null);
   const [activeSimIssueId, setActiveSimIssueId] = useState<string | null>(null);
   const [driver, setDriver] = useState<BlueprintLibraryDriver>(() => {
     const savedGh = loadSavedGitHubConfig();
@@ -881,17 +887,6 @@ export const App: React.FC = () => {
     },
     [commitDoc, showToast]
   );
-
-  useEffect(() => {
-    if (!prefsMenuOpen) return;
-    const onDocDown = (e: MouseEvent) => {
-      if (prefsMenuRef.current && !prefsMenuRef.current.contains(e.target as Node)) {
-        setPrefsMenuOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', onDocDown);
-    return () => window.removeEventListener('mousedown', onDocDown);
-  }, [prefsMenuOpen]);
 
   const copySelectionToGhost = useCallback(
     (cut: boolean) => {
@@ -2855,12 +2850,14 @@ export const App: React.FC = () => {
               onExportCanonicalJson={handleExportCanonicalJson}
             />
 
-            <div className="interop-anchor" ref={prefsMenuRef}>
+            <div className="interop-anchor" ref={prefsMenuRef} {...prefsMenuContainerProps}>
               <button
                 type="button"
                 className={`cad-btn ${prefsMenuOpen ? 'accent' : ''}`}
-                onClick={() => setPrefsMenuOpen((o) => !o)}
+                onClick={onPrefsTriggerClick}
                 title={t('视角与偏好', 'View & Preferences')}
+                aria-expanded={prefsMenuOpen}
+                aria-haspopup="menu"
               >
                 {t('视角 ▾', 'View ▾')}
               </button>

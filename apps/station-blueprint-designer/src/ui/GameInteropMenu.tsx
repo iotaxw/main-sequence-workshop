@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { useI18n } from '../core/i18n';
+import { useHoverMenu } from './useHoverMenu';
 
 interface GameInteropMenuProps {
   onImportFile: (file: File) => void;
@@ -13,35 +14,18 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
   onExportCanonicalJson,
 }) => {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const { open, close, wrapRef, containerProps, onTriggerClick } = useHoverMenu();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDocDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('mousedown', onDocDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onDocDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
   return (
-    <div className="interop-anchor" ref={wrapRef}>
+    <div className="interop-anchor" ref={wrapRef} {...containerProps}>
       <button
         type="button"
         className={`cad-btn ${open ? 'accent' : ''}`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={onTriggerClick}
         title={t('导入 / 导出 .sav 与 .json', 'Import / Export .sav & .json')}
+        aria-expanded={open}
+        aria-haspopup="menu"
       >
         {t('互转 ▾', 'I/O ▾')}
       </button>
@@ -55,7 +39,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
           const f = e.target.files?.[0];
           if (f) onImportFile(f);
           e.target.value = '';
-          setOpen(false);
+          close();
         }}
       />
 
@@ -79,7 +63,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
               type="button"
               className="interop-action-btn row primary"
               onClick={() => {
-                setOpen(false);
+                close();
                 onExportNativeSav('station');
               }}
             >
@@ -90,7 +74,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
               type="button"
               className="interop-action-btn row"
               onClick={() => {
-                setOpen(false);
+                close();
                 onExportNativeSav('preset');
               }}
             >
@@ -101,7 +85,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
               type="button"
               className="interop-action-btn row"
               onClick={() => {
-                setOpen(false);
+                close();
                 onExportCanonicalJson();
               }}
             >

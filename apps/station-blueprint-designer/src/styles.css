@@ -87,6 +87,13 @@ body,
   user-select: none;
 }
 
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 /* Subtle custom scrollbars */
 ::-webkit-scrollbar {
   width: 5px;
@@ -422,6 +429,9 @@ body,
 }
 
 .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-muted);
@@ -431,11 +441,12 @@ body,
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .icon-btn:hover {
   background: var(--bg-surface-hover);
+  border-color: var(--border-subtle);
   color: var(--text-bright);
 }
 
@@ -994,6 +1005,12 @@ body,
   padding: 8px 11px;
   border-top: 1px solid var(--border-hairline);
   flex-shrink: 0;
+}
+
+.inspector-footer .cad-btn {
+  height: 28px;
+  padding: 0 10px;
+  line-height: 1;
 }
 
 .inspector-footer.vertical {
@@ -1576,6 +1593,12 @@ body,
   gap: 8px;
 }
 
+.modal-footer .cad-btn {
+  height: 28px;
+  padding: 0 12px;
+  line-height: 1;
+}
+
 /* ================================================================
    General-Purpose Production Simulation & Zero-Anomaly Audit Panel
    ================================================================ */
@@ -1917,9 +1940,19 @@ body,
   border-radius: 11px;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
   z-index: 60;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.interop-popover::before,
+.prefs-popover::before,
+.new-bp-popover::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 0;
+  right: 0;
+  height: 10px;
 }
 
 .interop-header {
@@ -2081,7 +2114,6 @@ body,
   border-radius: 11px;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
   z-index: 65;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -2106,6 +2138,12 @@ body,
   text-transform: uppercase;
 }
 
+.prefs-section .cad-btn {
+  height: 28px;
+  padding: 0 10px;
+  line-height: 1;
+}
+
 .prefs-row {
   display: flex;
   align-items: center;
@@ -2128,7 +2166,7 @@ body,
 
 .prefs-full {
   width: 100%;
-  justify-content: space-between;
+  justify-content: center;
 }
 
 /* ================================================================
@@ -2662,6 +2700,11 @@ body,
   height: 28px;
   padding: 0 10px;
   line-height: 1;
+}
+
+.bpm-header-actions .icon-btn {
+  width: 28px;
+  height: 28px;
 }
 
 .bpm-divider {

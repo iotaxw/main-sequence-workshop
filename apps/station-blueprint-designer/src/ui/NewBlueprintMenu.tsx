@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { useI18n } from '../core/i18n';
 import type { BlueprintCategory } from '../core/types';
+import { useHoverMenu } from './useHoverMenu';
 
 interface NewBlueprintMenuProps {
   label: string;
@@ -22,38 +23,19 @@ export const NewBlueprintMenu: React.FC<NewBlueprintMenuProps> = ({
   onSelectCategory,
 }) => {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('mousedown', onDocDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onDocDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  const { open, close, wrapRef, containerProps, onTriggerClick } = useHoverMenu();
 
   const choose = (category: BlueprintCategory) => {
-    setOpen(false);
+    close();
     onSelectCategory(category);
   };
 
   return (
-    <div className="new-bp-anchor" ref={wrapRef}>
+    <div className="new-bp-anchor" ref={wrapRef} {...containerProps}>
       <button
         type="button"
         className={`${buttonClassName} ${open ? 'accent' : ''}`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={onTriggerClick}
         title={title ?? t('新建蓝图', 'New Blueprint')}
         aria-expanded={open}
         aria-haspopup="menu"

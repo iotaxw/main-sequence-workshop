@@ -94,6 +94,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
   const [docCache, setDocCache] = useState<Record<string, BlueprintDocument>>({});
   const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const driverRef = useRef(driver);
 
   useEffect(() => {
@@ -279,22 +280,28 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
             <button type="button" className="cad-btn" onClick={() => onCreateFolder(selectedFolder)}>
               {t('+ 目录', '+ Folder')}
             </button>
-            <label className="cad-btn file-label" title={t('导入 .json 或 .sav', 'Import .json or .sav')}>
+            <button
+              type="button"
+              className="cad-btn"
+              onClick={() => importInputRef.current?.click()}
+              title={t('导入 .json 或 .sav', 'Import .json or .sav')}
+            >
               {t('导入', 'Import')}
-              <input
-                type="file"
-                accept=".json,.sav,application/json"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    onImportJsonFile(file);
-                    onClose();
-                  }
-                  e.target.value = '';
-                }}
-              />
-            </label>
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,.sav,application/json"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  onImportJsonFile(file);
+                  onClose();
+                }
+                e.target.value = '';
+              }}
+            />
             <button type="button" className="icon-btn" onClick={onClose} title={t('关闭 (Esc)', 'Close (Esc)')}>
               ×
             </button>
