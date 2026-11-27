@@ -46,7 +46,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
         </button>
         <button
           type="button"
-          className="cad-floating-toggle-btn"
+          className="cad-floating-toggle-btn accent"
           onClick={onOpenModal}
           title={t('蓝图库 (L)', 'Blueprint Library (L)')}
         >
@@ -142,7 +142,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
       <div className="lib-slim-top-actions">
         <button
           type="button"
-          className="cad-btn lib-open-grid-btn"
+          className="cad-btn accent lib-open-grid-btn"
           onClick={onOpenModal}
           title={t('蓝图库 (L)', 'Blueprint Library (L)')}
         >
