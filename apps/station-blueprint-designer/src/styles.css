@@ -2928,47 +2928,101 @@ textarea {
   border-color: var(--border-focus);
 }
 
+.bpm-card-footer {
+  padding: 8px 10px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.bpm-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bpm-card-meta {
+  position: relative;
+  height: 22px;
+  display: flex;
+  align-items: center;
+}
+
+.bpm-card-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: opacity 120ms ease;
+}
+
+.bpm-card:hover .bpm-card-sub {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .bpm-card-actions {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  inset: 0;
   display: flex;
-  gap: 3px;
+  align-items: center;
+  gap: 4px;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 120ms ease;
 }
 
 .bpm-card:hover .bpm-card-actions {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .bpm-card-btn {
-  background: var(--bg-panel-solid);
+  height: 22px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   color: var(--text-main);
   font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 5px;
+  line-height: 1;
+  border-radius: 6px;
   cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.bpm-card-btn.primary {
+  margin-right: auto;
+  color: var(--text-bright);
+  border-color: var(--border-mid);
 }
 
 .bpm-card-btn:hover {
+  background: var(--bg-surface-hover);
   border-color: var(--border-mid);
   color: var(--text-bright);
 }
 
-.bpm-card-btn.danger:hover {
-  border-color: var(--line-disabled);
-  color: var(--text-danger);
+.bpm-card-btn.primary:hover {
+  border-color: var(--border-focus);
 }
 
-.bpm-card-footer {
-  padding: 8px 10px;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  flex-shrink: 0;
+.bpm-card-btn.danger {
+  width: 22px;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.bpm-card-btn.danger:hover {
+  background: rgba(125, 62, 67, 0.14);
+  border-color: var(--line-disabled);
+  color: var(--text-danger);
 }
 
 .dock-port-row {
@@ -2989,24 +3043,6 @@ textarea {
   padding: 3px 4px;
   font-size: 10px;
   text-align: center;
-}
-
-.bpm-card-title {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-bright);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.bpm-card-sub {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  white-space: nowrap;
 }
 
 /* ================================================================

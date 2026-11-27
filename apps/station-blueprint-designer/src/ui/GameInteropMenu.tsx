@@ -23,7 +23,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
         type="button"
         className={`cad-btn ${open ? 'accent' : ''}`}
         onClick={onTriggerClick}
-        title={t('导入 / 导出 .sav 与 .json', 'Import / Export .sav & .json')}
+        aria-label={t('导入与导出', 'Import & Export')}
         aria-expanded={open}
         aria-haspopup="menu"
       >

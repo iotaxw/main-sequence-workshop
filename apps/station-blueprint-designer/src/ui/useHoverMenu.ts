@@ -6,15 +6,16 @@ interface UseHoverMenuOptions {
 }
 
 /**
- * Unified hover-intent + click-toggle popover controller for CAD toolbar menus.
+ * Pure hover-presence popover controller for CAD toolbar menus.
  * - Hovering opens smoothly after a short intent delay so sweeping across the
  *   topbar never flickers adjacent menus open.
  * - Leaving waits briefly (paired with a CSS ::before bridge) so moving into
  *   the popover never drops focus.
- * - Clicking still toggles immediately for touch / explicit keyboard / pin use.
+ * - Clicking the trigger ensures the menu stays open (for touch / fast-click
+ *   accessibility) and NEVER closes an already-open hovered menu.
  */
 export function useHoverMenu(options: UseHoverMenuOptions = {}) {
-  const { openDelayMs = 70, closeDelayMs = 160 } = options;
+  const { openDelayMs = 60, closeDelayMs = 160 } = options;
   const [open, setOpenState] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const openTimerRef = useRef<number | null>(null);
@@ -44,6 +45,11 @@ export function useHoverMenu(options: UseHoverMenuOptions = {}) {
     setOpenState(false);
   }, [clearTimers]);
 
+  const openNow = useCallback(() => {
+    clearTimers();
+    setOpenState(true);
+  }, [clearTimers]);
+
   const onMouseEnter = useCallback(() => {
     if (closeTimerRef.current !== null) {
       window.clearTimeout(closeTimerRef.current);
@@ -69,11 +75,6 @@ export function useHoverMenu(options: UseHoverMenuOptions = {}) {
       }, closeDelayMs);
     }
   }, [closeDelayMs]);
-
-  const onTriggerClick = useCallback(() => {
-    clearTimers();
-    setOpenState((v) => !v);
-  }, [clearTimers]);
 
   useEffect(() => clearTimers, [clearTimers]);
 
@@ -104,6 +105,6 @@ export function useHoverMenu(options: UseHoverMenuOptions = {}) {
       onMouseEnter,
       onMouseLeave,
     },
-    onTriggerClick,
+    onTriggerClick: openNow,
   };
 }

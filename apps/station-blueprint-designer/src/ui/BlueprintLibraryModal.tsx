@@ -342,8 +342,9 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                 onChange={(e) => setSearch(e.target.value)}
               />
               <span className="bpm-meta-hint">
+                {t('单击盖章 · 双击打开', 'Click to stamp · Dbl-click to open')} ·{' '}
                 {selectedFolder ? `/${selectedFolder}` : t('全部', 'All')} ·{' '}
-                {isEn ? `${visibleFiles.length} items` : `${visibleFiles.length} 份`}
+                {isEn ? `${visibleFiles.length}` : `${visibleFiles.length} 份`}
               </span>
             </div>
 
@@ -358,6 +359,7 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                   const isStamping = stampingPath === file.path;
                   const modCount = loadedDoc ? loadedDoc.modules.length : file.moduleCount;
                   const bldCount = loadedDoc ? loadedDoc.buildings.length : file.buildingCount;
+                  const displayName = file.blueprintName || file.name;
                   return (
                     <div
                       key={file.path}
@@ -377,7 +379,6 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                         onOpenFromLibrary(file);
                         onClose();
                       }}
-                      title={`${file.path}\n${t('单击盖章 · 双击打开', 'Click: Stamp · Dbl-click: Open')}`}
                     >
                       <div className="bpm-card-thumb">
                         <BlueprintThumbnail
@@ -388,55 +389,56 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                         />
                         {(isEditing || isStamping) && (
                           <span className={`bpm-card-badge ${isStamping ? 'stamping' : 'editing'}`}>
-                            {isStamping ? t('盖章中', 'Stamping') : t('当前画布', 'Active')}
+                            {isStamping ? t('盖章中', 'Stamping') : t('当前', 'Active')}
                           </span>
                         )}
-                        <div className="bpm-card-actions" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            className="bpm-card-btn"
-                            title={t('打开编辑', 'Open in canvas')}
-                            onClick={() => {
-                              onOpenFromLibrary(file);
-                              onClose();
-                            }}
-                          >
-                            {t('打开', 'Open')}
-                          </button>
-                          <button
-                            type="button"
-                            className="bpm-card-btn"
-                            title={t('导出 .sav', 'Export .sav')}
-                            onClick={() => onExportSavFromLibrary(file)}
-                          >
-                            .sav
-                          </button>
-                          <button
-                            type="button"
-                            className="bpm-card-btn"
-                            title={t('导出 JSON', 'Export JSON')}
-                            onClick={() => onExportFromLibrary(file)}
-                          >
-                            JSON
-                          </button>
-                          <button
-                            type="button"
-                            className="bpm-card-btn danger"
-                            title={t('删除', 'Delete')}
-                            onClick={() => onDeleteEntry(file.path, false)}
-                          >
-                            ×
-                          </button>
-                        </div>
                       </div>
                       <div className="bpm-card-footer">
-                        <div className="bpm-card-title">{file.blueprintName || file.name}</div>
-                        <div className="bpm-card-sub">
-                          {modCount > 0 || bldCount > 0
-                            ? isEn
-                              ? `${modCount}M · ${bldCount}B`
-                              : `${modCount}模 · ${bldCount}建`
-                            : t('载入', 'Load')}
+                        <div className="bpm-card-title" title={displayName}>
+                          {displayName}
+                        </div>
+                        <div className="bpm-card-meta">
+                          <div className="bpm-card-sub">
+                            {modCount > 0 || bldCount > 0
+                              ? isEn
+                                ? `${modCount}M · ${bldCount}B`
+                                : `${modCount}模 · ${bldCount}建`
+                              : '—'}
+                          </div>
+                          <div className="bpm-card-actions" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              className="bpm-card-btn primary"
+                              onClick={() => {
+                                onOpenFromLibrary(file);
+                                onClose();
+                              }}
+                            >
+                              {t('打开', 'Open')}
+                            </button>
+                            <button
+                              type="button"
+                              className="bpm-card-btn"
+                              onClick={() => onExportSavFromLibrary(file)}
+                            >
+                              .sav
+                            </button>
+                            <button
+                              type="button"
+                              className="bpm-card-btn"
+                              onClick={() => onExportFromLibrary(file)}
+                            >
+                              JSON
+                            </button>
+                            <button
+                              type="button"
+                              className="bpm-card-btn danger"
+                              aria-label={t('删除', 'Delete')}
+                              onClick={() => onDeleteEntry(file.path, false)}
+                            >
+                              ×
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>

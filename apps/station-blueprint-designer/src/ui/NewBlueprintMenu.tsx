@@ -36,7 +36,7 @@ export const NewBlueprintMenu: React.FC<NewBlueprintMenuProps> = ({
         type="button"
         className={`${buttonClassName} ${open ? 'accent' : ''}`}
         onClick={onTriggerClick}
-        title={title ?? t('新建蓝图', 'New Blueprint')}
+        aria-label={title ?? t('新建蓝图', 'New Blueprint')}
         aria-expanded={open}
         aria-haspopup="menu"
       >

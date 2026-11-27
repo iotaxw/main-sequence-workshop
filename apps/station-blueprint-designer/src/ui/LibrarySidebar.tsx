@@ -40,7 +40,6 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
           type="button"
           className="cad-floating-toggle-btn"
           onClick={onToggleOpen}
-          title={t('展开蓝图列表', 'Expand list')}
         >
           {t('列表 ›', 'List ›')}
         </button>
@@ -48,7 +47,6 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
           type="button"
           className="cad-floating-toggle-btn accent"
           onClick={onOpenModal}
-          title={t('蓝图库 (L)', 'Blueprint Library (L)')}
         >
           {t('⊞ 图库 (L)', '⊞ Library (L)')}
         </button>
@@ -90,7 +88,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
         style={{ paddingLeft: 18 + depth * 13 }}
         onClick={() => onStampFromLibrary(file)}
         onDoubleClick={() => onOpenFromLibrary(file)}
-        title={`${file.blueprintName || file.name}\n${t('单击盖章 · 双击打开', 'Click: Stamp · Dbl-click: Open')}`}
+        title={file.blueprintName || file.name}
       >
         <span className="lib-slim-name">{file.blueprintName || file.name}</span>
         <button
@@ -144,7 +142,6 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
           type="button"
           className="cad-btn accent lib-open-grid-btn"
           onClick={onOpenModal}
-          title={t('蓝图库 (L)', 'Blueprint Library (L)')}
         >
           {t('⊞ 图库 (L)', '⊞ Library (L)')}
         </button>

@@ -2799,7 +2799,7 @@ export const App: React.FC = () => {
                   setHistory((h) => ({ ...h, present: { ...h.present, name } }));
                   setDirty(true);
                 }}
-                title={t('蓝图名称', 'Blueprint name')}
+                aria-label={t('蓝图名称', 'Blueprint name')}
               />
             </div>
             <button type="button" className="cad-btn" onClick={() => openSaveDialog(false)} title="Ctrl+S">
@@ -2833,7 +2833,6 @@ export const App: React.FC = () => {
               type="button"
               className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
               onClick={() => setSimOpen((v) => !v)}
-              title={t('图纸体检', 'Blueprint check')}
             >
               {simOpen
                 ? !simReport?.passed
@@ -2855,7 +2854,7 @@ export const App: React.FC = () => {
                 type="button"
                 className={`cad-btn ${prefsMenuOpen ? 'accent' : ''}`}
                 onClick={onPrefsTriggerClick}
-                title={t('视角与偏好', 'View & Preferences')}
+                aria-label={t('视角与偏好', 'View & Preferences')}
                 aria-expanded={prefsMenuOpen}
                 aria-haspopup="menu"
               >
@@ -2914,7 +2913,6 @@ export const App: React.FC = () => {
                       type="button"
                       className="cad-btn prefs-full"
                       onClick={enterCleanView}
-                      title={t('隐藏所有界面，拖拽浏览，点按或 Esc 退出', 'Hide all UI; drag to view, click or Esc to exit')}
                     >
                       {t('无 UI 预览 (H)', 'Clean View (H)')}
                     </button>
@@ -2978,7 +2976,7 @@ export const App: React.FC = () => {
               type="button"
               className="cad-btn"
               onClick={toggleLang}
-              title={t('切换为 English', 'Switch to 中文')}
+              aria-label={t('切换为 English', 'Switch to 中文')}
             >
               {isEn ? '中' : 'EN'}
             </button>
