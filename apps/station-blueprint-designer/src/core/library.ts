@@ -1,4 +1,4 @@
-import { deserializeBlueprint, serializeBlueprint } from './codec';
+import { deserializeBlueprint, deserializeBlueprintObject, serializeBlueprint } from './codec';
 import { getDocumentFloorRange } from './geometry';
 import { DEFAULT_LIBRARY_PRESETS } from './presets';
 import type { BlueprintDocument, LibraryFileEntry, LibraryFolderEntry, LibraryNode } from './types';
@@ -69,12 +69,13 @@ export function saveWorkspaceAutosave(doc: BlueprintDocument, sourcePath: string
     }
     return savedAt;
   }
+  // Single-pass JSON serialization (avoids 2x quote-escaping overhead on 26k+ building blueprints!)
   const payload = JSON.stringify({
     savedAt,
     sourcePath,
     dirty,
     presetRevision: CURRENT_PRESET_REVISION,
-    raw: serializeCompact(doc),
+    doc,
   });
   try {
     localStorage.setItem(AUTOSAVE_KEY, payload);
@@ -120,6 +121,7 @@ export function loadWorkspaceAutosave(): AutosaveRecord | null {
       presetRevision?: number;
       presetRef?: string;
       raw?: string;
+      doc?: unknown;
     };
     if (!parsed) return null;
     const sourcePath = typeof parsed.sourcePath === 'string' ? parsed.sourcePath : null;
@@ -139,7 +141,9 @@ export function loadWorkspaceAutosave(): AutosaveRecord | null {
       }
     }
 
-    if (typeof parsed.raw !== 'string') return null;
+    const hasDoc = parsed.doc !== undefined && parsed.doc !== null;
+    const hasRaw = typeof parsed.raw === 'string';
+    if (!hasDoc && !hasRaw) return null;
     // If an unmodified built-in preset was open in the previous session and built-in presets upgraded,
     // automatically load the freshly updated preset instead of showing stale pre-fix cached geometry!
     if (sourcePath && !parsed.dirty && (parsed.presetRevision ?? 0) < CURRENT_PRESET_REVISION) {
@@ -155,7 +159,7 @@ export function loadWorkspaceAutosave(): AutosaveRecord | null {
         };
       }
     }
-    const decoded = deserializeBlueprint(parsed.raw);
+    const decoded = hasDoc ? deserializeBlueprintObject(parsed.doc) : deserializeBlueprint(parsed.raw!);
     if (!decoded.ok) return null;
     return {
       savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : Date.now(),

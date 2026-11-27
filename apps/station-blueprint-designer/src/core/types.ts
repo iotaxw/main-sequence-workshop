@@ -2,6 +2,7 @@ export type Rotation = 0 | 1 | 2 | 3; // 0=+X(E), 1=+Y(S), 2=-X(W), 3=-Y(N)
 export type CardinalSide = 'E' | 'S' | 'W' | 'N';
 export type ViewMode = 'station' | 'building';
 export type SelectionLayerMode = 'focus' | 'visible' | 'all';
+export type BlueprintCategory = 'station' | 'ship';
 
 export interface StationConnectorDef {
   type: 'Large' | 'XLarge' | 'LargeSide' | 'Vertical1x1' | 'Vertical2x2' | string;

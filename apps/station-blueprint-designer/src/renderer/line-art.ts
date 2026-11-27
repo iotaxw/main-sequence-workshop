@@ -833,15 +833,20 @@ export function buildMachineLineArt(
   const detailPts: number[] = [];
   let roofHeight = 1.2;
 
+  const isBeltVariant = def.kind === 'underground' || def.kind === 'splitter' || def.kind === 'balancer';
   const primaryColor = isGhost
     ? ghostTint
     : isSelected
       ? palette.lineSelected
-      : def.kind === 'research'
-        ? palette.researchTint
-        : def.kind === 'reactor'
-          ? palette.powerTint
-          : palette.linePrimary;
+      : def.kind === 'underground'
+        ? palette.undergroundNodeColor
+        : def.kind === 'splitter' || def.kind === 'balancer'
+          ? palette.logisticsNodeColor
+          : def.kind === 'research'
+            ? palette.researchTint
+            : def.kind === 'reactor'
+              ? palette.powerTint
+              : palette.linePrimary;
 
   switch (def.id) {
     case 'DAT_Refinery': {
@@ -1193,7 +1198,7 @@ export function buildMachineLineArt(
         primaryPts,
         primaryColor,
         isGhost ? opacity * 0.94 : opacity,
-        isSelected ? 1.45 : 1.12,
+        isSelected ? 1.5 : isBeltVariant ? 1.16 : 1.22,
         'primary'
       )
     );
@@ -1696,7 +1701,7 @@ export function buildStationModuleArt(
         primaryPts,
         primaryColor,
         isGhost ? opacity * 0.94 : opacity,
-        isSelected ? 1.5 : 1.15,
+        isSelected ? 1.55 : 1.28,
         'primary'
       )
     );
@@ -1790,7 +1795,7 @@ export function buildIndustrialDockGantryArt(
   const primaryColor = isGhost ? ghostTint : isSelected ? palette.lineSelected : palette.linePrimary;
   if (primaryPts.length > 0) {
     extrudeGroup.add(
-      buildLineSegments(primaryPts, primaryColor, isGhost ? opacity * 0.94 : opacity, isSelected ? 1.45 : 1.15, 'primary')
+      buildLineSegments(primaryPts, primaryColor, isGhost ? opacity * 0.94 : opacity, isSelected ? 1.55 : 1.28, 'primary')
     );
   }
   if (detailPts.length > 0) {

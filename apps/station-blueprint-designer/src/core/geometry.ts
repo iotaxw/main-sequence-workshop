@@ -15,6 +15,15 @@ import type {
 export const STATION_UNIT_M = 16; // 1 station grid unit = 16 meters (= 16 building cells)
 export const FLOOR_HEIGHT_M = 8; // 1 station floor = 8 meters (real game step)
 export const FLOOR_VISUAL_SPACING = 10; // Clean visual spacing in 3D CAD view
+export const BUILDING_CHUNK_SIZE_M = 64; // 64m spatial chunk size for incremental rendering & box queries
+
+export function buildingChunkCoord(v: number): number {
+  return Math.floor(v / BUILDING_CHUNK_SIZE_M);
+}
+
+export function packBuildingChunkKey(cx: number, cy: number): number {
+  return (cx + 1024) * 2048 + (cy + 1024);
+}
 
 export function packCellKey(x: number, y: number): number {
   return (x + 32768) * 65536 + (y + 32768);
@@ -28,6 +37,7 @@ export interface ModuleSpatialIndex {
 
 export interface BuildingSpatialIndex {
   buildingsByFloor: Map<number, PlacedBuilding[]>;
+  buildingsByFloorChunk: Map<number, Map<number, PlacedBuilding[]>>;
   buildingCellByFloor: Map<number, Map<number, PlacedBuilding | PlacedBuilding[]>>;
   buildingById: Map<string, PlacedBuilding>;
   undergrounds: PlacedBuilding[];
@@ -93,6 +103,7 @@ export function getBuildingSpatialIndex(buildings: PlacedBuilding[]): BuildingSp
   if (cached) return cached;
 
   const buildingsByFloor = new Map<number, PlacedBuilding[]>();
+  const buildingsByFloorChunk = new Map<number, Map<number, PlacedBuilding[]>>();
   const buildingCellByFloor = new Map<number, Map<number, PlacedBuilding | PlacedBuilding[]>>();
   const buildingById = new Map<string, PlacedBuilding>();
   const undergrounds: PlacedBuilding[] = [];
@@ -110,6 +121,19 @@ export function getBuildingSpatialIndex(buildings: PlacedBuilding[]): BuildingSp
       buildingsByFloor.set(b.floor, bList);
     }
     bList.push(b);
+
+    let floorChunks = buildingsByFloorChunk.get(b.floor);
+    if (!floorChunks) {
+      floorChunks = new Map();
+      buildingsByFloorChunk.set(b.floor, floorChunks);
+    }
+    const ck = packBuildingChunkKey(buildingChunkCoord(b.x), buildingChunkCoord(b.y));
+    let cList = floorChunks.get(ck);
+    if (!cList) {
+      cList = [];
+      floorChunks.set(ck, cList);
+    }
+    cList.push(b);
 
     let cellMap = buildingCellByFloor.get(b.floor);
     if (!cellMap) {
@@ -132,7 +156,13 @@ export function getBuildingSpatialIndex(buildings: PlacedBuilding[]): BuildingSp
     }
   }
 
-  const index: BuildingSpatialIndex = { buildingsByFloor, buildingCellByFloor, buildingById, undergrounds };
+  const index: BuildingSpatialIndex = {
+    buildingsByFloor,
+    buildingsByFloorChunk,
+    buildingCellByFloor,
+    buildingById,
+    undergrounds,
+  };
   buildingIndexCache.set(buildings, index);
   return index;
 }
@@ -146,6 +176,7 @@ export function getDocSpatialIndex(doc: BlueprintDocument): DocSpatialIndex {
     moduleGridByFloor: m.moduleGridByFloor,
     moduleById: m.moduleById,
     buildingsByFloor: b.buildingsByFloor,
+    buildingsByFloorChunk: b.buildingsByFloorChunk,
     buildingCellByFloor: b.buildingCellByFloor,
     buildingById: b.buildingById,
     undergrounds: b.undergrounds,

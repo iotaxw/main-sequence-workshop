@@ -48,7 +48,10 @@ export function deserializeBlueprint(rawText: string): DecodeResult | DecodeErro
   } catch {
     return { ok: false, error: '蓝图文件不是合法的 JSON 格式。' };
   }
+  return deserializeBlueprintObject(parsed);
+}
 
+export function deserializeBlueprintObject(parsed: unknown): DecodeResult | DecodeError {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { ok: false, error: '蓝图根节点必须是 JSON 对象。' };
   }

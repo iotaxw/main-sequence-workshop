@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildBeltStrokeSpecs,
   buildMultiWaypointBeltPath,
@@ -68,6 +68,7 @@ import { exportNativeSav, importNativeSav } from './core/native-codec';
 import { checkBlueprintWorkbench } from './core/workbench-check';
 import type {
   ActiveTool,
+  BlueprintCategory,
   BlueprintDocument,
   LibraryFileEntry,
   LibraryNode,
@@ -665,25 +666,41 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     let idleId: number | null = null;
-    const timer = window.setTimeout(() => {
-      const runSave = () => {
-        try {
-          const ts = saveWorkspaceAutosave(doc, activeSourcePath, dirty);
-          setLastAutosaveAt(ts);
-        } catch {
-          // Ignore storage quota errors without claiming file saved
+    let timer: number | null = null;
+    const isHugeDirty = dirty && doc.buildings.length > 5000;
+    const scheduleSave = (delayMs: number) => {
+      timer = window.setTimeout(() => {
+        timer = null;
+        // Never interrupt an active drag (orbit / pan / box-select / sweep-demolish) with synchronous localStorage write!
+        if (dragRef.current.kind !== 'none') {
+          scheduleSave(1500);
+          return;
         }
-      };
-      const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number })
-        .requestIdleCallback;
-      if (typeof ric === 'function') {
-        idleId = ric(runSave, { timeout: 1500 });
-      } else {
-        runSave();
-      }
-    }, 1800);
+        const runSave = () => {
+          idleId = null;
+          if (dragRef.current.kind !== 'none') {
+            scheduleSave(1500);
+            return;
+          }
+          try {
+            const ts = saveWorkspaceAutosave(doc, activeSourcePath, dirty);
+            setLastAutosaveAt(ts);
+          } catch {
+            // Ignore storage quota errors without claiming file saved
+          }
+        };
+        const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number })
+          .requestIdleCallback;
+        if (typeof ric === 'function') {
+          idleId = ric(runSave, { timeout: 2000 });
+        } else {
+          runSave();
+        }
+      }, delayMs);
+    };
+    scheduleSave(isHugeDirty ? 3500 : 1800);
     return () => {
-      window.clearTimeout(timer);
+      if (timer !== null) window.clearTimeout(timer);
       if (idleId !== null) {
         const cic = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
         if (typeof cic === 'function') cic(idleId);
@@ -696,11 +713,13 @@ export const App: React.FC = () => {
     if (!el) return;
     const ctrl = new CadSceneController(el, {
       onAutoViewModeChange: (nextMode) => {
-        setViewMode(nextMode);
-        setActiveTool((prev) => {
-          if (nextMode === 'station' && prev.kind === 'place-building') return { kind: 'select' };
-          if (nextMode === 'building' && prev.kind === 'place-module') return { kind: 'select' };
-          return prev;
+        startTransition(() => {
+          setViewMode(nextMode);
+          setActiveTool((prev) => {
+            if (nextMode === 'station' && prev.kind === 'place-building') return { kind: 'select' };
+            if (nextMode === 'building' && prev.kind === 'place-module') return { kind: 'select' };
+            return prev;
+          });
         });
       },
       onTelemetryChange: (info) => {
@@ -2036,7 +2055,6 @@ export const App: React.FC = () => {
     const d = dragRef.current;
     if (d.kind === 'orbit' || d.kind === 'clean-orbit' || d.kind === 'pan') {
       pendingPointerRef.current = null;
-      hideHoverTip();
       const dx = e.clientX - d.lastX;
       const dy = e.clientY - d.lastY;
       d.lastX = e.clientX;
@@ -2612,7 +2630,14 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleNewBlueprint = () => {
+  const handleNewBlueprint = (category: BlueprintCategory = 'station') => {
+    if (category === 'ship') {
+      showToast(
+        t('飞船蓝图功能已预留接口，敬请期待', 'Ship blueprints are coming soon (interface reserved)'),
+        'info'
+      );
+      return;
+    }
     if (dirty && !window.confirm('当前画布有未保存更改，确定新建空白空间站吗？')) return;
     const fresh = createEmptyBlueprint('新建空间站');
     setHistory(createHistory(fresh));
@@ -2640,7 +2665,7 @@ export const App: React.FC = () => {
     tone: 'default' | 'accent' | 'danger';
     hints: KeyHintItem[];
   } | null => {
-    if (cleanView || activeTool.kind === 'select') return null;
+    if (activeTool.kind === 'select') return null;
 
     if (activeTool.kind === 'demolish') {
       return {
@@ -2756,12 +2781,11 @@ export const App: React.FC = () => {
         ...(!activeTool.fromCut ? [{ keys: 'Shift', label: t('覆盖', 'Overwrite') }] : []),
       ],
     };
-  }, [activeTool, beltHudFlags.reverse, beltHudFlags.tunnel, beltSessionMode, cleanView, isEn, lang, t]);
+  }, [activeTool, beltHudFlags.reverse, beltHudFlags.tunnel, beltSessionMode, isEn, lang, t]);
 
   return (
     <div className={`cad-shell ${cleanView ? 'clean-view' : ''}`} data-theme={theme}>
-      {!cleanView && (
-        <header className="cad-topbar">
+      <header className="cad-topbar" aria-hidden={cleanView || undefined}>
           <div className="topbar-group">
             <span className="brand-mark">MS · CAD</span>
             <div className="doc-title-wrap">
@@ -2971,25 +2995,22 @@ export const App: React.FC = () => {
               ?
             </button>
           </div>
-        </header>
-      )}
+      </header>
 
       <div className="cad-main">
-        {!cleanView && (
-          <LibrarySidebar
-            open={libraryOpen}
-            onToggleOpen={() => setLibraryOpen((o) => !o)}
-            onOpenModal={() => setLibraryModalOpen(true)}
-            driverMode={driver.mode}
-            rootLabel={driver.rootLabel}
-            tree={libraryTree}
-            activeSourcePath={activeSourcePath}
-            stampingPath={stampingLibPath}
-            onNewBlueprint={handleNewBlueprint}
-            onStampFromLibrary={handleStampFromLibrary}
-            onOpenFromLibrary={handleOpenFromLibrary}
-          />
-        )}
+        <LibrarySidebar
+          open={libraryOpen}
+          onToggleOpen={() => setLibraryOpen((o) => !o)}
+          onOpenModal={() => setLibraryModalOpen(true)}
+          driverMode={driver.mode}
+          rootLabel={driver.rootLabel}
+          tree={libraryTree}
+          activeSourcePath={activeSourcePath}
+          stampingPath={stampingLibPath}
+          onNewBlueprint={handleNewBlueprint}
+          onStampFromLibrary={handleStampFromLibrary}
+          onOpenFromLibrary={handleOpenFromLibrary}
+        />
 
         <div
           ref={viewportRef}
@@ -3029,7 +3050,7 @@ export const App: React.FC = () => {
           onDoubleClick={handleDoubleClick}
         />
 
-        {!cleanView && <div className="cad-focal-vignette" aria-hidden="true" />}
+        <div className="cad-focal-vignette" aria-hidden="true" />
         <div ref={boxBadgeRef} className="cad-box-badge" style={{ display: 'none' }} />
         <div ref={hoverTipRef} className="cad-hover-tip" style={{ display: 'none' }} aria-hidden="true">
           <div ref={hoverTitleRef} className="cad-hover-tip-title" />
@@ -3037,106 +3058,102 @@ export const App: React.FC = () => {
           <div ref={hoverNoteRef} className="cad-hover-tip-note" />
         </div>
 
-        {!cleanView && (
-          <>
-            <div className={`cad-hud-topright ${hasRightPanel ? 'shifted' : ''}`} aria-live="off">
-              <div className="hud-row primary">
-                <span className="hud-coord" ref={hudCoordRef}>X --  Y --</span>
-                <span className="hud-sep">·</span>
-                <span className="hud-grid" ref={hudGridRef}>G(-,-)</span>
-                <span className="hud-floor">{formatFloorTag(focusFloor)}</span>
-              </div>
-              <div className="hud-row secondary">
-                <span>{viewMode === 'station' ? t('空间站', 'Station') : t('建筑', 'Building')}</span>
-                <span ref={hudCamRef}>0°/64° · 76m</span>
-                <span>{snapEnabled ? t('吸附', 'Snap') : t('自由', 'Free')}</span>
-                <span>
-                  {isEn ? `${doc.modules.length}M · ${doc.buildings.length}B` : `${doc.modules.length}模 · ${doc.buildings.length}建`}
-                </span>
-                {lastAutosaveAt && (
-                  <span title={t('自动恢复点', 'Autosave')}>{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
-                )}
-              </div>
-            </div>
-
-            <FloorStackRail
-              doc={doc}
-              focusFloor={focusFloor}
-              hideAbove={hideAbove}
-              shifted={hasRightPanel}
-              onSelectFloor={setFocusFloor}
-              onToggleHideAbove={() => setHideAbove((v) => !v)}
-            />
-
-            <InspectorPanel
-              doc={doc}
-              selection={selection}
-              onUpdateBuilding={(ids, patch) => {
-                const res = updateBuildingConfigCmd(doc, ids, patch);
-                if (res.changed) commitDoc(res.doc);
-              }}
-              onUpdateModuleConfig={(id, patch) => {
-                const res = updateModuleConfigCmd(doc, id, patch);
-                if (res.changed) commitDoc(res.doc);
-              }}
-              onCopySelection={() => copySelectionToGhost(false)}
-              onCutSelection={() => copySelectionToGhost(true)}
-              onSaveSelectionAsBlueprint={() => openSaveDialog(true)}
-              onRotateSelection={() => {
-                const res = rotateSelectionInPlaceCmd(doc, selection, 1);
-                if (res.changed) commitDoc(res.doc);
-              }}
-              onMirrorSelection={(vertical) => applyMirrorAction(Boolean(vertical))}
-              onDeleteSelection={() => requestDeleteSelection(selection)}
-              onClearSelection={() => setSelection(EMPTY_SELECTION)}
-            />
-
-            <SimulationPanel
-              open={simOpen}
-              report={simReport}
-              activeIssueId={activeSimIssueId}
-              showIoSpots={showIoSpots}
-              onToggleShowIoSpots={() => setShowIoSpots((v) => !v)}
-              onClose={() => {
-                setSimOpen(false);
-                setActiveSimIssueId(null);
-              }}
-              onFocusTarget={(target: CheckFocusTarget) => {
-                setActiveSimIssueId(target.id);
-                setFocusFloor(target.floor);
-                if (target.moduleId && !target.buildingId) {
-                  switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
-                  setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
-                } else {
-                  switchViewMode('building', [target.x + 0.5, target.y + 0.5]);
-                  if (target.buildingId) {
-                    setSelection({ moduleIds: [], buildingIds: [target.buildingId] });
-                  }
-                }
-              }}
-            />
-
-            {toolBannerSpec && (
-              <ToolActionBar
-                mode={toolBannerSpec.mode}
-                badge={toolBannerSpec.badge}
-                tone={toolBannerSpec.tone}
-                hints={toolBannerSpec.hints}
-              />
+        <div className={`cad-hud-topright ${hasRightPanel ? 'shifted' : ''}`} aria-live="off" aria-hidden={cleanView || undefined}>
+          <div className="hud-row primary">
+            <span className="hud-coord" ref={hudCoordRef}>X --  Y --</span>
+            <span className="hud-sep">·</span>
+            <span className="hud-grid" ref={hudGridRef}>G(-,-)</span>
+            <span className="hud-floor">{formatFloorTag(focusFloor)}</span>
+          </div>
+          <div className="hud-row secondary">
+            <span>{viewMode === 'station' ? t('空间站', 'Station') : t('建筑', 'Building')}</span>
+            <span ref={hudCamRef}>0°/64° · 76m</span>
+            <span>{snapEnabled ? t('吸附', 'Snap') : t('自由', 'Free')}</span>
+            <span>
+              {isEn ? `${doc.modules.length}M · ${doc.buildings.length}B` : `${doc.modules.length}模 · ${doc.buildings.length}建`}
+            </span>
+            {lastAutosaveAt && (
+              <span title={t('自动恢复点', 'Autosave')}>{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
             )}
+          </div>
+        </div>
 
-            <PaletteDock
-              viewMode={viewMode}
-              activeTool={activeTool}
-              lastGroupMember={lastGroupMember}
-              onSelectEntity={(id) => selectEntityTool(id)}
-              onSelectTool={(tTool) => {
-                setActiveTool(tTool);
-                setStampingLibPath(null);
-              }}
-            />
-          </>
+        <FloorStackRail
+          doc={doc}
+          focusFloor={focusFloor}
+          hideAbove={hideAbove}
+          shifted={hasRightPanel}
+          onSelectFloor={setFocusFloor}
+          onToggleHideAbove={() => setHideAbove((v) => !v)}
+        />
+
+        <InspectorPanel
+          doc={doc}
+          selection={selection}
+          onUpdateBuilding={(ids, patch) => {
+            const res = updateBuildingConfigCmd(doc, ids, patch);
+            if (res.changed) commitDoc(res.doc);
+          }}
+          onUpdateModuleConfig={(id, patch) => {
+            const res = updateModuleConfigCmd(doc, id, patch);
+            if (res.changed) commitDoc(res.doc);
+          }}
+          onCopySelection={() => copySelectionToGhost(false)}
+          onCutSelection={() => copySelectionToGhost(true)}
+          onSaveSelectionAsBlueprint={() => openSaveDialog(true)}
+          onRotateSelection={() => {
+            const res = rotateSelectionInPlaceCmd(doc, selection, 1);
+            if (res.changed) commitDoc(res.doc);
+          }}
+          onMirrorSelection={(vertical) => applyMirrorAction(Boolean(vertical))}
+          onDeleteSelection={() => requestDeleteSelection(selection)}
+          onClearSelection={() => setSelection(EMPTY_SELECTION)}
+        />
+
+        <SimulationPanel
+          open={simOpen}
+          report={simReport}
+          activeIssueId={activeSimIssueId}
+          showIoSpots={showIoSpots}
+          onToggleShowIoSpots={() => setShowIoSpots((v) => !v)}
+          onClose={() => {
+            setSimOpen(false);
+            setActiveSimIssueId(null);
+          }}
+          onFocusTarget={(target: CheckFocusTarget) => {
+            setActiveSimIssueId(target.id);
+            setFocusFloor(target.floor);
+            if (target.moduleId && !target.buildingId) {
+              switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
+              setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
+            } else {
+              switchViewMode('building', [target.x + 0.5, target.y + 0.5]);
+              if (target.buildingId) {
+                setSelection({ moduleIds: [], buildingIds: [target.buildingId] });
+              }
+            }
+          }}
+        />
+
+        {toolBannerSpec && (
+          <ToolActionBar
+            mode={toolBannerSpec.mode}
+            badge={toolBannerSpec.badge}
+            tone={toolBannerSpec.tone}
+            hints={toolBannerSpec.hints}
+          />
         )}
+
+        <PaletteDock
+          viewMode={viewMode}
+          activeTool={activeTool}
+          lastGroupMember={lastGroupMember}
+          onSelectEntity={(id) => selectEntityTool(id)}
+          onSelectTool={(tTool) => {
+            setActiveTool(tTool);
+            setStampingLibPath(null);
+          }}
+        />
       </div>
 
       <BlueprintLibraryModal

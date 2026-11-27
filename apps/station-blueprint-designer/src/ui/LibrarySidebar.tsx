@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useI18n } from '../core/i18n';
-import type { LibraryFileEntry, LibraryFolderEntry, LibraryNode } from '../core/types';
+import type { BlueprintCategory, LibraryFileEntry, LibraryFolderEntry, LibraryNode } from '../core/types';
+import { NewBlueprintMenu } from './NewBlueprintMenu';
 
 interface LibrarySidebarProps {
   open: boolean;
@@ -11,7 +12,7 @@ interface LibrarySidebarProps {
   tree: LibraryNode[];
   activeSourcePath: string | null;
   stampingPath: string | null;
-  onNewBlueprint: () => void;
+  onNewBlueprint: (category?: BlueprintCategory) => void;
   onStampFromLibrary: (file: LibraryFileEntry) => void;
   onOpenFromLibrary: (file: LibraryFileEntry) => void;
 }
@@ -45,7 +46,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
         </button>
         <button
           type="button"
-          className="cad-floating-toggle-btn accent"
+          className="cad-floating-toggle-btn"
           onClick={onOpenModal}
           title={t('蓝图库 (L)', 'Blueprint Library (L)')}
         >
@@ -141,15 +142,19 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
       <div className="lib-slim-top-actions">
         <button
           type="button"
-          className="cad-btn accent lib-open-grid-btn"
+          className="cad-btn lib-open-grid-btn"
           onClick={onOpenModal}
           title={t('蓝图库 (L)', 'Blueprint Library (L)')}
         >
           {t('⊞ 图库 (L)', '⊞ Library (L)')}
         </button>
-        <button type="button" className="cad-btn" onClick={onNewBlueprint} title={t('新建空白蓝图', 'New Blueprint')}>
-          +
-        </button>
+        <NewBlueprintMenu
+          label="+"
+          title={t('新建蓝图', 'New Blueprint')}
+          align="left"
+          buttonClassName="cad-btn lib-new-btn"
+          onSelectCategory={onNewBlueprint}
+        />
       </div>
 
       <div className="lib-tree">

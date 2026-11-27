@@ -78,10 +78,12 @@ import {
 import { exportNativeSav, importNativeSav } from './native-codec';
 import { DEFAULT_LIBRARY_PRESETS, HAS_PRIVATE_PRESETS } from './presets';
 import { simulateBlueprint } from './simulation';
+import { BeltInstancedFloorLayer, packBeltChunkKey, packBeltStyle } from '../renderer/belt-instanced-layer';
 import { CadCameraRig, MAX_DISTANCE } from '../renderer/camera-rig';
 import { CrispLineBatcher } from '../renderer/crisp-lines';
 import { CadPerfMetrics } from '../renderer/perf-metrics';
 import { createRoundedGridOverlay } from '../renderer/rounded-grid-shader';
+import { CAD_THEMES } from '../renderer/theme';
 
 function computeLegacyUndergroundLinksForTest(doc: ReturnType<typeof createEmptyBlueprint>) {
   const undergrounds = doc.buildings.filter((b) => getBuildableDef(b.type)?.kind === 'underground');
@@ -2798,5 +2800,80 @@ describe('Shapez 2 F / Shift+F Mirror Symmetry (geometry + commands + camera)', 
     ];
     const overlapMatched = findMatchedDockConnectors(existingConns, existingCounts, overlappingStamp);
     expect(overlapMatched.some((c) => c.x === 16 && c.y === 8 && c.floor === 0)).toBe(false);
+  });
+
+  it('builds and incrementally updates BeltInstancedFloorLayer across 64m chunk boundaries, verifies spatial box-select equivalence, and round-trips single-pass autosave', () => {
+    let doc = createEmptyBlueprint('b1-b2-test');
+    // Place two adjacent 2x2 station modules spanning the x=64 chunk boundary (gx=3 covers x=48..80, gx=5 covers x=80..112)
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 3, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_Station_02A', gx: 5, gy: 0, floor: 0, rotation: 0 }).doc;
+    // Place a 3x3 Refinery straddling x=63..66 across the x=64 chunk boundary
+    doc = placeBuildingCmd(doc, { type: 'DAT_Refinery', x: 63, y: 4, floor: 0, rotation: 0 }).doc;
+    // Place straight belts crossing x=63 -> x=64 -> x=65 (rot=0 east), then turning south at (65,10)
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 63, y: 10, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 64, y: 10, floor: 0, rotation: 0 }).doc;
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt3', x: 65, y: 10, floor: 0, rotation: 1 }).doc;
+
+    const layer = new BeltInstancedFloorLayer(0, CAD_THEMES['platinum-gold']);
+    layer.rebuildFromDoc(doc, null);
+    expect(layer.beltCount).toBe(3);
+    expect(layer.chunkCount).toBe(2); // chunk (0,0) has x=63, chunk (1,0) has x=64,65
+
+    // Verify frustum culling & non-focus hiding above 95m
+    const cam = new THREE.PerspectiveCamera(42, 16 / 9, 0.8, 6000);
+    cam.position.set(64, 40, 20);
+    cam.lookAt(64, 0, 10);
+    cam.updateMatrixWorld();
+    const frustum = new THREE.Frustum().setFromProjectionMatrix(
+      new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse)
+    );
+    const fogColor = new THREE.Color(0x090d16);
+    layer.syncVisible(frustum, 1.0, true, 40, 1.0, 1.0, fogColor, 0.00018);
+    expect(layer.root.visible).toBe(true);
+    expect(layer.visibleInstanceCount).toBe(3);
+    // Non-focus floor hidden past 95m, visible in silhouette mode at 40m
+    layer.syncVisible(frustum, 0.36, false, 120, 0, 0, fogColor, 0.00018);
+    expect(layer.root.visible).toBe(false);
+    layer.syncVisible(frustum, 0.36, false, 40, 0, 0, fogColor, 0.00018);
+    expect(layer.root.visible).toBe(true);
+    expect(layer.material.uniforms.uIsFocus.value).toBe(0.0);
+
+    // Incremental dirty-chunk update: add a belt at (64, 11) in chunk (1,0) only
+    doc = placeBuildingCmd(doc, { type: 'DAT_ConveyorBelt2', x: 64, y: 11, floor: 0, rotation: 0 }).doc;
+    layer.rebuildFromDoc(doc, new Set([packBeltChunkKey(1, 0)]));
+    expect(layer.beltCount).toBe(4);
+    expect(packBeltStyle(-1, 1)).toBe(1);
+    expect(packBeltStyle(0, 3)).toBe(7);
+    expect(packBeltStyle(1, 2)).toBe(10);
+    layer.dispose();
+
+    // Spatial-chunk boxSelectEntities must catch the 3x3 refinery anchored at x=63 when selecting strictly inside x=[64.5, 65.5]
+    const sel = boxSelectEntities(
+      doc,
+      { minX: 64.5, minY: 4.5, maxX: 65.5, maxY: 6.5 },
+      { viewMode: 'building', focusFloor: 0, hideAbove: true, layerMode: 'focus' }
+    );
+    expect(sel.buildingIds.length).toBe(1);
+    expect(doc.buildings.find((b) => b.id === sel.buildingIds[0])?.type).toBe('DAT_Refinery');
+
+    // Single-pass autosave round-trip
+    const storage = new Map<string, string>();
+    const prevLS = (globalThis as { localStorage?: Storage }).localStorage;
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => { storage.set(k, v); },
+      removeItem: (k: string) => { storage.delete(k); },
+    };
+    try {
+      saveWorkspaceAutosave(doc, null, true);
+      const loaded = loadWorkspaceAutosave();
+      expect(loaded).not.toBeNull();
+      expect(loaded!.dirty).toBe(true);
+      expect(loaded!.doc.buildings.length).toBe(doc.buildings.length);
+      expect(loaded!.doc.modules.length).toBe(doc.modules.length);
+    } finally {
+      if (prevLS === undefined) delete (globalThis as { localStorage?: Storage }).localStorage;
+      else (globalThis as { localStorage?: Storage }).localStorage = prevLS;
+    }
   });
 });

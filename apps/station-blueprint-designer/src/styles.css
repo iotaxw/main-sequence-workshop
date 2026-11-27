@@ -104,27 +104,35 @@ body,
 }
 
 .cad-shell {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   background: var(--bg-canvas);
   color: var(--text-main);
 }
 
-/* Top Restrained CAD Bar (Shapez 2 Slim Layout) */
+/* Top Restrained CAD Bar (Shapez 2 Slim Layout, floats over full-bleed viewport for seamless clean-view) */
 .cad-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 40px;
   background: var(--bg-topbar);
   border-bottom: 1px solid var(--border-hairline);
+  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 0 12px;
   z-index: 40;
-  flex-shrink: 0;
   overflow: visible;
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 
 .topbar-group {
@@ -145,6 +153,7 @@ body,
 .doc-title-wrap {
   display: inline-flex;
   align-items: center;
+  height: 28px;
   gap: 6px;
   padding: 0 4px 0 6px;
   border-radius: 8px;
@@ -180,21 +189,26 @@ body,
 }
 
 .cad-btn.icon-pill {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border-radius: 999px;
   font-family: var(--font-mono);
   font-weight: 600;
+  line-height: 1;
 }
 
 .brand-mark {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
   font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.1em;
+  line-height: 1;
   color: var(--text-dim);
-  padding: 3px 8px;
+  padding: 0 9px;
   border: 1px solid var(--border-subtle);
   background: transparent;
   border-radius: 999px;
@@ -206,10 +220,39 @@ body,
   color: var(--text-bright);
   font-size: 12px;
   font-weight: 500;
-  padding: 4px 8px;
+  height: 24px;
+  line-height: 24px;
+  padding: 0 8px;
   border-radius: 7px;
   width: 142px;
   transition: border-color 140ms ease, background 140ms ease;
+}
+
+.cad-topbar .cad-btn {
+  height: 28px;
+  padding: 0 10px;
+  line-height: 1;
+}
+
+.cad-topbar .cad-btn.icon-pill {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.cad-topbar .segmented {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.cad-topbar .seg-btn {
+  height: 22px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .doc-title-input:hover,
@@ -416,11 +459,10 @@ body,
   color: var(--text-muted);
 }
 
-/* Main Workspace & Subtle Focal Vignette */
+/* Main Workspace & Subtle Focal Vignette (full-bleed so clean-view NEVER resizes WebGL canvas) */
 .cad-main {
-  position: relative;
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
 }
 
@@ -456,12 +498,13 @@ body,
   pointer-events: none;
   z-index: 6;
   background: var(--vignette-bg);
+  transition: opacity 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Sidebars */
 .cad-sidebar {
   position: absolute;
-  top: 12px;
+  top: 52px;
   bottom: 84px;
   width: 244px;
   background: var(--bg-panel);
@@ -471,6 +514,10 @@ body,
   flex-direction: column;
   z-index: 20;
   backdrop-filter: blur(10px);
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 
 .cad-sidebar.left {
@@ -484,7 +531,7 @@ body,
 
 .cad-floating-toggle {
   position: absolute;
-  top: 12px;
+  top: 52px;
   left: 12px;
   z-index: 20;
   background: var(--bg-panel);
@@ -495,7 +542,12 @@ body,
   cursor: pointer;
   font-size: 11px;
   backdrop-filter: blur(8px);
-  transition: color 120ms ease, border-color 120ms ease;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 
 .cad-floating-toggle:hover {
@@ -952,7 +1004,7 @@ body,
 /* Unified Operational HUD Bar & Keycap System */
 .cad-tool-banner {
   position: absolute;
-  top: 12px;
+  top: 52px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 24;
@@ -971,6 +1023,10 @@ body,
   white-space: nowrap;
   backdrop-filter: blur(12px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 
 .cad-tool-banner.tone-danger {
@@ -1129,6 +1185,10 @@ body,
   align-items: center;
   gap: 6px;
   max-width: calc(100vw - 24px);
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 
 .s2-hover-card {
@@ -1342,6 +1402,7 @@ body,
   white-space: nowrap;
   backdrop-filter: blur(12px);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+  transition: top 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .cad-toast.clean-view {
@@ -1530,10 +1591,10 @@ body,
 
 .cad-sim-panel {
   position: absolute;
-  top: 12px;
+  top: 52px;
   right: 12px;
   width: 304px;
-  max-height: calc(100% - 110px);
+  max-height: calc(100% - 150px);
   display: flex;
   flex-direction: column;
   background: var(--bg-panel);
@@ -1543,6 +1604,10 @@ body,
   z-index: 24;
   overflow: hidden;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 
 .sim-body {
@@ -1838,6 +1903,7 @@ body,
 .interop-anchor {
   position: relative;
   display: inline-flex;
+  align-items: center;
 }
 
 .interop-popover {
@@ -1901,12 +1967,25 @@ body,
 }
 
 .interop-action-btn:hover {
-  border-color: var(--accent);
-  background: var(--bg-hover);
+  border-color: var(--border-focus);
+  background: var(--bg-surface-hover);
+  color: var(--text-bright);
 }
 
 .interop-action-btn.primary {
-  border-color: var(--accent);
+  border-color: var(--border-mid);
+  color: var(--text-bright);
+}
+
+.interop-action-btn.reserved {
+  color: var(--text-dim);
+  border-style: dashed;
+}
+
+.interop-action-btn.reserved:hover {
+  border-color: var(--border-mid);
+  background: var(--bg-surface-hover);
+  color: var(--text-main);
 }
 
 .interop-action-main {
@@ -2057,7 +2136,7 @@ body,
    ================================================================ */
 .cad-hud-topright {
   position: absolute;
-  top: 12px;
+  top: 52px;
   right: 14px;
   z-index: 22;
   pointer-events: none;
@@ -2071,7 +2150,11 @@ body,
   border: 1px solid var(--border-hairline);
   backdrop-filter: blur(8px);
   font-family: var(--font-mono);
-  transition: right 180ms ease;
+  transition:
+    right 180ms ease,
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 
 .cad-hud-topright.shifted {
@@ -2177,7 +2260,7 @@ body,
    ================================================================ */
 .cad-floor-rail {
   position: absolute;
-  top: 68px;
+  top: 108px;
   right: 14px;
   z-index: 22;
   display: flex;
@@ -2189,7 +2272,11 @@ body,
   background: var(--bg-panel);
   border: 1px solid var(--border-hairline);
   backdrop-filter: blur(8px);
-  transition: right 180ms ease;
+  transition:
+    right 180ms ease,
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 
 .cad-floor-rail.shifted {
@@ -2211,12 +2298,12 @@ body,
 }
 
 .floor-rail-eye:hover {
-  background: var(--bg-hover);
+  background: var(--bg-surface-hover);
   color: var(--text-bright);
 }
 
 .floor-rail-eye.active {
-  background: var(--bg-active);
+  background: var(--bg-surface-active);
   border-color: var(--border-focus);
   color: var(--text-bright);
 }
@@ -2237,7 +2324,7 @@ body,
 }
 
 .floor-rail-step:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: var(--bg-surface-hover);
   color: var(--text-bright);
 }
 
@@ -2280,7 +2367,7 @@ body,
 }
 
 .floor-rail-pill:hover {
-  background: var(--bg-hover);
+  background: var(--bg-surface-hover);
   color: var(--text-bright);
 }
 
@@ -2289,7 +2376,7 @@ body,
 }
 
 .floor-rail-pill.active {
-  background: var(--bg-active);
+  background: var(--bg-surface-active);
   border-color: var(--border-focus);
   color: var(--text-bright);
   font-weight: 600;
@@ -2381,9 +2468,21 @@ body,
 
 .lib-slim-top-actions {
   display: flex;
+  align-items: center;
   gap: 5px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border-hairline);
+}
+
+.lib-slim-top-actions .cad-btn {
+  height: 28px;
+  padding: 0 10px;
+  line-height: 1;
+}
+
+.lib-slim-top-actions .lib-new-btn {
+  min-width: 28px;
+  padding: 0 9px;
 }
 
 .lib-open-grid-btn {
@@ -2465,19 +2564,29 @@ body,
 
 .cad-floating-left-cluster {
   position: absolute;
-  top: 12px;
+  top: 52px;
   left: 12px;
   z-index: 24;
   display: flex;
+  align-items: center;
   gap: 6px;
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 
 .cad-floating-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
   background: var(--bg-panel);
   border: 1px solid var(--border-subtle);
   color: var(--text-main);
   font-size: 11px;
-  padding: 5px 10px;
+  line-height: 1;
+  padding: 0 10px;
   border-radius: 8px;
   cursor: pointer;
   backdrop-filter: blur(8px);
@@ -2542,6 +2651,12 @@ body,
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.bpm-header-actions .cad-btn {
+  height: 28px;
+  padding: 0 10px;
+  line-height: 1;
 }
 
 .bpm-divider {
@@ -2844,4 +2959,100 @@ body,
   font-size: 10px;
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+/* ================================================================
+   Extensible "New Blueprint" Type Selector Popover (Station / Ship)
+   ================================================================ */
+.new-bp-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.new-bp-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  width: 204px;
+  padding: 9px 10px;
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.36);
+  z-index: 75;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.new-bp-popover.align-left {
+  left: 0;
+}
+
+.new-bp-popover.align-right {
+  right: 0;
+}
+
+.interop-tag.muted {
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+/* ================================================================
+   Seamless Clean View (Fade + Directional Micro-Glide, Zero Canvas Jump)
+   ================================================================ */
+.cad-shell.clean-view .cad-topbar,
+.cad-shell.clean-view .cad-sidebar,
+.cad-shell.clean-view .cad-floating-left-cluster,
+.cad-shell.clean-view .cad-floating-toggle,
+.cad-shell.clean-view .cad-hud-topright,
+.cad-shell.clean-view .cad-floor-rail,
+.cad-shell.clean-view .cad-sim-panel,
+.cad-shell.clean-view .cad-tool-banner,
+.cad-shell.clean-view .s2-dock-anchor {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 260ms;
+}
+
+.cad-shell.clean-view .cad-hud-topright,
+.cad-shell.clean-view .cad-floor-rail {
+  transition:
+    right 180ms ease,
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 260ms;
+}
+
+.cad-shell.clean-view .cad-topbar {
+  transform: translateY(-10px);
+}
+
+.cad-shell.clean-view .cad-sidebar.left,
+.cad-shell.clean-view .cad-floating-left-cluster,
+.cad-shell.clean-view .cad-floating-toggle {
+  transform: translateX(-14px);
+}
+
+.cad-shell.clean-view .cad-sidebar.right,
+.cad-shell.clean-view .cad-sim-panel,
+.cad-shell.clean-view .cad-hud-topright,
+.cad-shell.clean-view .cad-floor-rail {
+  transform: translateX(14px);
+}
+
+.cad-shell.clean-view .s2-dock-anchor {
+  transform: translate(-50%, 14px);
+}
+
+.cad-shell.clean-view .cad-tool-banner {
+  transform: translate(-50%, -10px);
+}
+
+.cad-shell.clean-view .cad-focal-vignette {
+  opacity: 0;
 }

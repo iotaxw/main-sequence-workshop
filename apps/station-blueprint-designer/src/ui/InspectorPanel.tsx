@@ -800,7 +800,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         <div className="inspector-footer">
           <button type="button" className="cad-btn" onClick={onRotateSelection} title="R">{t('旋转', 'Rotate')}</button>
           <button type="button" className="cad-btn" onClick={(e) => onMirrorSelection(e.shiftKey)} title="F / Shift+F">{t('镜像', 'Mirror')}</button>
-          <button type="button" className="cad-btn accent" onClick={onCutSelection} title="Ctrl+X">{t('搬移', 'Move')}</button>
+          <button type="button" className="cad-btn" onClick={onCutSelection} title="Ctrl+X">{t('搬移', 'Move')}</button>
           <button type="button" className="cad-btn" onClick={onCopySelection} title="Ctrl+C">{t('复制', 'Copy')}</button>
           <button type="button" className="cad-btn" onClick={onSaveSelectionAsBlueprint} title="Ctrl+S">{t('存蓝图', 'Save')}</button>
           <button type="button" className="cad-btn danger" onClick={onDeleteSelection} title="Del">{t('删除', 'Delete')}</button>
@@ -834,7 +834,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <code>{floorLabel || '-'}</code>
         </div>
         <div className="inspector-footer vertical">
-          <button type="button" className="cad-btn accent" onClick={onCutSelection}>
+          <button type="button" className="cad-btn" onClick={onCutSelection}>
             {t('剪切搬移 (Ctrl+X)', 'Cut & Move (Ctrl+X)')}
           </button>
           <button type="button" className="cad-btn" onClick={onCopySelection}>

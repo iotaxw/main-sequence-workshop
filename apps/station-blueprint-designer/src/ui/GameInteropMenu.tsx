@@ -39,7 +39,7 @@ export const GameInteropMenu: React.FC<GameInteropMenuProps> = ({
     <div className="interop-anchor" ref={wrapRef}>
       <button
         type="button"
-        className={`cad-btn accent ${open ? 'active' : ''}`}
+        className={`cad-btn ${open ? 'accent' : ''}`}
         onClick={() => setOpen((v) => !v)}
         title={t('导入 / 导出 .sav 与 .json', 'Import / Export .sav & .json')}
       >

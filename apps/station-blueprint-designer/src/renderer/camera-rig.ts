@@ -65,6 +65,8 @@ export class CadCameraRig {
   private lastTelemetryYaw = -1;
   private lastTelemetryPitch = -1;
   private lastTelemetryDist = -1;
+  private panBoostUntilMs = 0;
+  private readonly tanHalfFov: number;
 
   // Reusable scratch objects for zero-GC 144Hz pointer raycasting
   private readonly raycaster = new THREE.Raycaster();
@@ -80,6 +82,7 @@ export class CadCameraRig {
     } = {}
   ) {
     this.camera = new THREE.PerspectiveCamera(42, aspect, 0.8, 6000);
+    this.tanHalfFov = Math.tan(((this.camera.fov * Math.PI) / 180) * 0.5);
     this.onAutoViewModeChange = callbacks.onAutoViewModeChange;
     this.onTelemetryChange = callbacks.onTelemetryChange;
     this.applyImmediate();
@@ -182,8 +185,7 @@ export class CadCameraRig {
   }
 
   panByScreenDelta(dxPx: number, dyPx: number, viewportHeight: number): void {
-    const fovRad = (this.camera.fov * Math.PI) / 180;
-    const worldPerPx = (2 * this.curDistance * Math.tan(fovRad / 2)) / Math.max(1, viewportHeight);
+    const worldPerPx = (2 * this.curDistance * this.tanHalfFov) / Math.max(1, viewportHeight);
     const cosY = Math.cos(this.curYaw);
     const sinY = Math.sin(this.curYaw);
     // Screen right = (+cosY, -sinY), Screen up = (-sinY, -cosY)
@@ -192,6 +194,7 @@ export class CadCameraRig {
     const moveUp = (dyPx * worldPerPx) / Math.max(0.35, Math.sin(this.curPitch));
     this.targetX += moveRight * cosY - moveUp * sinY;
     this.targetZ += -moveRight * sinY - moveUp * cosY;
+    this.panBoostUntilMs = performance.now() + 140;
   }
 
   panByAxes(rightAxis: number, forwardAxis: number, dt: number): void {
@@ -272,9 +275,12 @@ export class CadCameraRig {
   }
 
   update(dt: number, nowMs: number): void {
-    const alpha = 1 - Math.exp(-14 * Math.min(dt, 0.05));
-    this.curX = THREE.MathUtils.lerp(this.curX, this.targetX, alpha);
-    this.curZ = THREE.MathUtils.lerp(this.curZ, this.targetZ, alpha);
+    const clampedDt = Math.min(dt, 0.05);
+    const alpha = 1 - Math.exp(-14 * clampedDt);
+    // Tighter horizontal tracking during active middle/space grab-pan so floor stays locked to cursor
+    const panAlpha = nowMs <= this.panBoostUntilMs ? 1 - Math.exp(-26 * clampedDt) : alpha;
+    this.curX = THREE.MathUtils.lerp(this.curX, this.targetX, panAlpha);
+    this.curZ = THREE.MathUtils.lerp(this.curZ, this.targetZ, panAlpha);
     this.curY = THREE.MathUtils.lerp(this.curY, this.targetFloorY, alpha);
     this.curYaw = normalizeAngle(this.curYaw + shortestAngleDelta(this.curYaw, this.targetYaw) * alpha);
     this.curPitch = THREE.MathUtils.lerp(this.curPitch, this.targetPitch, alpha);

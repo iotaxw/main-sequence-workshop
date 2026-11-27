@@ -910,9 +910,17 @@ export function boxSelectEntities(
     }
   } else {
     const bIdx = getBuildingSpatialIndex(doc.buildings);
-    const checkFloor = (floorBlds: PlacedBuilding[]) => {
-      for (let i = 0; i < floorBlds.length; i++) {
-        const b = floorBlds[i];
+    // Query only 64m spatial chunks intersecting the selection rectangle (padded by max building footprint 16m
+    // on the min edge since buildings are bucketed by their anchor (b.x, b.y)) -> O(chunks in box), zero duplicates!
+    const minCx = Math.floor((box.minX - 16) / 64);
+    const maxCx = Math.floor(box.maxX / 64);
+    const minCy = Math.floor((box.minY - 16) / 64);
+    const maxCy = Math.floor(box.maxY / 64);
+    const chunkSpan = (maxCx - minCx + 1) * (maxCy - minCy + 1);
+
+    const checkList = (list: PlacedBuilding[]) => {
+      for (let i = 0; i < list.length; i++) {
+        const b = list[i];
         const def = getBuildableDef(b.type);
         if (!def) continue;
         const [w, d] = getBuildingSizeCells(def, b.rotation);
@@ -921,13 +929,29 @@ export function boxSelectEntities(
         }
       }
     };
+
+    const checkFloor = (floor: number) => {
+      const floorChunks = bIdx.buildingsByFloorChunk.get(floor);
+      if (floorChunks && chunkSpan <= floorChunks.size) {
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          const cxBase = (cx + 1024) * 2048;
+          for (let cy = minCy; cy <= maxCy; cy++) {
+            const list = floorChunks.get(cxBase + (cy + 1024));
+            if (list) checkList(list);
+          }
+        }
+        return;
+      }
+      const floorBlds = bIdx.buildingsByFloor.get(floor);
+      if (floorBlds) checkList(floorBlds);
+    };
+
     if (layerMode === 'focus') {
-      const floorBlds = bIdx.buildingsByFloor.get(focusFloor);
-      if (floorBlds) checkFloor(floorBlds);
+      checkFloor(focusFloor);
     } else {
-      for (const [f, floorBlds] of bIdx.buildingsByFloor.entries()) {
+      for (const f of bIdx.buildingsByFloor.keys()) {
         if (!floorAllowed(f, 1)) continue;
-        checkFloor(floorBlds);
+        checkFloor(f);
       }
     }
   }

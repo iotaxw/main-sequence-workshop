@@ -1,9 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../core/i18n';
 import type { BlueprintLibraryDriver } from '../core/library';
-import type { BlueprintDocument, LibraryFileEntry, LibraryFolderEntry, LibraryNode } from '../core/types';
+import type {
+  BlueprintCategory,
+  BlueprintDocument,
+  LibraryFileEntry,
+  LibraryFolderEntry,
+  LibraryNode,
+} from '../core/types';
 import type { CadThemeId } from '../renderer/theme';
 import { BlueprintThumbnail } from './BlueprintThumbnail';
+import { NewBlueprintMenu } from './NewBlueprintMenu';
 
 interface BlueprintLibraryModalProps {
   open: boolean;
@@ -17,7 +24,7 @@ interface BlueprintLibraryModalProps {
   onMountLocalFolder: () => void;
   onOpenGitHubConnect: () => void;
   onRefresh: () => void;
-  onNewBlueprint: () => void;
+  onNewBlueprint: (category?: BlueprintCategory) => void;
   onCreateFolder: (parentFolder: string) => void;
   onImportJsonFile: (file: File) => void;
   onStampFromLibrary: (file: LibraryFileEntry) => void;
@@ -260,16 +267,15 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
               {t('刷新', 'Refresh')}
             </button>
             <span className="bpm-divider" />
-            <button
-              type="button"
-              className="cad-btn"
-              onClick={() => {
-                onNewBlueprint();
-                onClose();
+            <NewBlueprintMenu
+              label={t('+ 新建 ▾', '+ New ▾')}
+              title={t('新建蓝图', 'New Blueprint')}
+              align="right"
+              onSelectCategory={(cat) => {
+                onNewBlueprint(cat);
+                if (cat === 'station') onClose();
               }}
-            >
-              {t('+ 新建', '+ New')}
-            </button>
+            />
             <button type="button" className="cad-btn" onClick={() => onCreateFolder(selectedFolder)}>
               {t('+ 目录', '+ Folder')}
             </button>
