@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   applyEndRotationOverride,
@@ -33,6 +34,7 @@ import {
   createHistory,
   deleteSelectionCmd,
   extractSelectionAsBlueprint,
+  getBlueprintBoundsM,
   mirrorBlueprint,
   mirrorBlueprintX,
   mirrorSelectionInPlaceCmd,
@@ -45,6 +47,7 @@ import {
   undoHistory,
   updateBuildingConfigCmd,
   updateModuleConfigCmd,
+  validateStampBlueprintPlacement,
 } from './commands';
 import {
   collectOpenGhostConnectors,
@@ -76,6 +79,97 @@ import { exportNativeSav, importNativeSav } from './native-codec';
 import { DEFAULT_LIBRARY_PRESETS, HAS_PRIVATE_PRESETS } from './presets';
 import { simulateBlueprint } from './simulation';
 import { CadCameraRig, MAX_DISTANCE } from '../renderer/camera-rig';
+import { CrispLineBatcher } from '../renderer/crisp-lines';
+import { CadPerfMetrics } from '../renderer/perf-metrics';
+import { createRoundedGridOverlay } from '../renderer/rounded-grid-shader';
+
+function computeLegacyUndergroundLinksForTest(doc: ReturnType<typeof createEmptyBlueprint>) {
+  const undergrounds = doc.buildings.filter((b) => getBuildableDef(b.type)?.kind === 'underground');
+  const byId = new Map(undergrounds.map((u) => [u.id, u]));
+  const links: Array<{
+    fromId: string;
+    toId: string;
+    floor: number;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    tier: 1 | 2 | 3;
+  }> = [];
+  const used = new Set<string>();
+  const isInlineValid = (
+    entry: (typeof undergrounds)[number],
+    exit: (typeof undergrounds)[number],
+    maxLen: number
+  ): boolean => {
+    if (entry.id === exit.id) return false;
+    if (entry.floor !== exit.floor || entry.rotation !== exit.rotation) return false;
+    if (entry.undergroundMode === 'out' || exit.undergroundMode !== 'out') return false;
+    const dx = entry.rotation === 0 ? 1 : entry.rotation === 2 ? -1 : 0;
+    const dy = entry.rotation === 1 ? 1 : entry.rotation === 3 ? -1 : 0;
+    const rx = exit.x - entry.x;
+    const ry = exit.y - entry.y;
+    const along = rx * dx + ry * dy;
+    const perp = Math.abs(rx * dy - ry * dx);
+    return perp === 0 && along >= 1 && along <= maxLen;
+  };
+  for (const entry of undergrounds) {
+    if (used.has(entry.id) || entry.undergroundMode === 'out' || !entry.undergroundPartnerId) continue;
+    const partner = byId.get(entry.undergroundPartnerId);
+    if (!partner || used.has(partner.id)) continue;
+    const def = getBuildableDef(entry.type)!;
+    if (!isInlineValid(entry, partner, def.maxLength ?? 8)) continue;
+    used.add(entry.id);
+    used.add(partner.id);
+    links.push({
+      fromId: entry.id,
+      toId: partner.id,
+      floor: entry.floor,
+      x1: entry.x + 0.5,
+      y1: entry.y + 0.5,
+      x2: partner.x + 0.5,
+      y2: partner.y + 0.5,
+      tier: def.tier,
+    });
+  }
+  for (const entry of undergrounds) {
+    if (used.has(entry.id) || entry.undergroundMode === 'out') continue;
+    const def = getBuildableDef(entry.type)!;
+    const dx = entry.rotation === 0 ? 1 : entry.rotation === 2 ? -1 : 0;
+    const dy = entry.rotation === 1 ? 1 : entry.rotation === 3 ? -1 : 0;
+    const maxLen = def.maxLength ?? 8;
+    let best: (typeof undergrounds)[number] | null = null;
+    let bestSameTier = false;
+    let bestDist = maxLen + 1;
+    for (const candidate of undergrounds) {
+      if (candidate.id === entry.id || used.has(candidate.id)) continue;
+      if (candidate.undergroundPartnerId && byId.has(candidate.undergroundPartnerId)) continue;
+      if (!isInlineValid(entry, candidate, maxLen)) continue;
+      const sameTier = getBuildableDef(candidate.type)?.tier === def.tier;
+      const along = (candidate.x - entry.x) * dx + (candidate.y - entry.y) * dy;
+      if (!best || (sameTier && !bestSameTier) || (sameTier === bestSameTier && along < bestDist)) {
+        best = candidate;
+        bestSameTier = sameTier;
+        bestDist = along;
+      }
+    }
+    if (best) {
+      used.add(entry.id);
+      used.add(best.id);
+      links.push({
+        fromId: entry.id,
+        toId: best.id,
+        floor: entry.floor,
+        x1: entry.x + 0.5,
+        y1: entry.y + 0.5,
+        x2: best.x + 0.5,
+        y2: best.y + 0.5,
+        tier: def.tier,
+      });
+    }
+  }
+  return links;
+}
 
 describe('Build 26639889 catalog verification', () => {
   it('includes all extracted station modules, buildables, and recipes with binary-verified dimensions', () => {
@@ -214,6 +308,68 @@ describe('Belt router, Belt Planner, underground pairing, and connected selectio
     const chain = selectConnectedBeltChain(doc, ugIn.addedBuildingIds![0]);
     expect(chain.length).toBe(4);
   });
+
+  it('matches the legacy underground fallback exactly across deterministic mixed-tier and explicit-pair cases', () => {
+    let seed = 0x51a7c0de;
+    const random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
+    const types = ['DAT_UndergroundBelt', 'DAT_UndergroundBelt_2', 'DAT_UndergroundBelt_3'];
+
+    for (let scenario = 0; scenario < 36; scenario++) {
+      const doc = createEmptyBlueprint(`underground-equivalence-${scenario}`);
+      for (let i = 0; i < 72; i++) {
+        const rotation = Math.floor(random() * 4) as 0 | 1 | 2 | 3;
+        doc.buildings.push({
+          id: `u_${scenario}_${i}`,
+          type: types[Math.floor(random() * types.length)],
+          x: Math.floor(random() * 17) - 4,
+          y: Math.floor(random() * 17) - 4,
+          floor: Math.floor(random() * 2),
+          rotation,
+          undergroundMode: random() < 0.46 ? 'out' : 'in',
+          ...(random() < 0.14
+            ? { undergroundPartnerId: random() < 0.25 ? 'dangling' : `u_${scenario}_${Math.floor(random() * 72)}` }
+            : {}),
+        });
+      }
+      for (let pair = 0; pair < 6; pair++) {
+        const type = types[pair % types.length];
+        const inId = `explicit_${scenario}_${pair}_in`;
+        const outId = `explicit_${scenario}_${pair}_out`;
+        doc.buildings.push(
+          {
+            id: inId,
+            type,
+            x: pair * 3,
+            y: 30 + scenario,
+            floor: 0,
+            rotation: 0,
+            undergroundMode: 'in',
+            undergroundPartnerId: outId,
+          },
+          {
+            id: outId,
+            type,
+            x: pair * 3 + 2,
+            y: 30 + scenario,
+            floor: 0,
+            rotation: 0,
+            undergroundMode: 'out',
+            undergroundPartnerId: inId,
+          }
+        );
+      }
+
+      const expected = computeLegacyUndergroundLinksForTest(doc);
+      const actual = computeUndergroundLinks(doc);
+      expect(actual, `scenario ${scenario}`).toEqual(expected);
+      expect(computeUndergroundLinks(doc)).toBe(actual);
+      const immutableCopy = { ...doc, buildings: [...doc.buildings] };
+      expect(computeUndergroundLinks(immutableCopy)).toEqual(expected);
+    }
+  });
 });
 
 describe('Multi-layer selection, blueprint extraction/transform/stamping, port config, and undo/redo', () => {
@@ -292,6 +448,56 @@ describe('Multi-layer selection, blueprint extraction/transform/stamping, port c
     const del = deleteSelectionCmd(stamped.doc, { moduleIds: [stamped.doc.modules[0].id], buildingIds: [] });
     expect(del.doc.modules.length).toBe(0);
     expect(del.doc.buildings.length).toBe(0);
+  });
+
+  it('caches blueprint bounds by immutable document identity without stale results', () => {
+    const bp = createEmptyBlueprint('bounds-cache');
+    bp.buildings.push({ id: 'a', type: 'DAT_Assembler', x: 2, y: 3, floor: 0, rotation: 0 });
+    const first = getBlueprintBoundsM(bp);
+    expect(first).toEqual({ width: 7, depth: 8, floors: 1 });
+    expect(getBlueprintBoundsM(bp)).toBe(first);
+
+    const moved = { ...bp, buildings: bp.buildings.map((b) => ({ ...b, x: 10 })) };
+    expect(getBlueprintBoundsM(moved)).toEqual({ width: 15, depth: 8, floors: 1 });
+    expect(getBlueprintBoundsM(rotateBlueprint(moved, 1))).toEqual({ width: 5, depth: 15, floors: 1 });
+  });
+
+  it('uses identical coordinate-only validation for stamp previews and committed commands', () => {
+    let target = createEmptyBlueprint('stamp-validation-target');
+    target = placeModuleCmd(target, { type: 'BPO_Station_02A', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    const bp = createEmptyBlueprint('stamp-validation-source');
+    bp.modules = [];
+    bp.buildings.push(
+      { id: 'a', type: 'DAT_Assembler', x: 4, y: 4, floor: 0, rotation: 0 },
+      { id: 'b', type: 'DAT_Assembler', x: 4, y: 4, floor: 0, rotation: 0 },
+      { id: 'c', type: 'DAT_Assembler', x: 40, y: 4, floor: 0, rotation: 0 }
+    );
+    const before = JSON.stringify(bp);
+    const validation = validateStampBlueprintPlacement(target, bp, { x: 0, y: 0, floor: 0 });
+    expect(validation.moduleIssues).toEqual([]);
+    expect(validation.buildingIssues[0]).toBeNull();
+    expect(validation.buildingIssues[1]).toContain('占地冲突');
+    expect(validation.buildingIssues[2]).toContain('地板');
+    expect(validation.message).toBe(validation.buildingIssues[1]);
+    expect(JSON.stringify(bp)).toBe(before);
+
+    const committed = stampBlueprintCmd(target, bp, { x: 0, y: 0, floor: 0 });
+    expect(committed.changed).toBe(false);
+    expect(committed.doc).toBe(target);
+    expect(committed.message).toBe(validation.message);
+
+    bp.buildings = [{ id: 'belt', type: 'DAT_ConveyorBelt', x: 4, y: 4, floor: 0, rotation: 0 }];
+    target = placeBuildingCmd(target, {
+      type: 'DAT_ConveyorBelt_2',
+      x: 4,
+      y: 4,
+      floor: 0,
+      rotation: 0,
+    }).doc;
+    const beltValidation = validateStampBlueprintPlacement(target, bp, { x: 0, y: 0, floor: 0 });
+    expect(beltValidation.message).toBeNull();
+    expect(beltValidation.buildingIssues).toEqual([null]);
+    expect(stampBlueprintCmd(target, bp, { x: 0, y: 0, floor: 0 }).changed).toBe(true);
   });
 
   it('atomically cuts a station module together with its interior buildings (shapez 2 Ctrl+X move flow)', () => {
@@ -641,6 +847,58 @@ describe('Camera grab-pan orientation invariants', () => {
     expect(rig.targetZ).toBe(0);
     expect(rig.targetDistance).toBeGreaterThan(650);
     expect(rig.targetDistance).toBeLessThanOrEqual(MAX_DISTANCE);
+  });
+});
+
+describe('Stage A rendering and observation invariants', () => {
+  it('batches temporary lines by style and releases their raw position mirrors on flush', () => {
+    const batch = new CrispLineBatcher();
+    const group = new THREE.Group();
+    batch.add([0, 0, 0, 1, 0, 0], { color: 0x00ff00, widthPx: 1.3 });
+    batch.add([0, 0, 1, 1, 0, 1], { color: 0x00ff00, widthPx: 1.3 });
+    batch.add([0, 0, 2, 1, 0, 2], { color: 0xff0000, widthPx: 1.3 });
+    batch.flush(group);
+
+    expect(group.children.length).toBe(2);
+    for (const child of group.children) expect(child.userData.rawPositions).toBeUndefined();
+  });
+
+  it('uses a unit rounded-grid plane that starts hidden', () => {
+    const overlay = createRoundedGridOverlay();
+    expect(overlay.mesh.visible).toBe(false);
+    overlay.mesh.geometry.computeBoundingBox();
+    const bounds = overlay.mesh.geometry.boundingBox!;
+    expect(bounds.max.x - bounds.min.x).toBe(1);
+    expect(bounds.max.z - bounds.min.z).toBe(1);
+    overlay.mesh.geometry.dispose();
+    (overlay.mesh.material as THREE.Material).dispose();
+  });
+
+  it('exposes frozen timing snapshots and preserves the single-pending-rAF invariant', () => {
+    const metrics = new CadPerfMetrics();
+    metrics.noteRafScheduled();
+    metrics.noteRafFired();
+    metrics.noteRafScheduled();
+    metrics.recordFrame(1000, performance.now());
+    metrics.recordFrame(1016, performance.now());
+    const info = {
+      render: { calls: 12, triangles: 34 },
+      memory: { geometries: 5, textures: 6 },
+      programs: [{}],
+    } as unknown as Parameters<CadPerfMetrics['snapshot']>[0];
+    const snapshot = metrics.snapshot(info);
+
+    expect(snapshot.frames).toBe(2);
+    expect(snapshot.frameMs.lastMs).toBe(16);
+    expect(snapshot.renderer).toEqual({ calls: 12, triangles: 34, geometries: 5, textures: 6, programs: 1 });
+    expect(snapshot.rafPending).toBe(1);
+    expect(snapshot.rafMaxPending).toBe(1);
+    expect(snapshot.rafInvariantViolations).toBe(0);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot.renderer)).toBe(true);
+    expect(Object.isFrozen(snapshot.stages.render)).toBe(true);
+    metrics.noteRafCancelled();
+    expect(metrics.snapshot(info).rafPending).toBe(0);
   });
 });
 

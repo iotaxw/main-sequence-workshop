@@ -132,3 +132,64 @@ export function createCrispLineSegments(pts: number[], opts: CrispLineOptions): 
   segs.userData.lineOpts = opts;
   return segs;
 }
+
+interface CrispLineBatchBucket {
+  opts: CrispLineOptions;
+  positions: number[];
+}
+
+export class CrispLineBatcher {
+  private buckets = new Map<string, CrispLineBatchBucket>();
+
+  private getBucket(opts: CrispLineOptions): CrispLineBatchBucket {
+    const key = [
+      opts.color,
+      opts.opacity ?? 1,
+      opts.widthPx ?? 1.25,
+      opts.dashed ? 1 : 0,
+      opts.dashSize ?? 0.35,
+      opts.gapSize ?? 0.28,
+      opts.lodTier ?? 'primary',
+    ].join('|');
+    let bucket = this.buckets.get(key);
+    if (!bucket) {
+      bucket = { opts: { ...opts }, positions: [] };
+      this.buckets.set(key, bucket);
+    }
+    return bucket;
+  }
+
+  add(pts: readonly number[], opts: CrispLineOptions): void {
+    if (pts.length < 6) return;
+    const out = this.getBucket(opts).positions;
+    for (let i = 0; i < pts.length; i++) out.push(pts[i]);
+  }
+
+  addTransformed(
+    pts: readonly number[],
+    opts: CrispLineOptions,
+    x: number,
+    y: number,
+    z: number,
+    rotationY = 0
+  ): void {
+    if (pts.length < 6) return;
+    const out = this.getBucket(opts).positions;
+    const c = Math.cos(rotationY);
+    const s = Math.sin(rotationY);
+    for (let i = 0; i < pts.length; i += 3) {
+      const px = pts[i];
+      const pz = pts[i + 2];
+      out.push(x + c * px + s * pz, y + pts[i + 1], z - s * px + c * pz);
+    }
+  }
+
+  flush(target: THREE.Group): void {
+    for (const bucket of this.buckets.values()) {
+      const segs = createCrispLineSegments(bucket.positions, bucket.opts);
+      delete segs.userData.rawPositions;
+      target.add(segs);
+    }
+    this.buckets.clear();
+  }
+}

@@ -3,7 +3,7 @@ import type { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { getMatchingUndergroundType, type BeltCellSpec } from '../core/belt-router';
 import { getBuildableDef, getItemNameZh, getModuleDef, getRecipeDef } from '../core/catalog';
-import { computeStampCandidates, getBlueprintBoundsM } from '../core/commands';
+import { getBlueprintBoundsM, validateStampBlueprintPlacement } from '../core/commands';
 import {
   areWorldConnectorsMated,
   collectOpenGhostConnectors,
@@ -21,8 +21,6 @@ import {
   getModuleSpatialIndex,
   getModuleWorldConnectors,
   getWorldConnectorKey,
-  isCellBuildable,
-  packCellKey,
   rotateVec2,
   STATION_UNIT_M,
   validateBuildingPlacement,
@@ -42,13 +40,14 @@ import type {
   ViewMode,
 } from '../core/types';
 import { CadCameraRig } from './camera-rig';
-import { createCrispLineSegments, setLineViewportResolution, type CrispLineOptions } from './crisp-lines';
+import { CrispLineBatcher, createCrispLineSegments, setLineViewportResolution, type CrispLineOptions } from './crisp-lines';
 import {
   buildIndustrialDockGantryArt,
   buildMachineLineArt,
   buildStationModuleArt,
   emitBeltDirectToBuffers,
 } from './line-art';
+import { CadPerfMetrics, type CadPerfSnapshot } from './perf-metrics';
 import { createRoundedGridOverlay } from './rounded-grid-shader';
 import { CAD_THEMES, type CadThemeId, type CadThemePalette } from './theme';
 
@@ -173,55 +172,91 @@ function edgesToPositions(edgeGeo: THREE.EdgesGeometry): number[] {
   return out;
 }
 
-function createDirectionalChevron(size: number, color: number, opacity: number): THREE.Object3D {
+function addDirectionalChevron(
+  batch: CrispLineBatcher,
+  size: number,
+  color: number,
+  opacity: number,
+  x: number,
+  y: number,
+  z: number,
+  rotation: number
+): void {
   const pts = [
     -size * 0.45, 0, -size * 0.45, size * 0.5, 0, 0,
     size * 0.5, 0, 0, -size * 0.45, 0, size * 0.45,
   ];
-  return createCrispLineSegments(pts, { color, opacity, widthPx: 1.25 });
+  batch.addTransformed(pts, { color, opacity, widthPx: 1.25 }, x, y, z, -rotation * (Math.PI / 2));
+}
+
+type StationConnectorMarkMode = 'open' | 'mated' | 'ghost' | 'hint-match' | 'hint-dim';
+
+function getStationConnectorMarkPositions(span: number, mode: StationConnectorMarkMode): number[] {
+  const hs = span / 2;
+  if (mode === 'mated') return [0, 0, -hs * 0.72, 0, 0, hs * 0.72];
+  if (mode === 'hint-match') {
+    return [
+      -0.1, 0, -hs, -0.1, 0, hs,
+      0.22, 0, -hs, 0.22, 0, hs,
+      -0.45, 0, -hs, 0.95, 0, -hs,
+      -0.45, 0, hs, 0.95, 0, hs,
+      0.22, 0, -0.85, 1.55, 0, 0,
+      1.55, 0, 0, 0.22, 0, 0.85,
+      2.3, 0, 0, 4.2, 0, 0,
+    ];
+  }
+  const tickIn = 0.3;
+  const arrowOut = mode === 'ghost' ? 1.0 : mode === 'hint-dim' ? 0.5 : 0.48;
+  return [
+    -0.06, 0, -hs, -0.06, 0, hs,
+    -tickIn, 0, -hs, -0.06, 0, -hs,
+    -tickIn, 0, hs, -0.06, 0, hs,
+    -0.06, 0, -0.48, arrowOut, 0, 0,
+    arrowOut, 0, 0, -0.06, 0, 0.48,
+  ];
+}
+
+function getStationConnectorMarkOptions(
+  color: number,
+  opacity: number,
+  mode: StationConnectorMarkMode
+): CrispLineOptions {
+  if (mode === 'mated') return { color, opacity: opacity * 0.55, widthPx: 1.0, lodTier: 'detail' };
+  if (mode === 'hint-match') return { color, opacity: Math.min(1, opacity), widthPx: 1.45 };
+  return { color, opacity, widthPx: mode === 'ghost' ? 1.4 : 1.08 };
 }
 
 function createStationConnectorMark(
   span: number,
   color: number,
   opacity: number,
-  mode: 'open' | 'mated' | 'ghost' | 'hint-match' | 'hint-dim'
+  mode: StationConnectorMarkMode
 ): THREE.Object3D {
-  const hs = span / 2;
-  const pts: number[] = [];
-  if (mode === 'mated') {
-    pts.push(0, 0, -hs * 0.72, 0, 0, hs * 0.72);
-    return createCrispLineSegments(pts, { color, opacity: opacity * 0.55, widthPx: 1.0, lodTier: 'detail' });
-  }
-  if (mode === 'hint-match') {
-    // High-clarity buildable docking socket + outward snap bay guide ticks!
-    pts.push(
-      -0.1, 0, -hs, -0.1, 0, hs,
-      0.22, 0, -hs, 0.22, 0, hs,
-      -0.45, 0, -hs, 0.95, 0, -hs,
-      -0.45, 0, hs, 0.95, 0, hs,
-      // Outward chevron pointing into buildable adjacent cell
-      0.22, 0, -0.85, 1.55, 0, 0,
-      1.55, 0, 0, 0.22, 0, 0.85,
-      // Delicate 4m outward snap guide tick
-      2.3, 0, 0, 4.2, 0, 0
-    );
-    return createCrispLineSegments(pts, { color, opacity: Math.min(1, opacity), widthPx: 1.45 });
-  }
-  const tickIn = 0.3;
-  const arrowOut = mode === 'ghost' ? 1.0 : mode === 'hint-dim' ? 0.5 : 0.48;
-  pts.push(
-    -0.06, 0, -hs, -0.06, 0, hs,
-    -tickIn, 0, -hs, -0.06, 0, -hs,
-    -tickIn, 0, hs, -0.06, 0, hs,
-    -0.06, 0, -0.48, arrowOut, 0, 0,
-    arrowOut, 0, 0, -0.06, 0, 0.48
+  return createCrispLineSegments(
+    getStationConnectorMarkPositions(span, mode),
+    getStationConnectorMarkOptions(color, opacity, mode)
   );
-  return createCrispLineSegments(pts, {
-    color,
-    opacity,
-    widthPx: mode === 'ghost' ? 1.4 : 1.08,
-  });
+}
+
+function addStationConnectorMark(
+  batch: CrispLineBatcher,
+  span: number,
+  color: number,
+  opacity: number,
+  mode: StationConnectorMarkMode,
+  x: number,
+  y: number,
+  z: number,
+  rotationY: number
+): void {
+  batch.addTransformed(
+    getStationConnectorMarkPositions(span, mode),
+    getStationConnectorMarkOptions(color, opacity, mode),
+    x,
+    y,
+    z,
+    rotationY
+  );
 }
 
 function connectorKey(x: number, y: number, floor: number): string {
@@ -579,6 +614,7 @@ class FloorRenderBucket {
         dashSize: acc.dashSize,
         gapSize: acc.gapSize,
       });
+      delete segs.userData.rawPositions;
       this.getTargetGroup(acc.layer, acc.subMode).add(segs);
       this.materials.push({
         mat: segs.material,
@@ -674,6 +710,10 @@ export class CadSceneController {
   private rafId = 0;
   private lastTime = 0;
   private disposed = false;
+  private readonly perf = new CadPerfMetrics();
+  private perfWindowGetter: (() => CadPerfSnapshot) | null = null;
+  private beforeRender: (() => void) | null = null;
+  private cameraDragging = false;
 
   private referenceGroup = new THREE.Group();
   private worldGroup = new THREE.Group();
@@ -696,6 +736,8 @@ export class CadSceneController {
   private lastLiveSelSig = '';
   private lastPreviewKey = '';
   private lastDockHintKey = '';
+  private lastBoxSelectKey = '';
+  private previewLineBatch: CrispLineBatcher | null = null;
   private bpRevIds = new WeakMap<BlueprintDocument, number>();
   private nextBpRevId = 1;
   private activePalette: CadThemePalette = CAD_THEMES['platinum-gold'];
@@ -743,8 +785,14 @@ export class CadSceneController {
     this.scene.add(this.boxSelectGroup);
 
     this.buildMinimalReferenceAxes(this.activePalette);
-    this.lastTime = performance.now();
-    this.tick(this.lastTime);
+    const perfGetter = () => this.getPerfSnapshot();
+    this.perfWindowGetter = perfGetter;
+    Object.defineProperty(window, '__MS_CAD_PERF__', {
+      configurable: true,
+      enumerable: false,
+      get: perfGetter,
+    });
+    this.tick(performance.now());
   }
 
   private buildMinimalReferenceAxes(palette: CadThemePalette): void {
@@ -789,6 +837,20 @@ export class CadSceneController {
     this.renderer.setSize(w, h);
     setLineViewportResolution(w, h);
     this.rig.setAspect(w / Math.max(1, h));
+  }
+
+  getPerfSnapshot(): CadPerfSnapshot {
+    return this.perf.snapshot(this.renderer.info);
+  }
+
+  setBeforeRender(callback: (() => void) | null): void {
+    this.beforeRender = callback;
+  }
+
+  setCameraDragging(active: boolean): void {
+    if (this.cameraDragging === active) return;
+    this.cameraDragging = active;
+    if (this.lastState) this.updateRoundedGrid(this.lastState);
   }
 
   setKeyDown(code: string, down: boolean): void {
@@ -952,6 +1014,7 @@ export class CadSceneController {
    */
   setCursorWorld(world: { x: number; y: number } | null): void {
     this.liveCursorWorld = world;
+    if (this.cameraDragging) return;
     const state = this.lastState;
     if (!state) return;
     const effState: SceneRenderState = { ...state, cursorWorld: world, boxSelectRect: this.liveBoxRect };
@@ -972,6 +1035,7 @@ export class CadSceneController {
   }
 
   syncState(state: SceneRenderState): void {
+    const startedAt = performance.now();
     const prev = this.lastState;
     const effCursor = state.cursorWorld ?? this.liveCursorWorld;
     const effBox = state.boxSelectRect ?? this.liveBoxRect;
@@ -1014,7 +1078,7 @@ export class CadSceneController {
     }
 
     const nextDockKey = this.computeDockHintKey(effState, effCursor);
-    if (docOrThemeChanged || nextDockKey !== this.lastDockHintKey) {
+    if (!this.cameraDragging && (docOrThemeChanged || nextDockKey !== this.lastDockHintKey)) {
       this.lastDockHintKey = nextDockKey;
       this.rebuildDockHints(effState, palette);
     }
@@ -1022,14 +1086,18 @@ export class CadSceneController {
     this.updateRoundedGrid(effState);
 
     const nextPrevKey = this.computePreviewKey(effState, effCursor);
-    if (docOrThemeChanged || prev?.beltPreview !== effState.beltPreview || nextPrevKey !== this.lastPreviewKey) {
+    if (
+      !this.cameraDragging &&
+      (docOrThemeChanged || prev?.beltPreview !== effState.beltPreview || nextPrevKey !== this.lastPreviewKey)
+    ) {
       this.lastPreviewKey = nextPrevKey;
       this.rebuildPreview(effState, palette);
     }
 
-    if (!prev || prev.boxSelectRect !== effState.boxSelectRect || prev.selectionLayerMode !== effState.selectionLayerMode || prev.focusFloor !== effState.focusFloor) {
+    if (!prev || themeChanged || prev.boxSelectRect !== effState.boxSelectRect || prev.selectionLayerMode !== effState.selectionLayerMode || prev.focusFloor !== effState.focusFloor) {
       this.rebuildBoxSelect(effState, palette, this.liveBoxMode);
     }
+    this.perf.recordStage('syncState', startedAt);
   }
 
   private clearGroup(group: THREE.Group): void {
@@ -1739,8 +1807,9 @@ export class CadSceneController {
       tool.kind === 'stamp-blueprint' && tool.blueprint.modules.length > 0;
     if (!isPlacingMod && !isStampingMods) return;
 
-    // Collect candidate ghost modules (identical connector-matching pipeline for single module & blueprint paste)
-    const ghostModules: PlacedModule[] = [];
+    const lines = new CrispLineBatcher();
+    let ghostModules: readonly PlacedModule[] = [];
+    let ghostOffset = { gx: 0, gy: 0, floor: 0 };
     const heldTypes = new Set<string>();
     const relevantFloors = new Set<number>([state.focusFloor]);
 
@@ -1751,39 +1820,30 @@ export class CadSceneController {
       if (state.cursorWorld) {
         const gx = Math.floor(state.cursorWorld.x / STATION_UNIT_M);
         const gy = Math.floor(state.cursorWorld.y / STATION_UNIT_M);
-        ghostModules.push({
+        ghostModules = [{
           id: '__ghost_mod',
           type: def.id,
           gx,
           gy,
           floor: state.focusFloor,
           rotation: tool.rotation,
-        });
+        }];
       }
     } else if (tool.kind === 'stamp-blueprint') {
-      const anchorFloor = state.focusFloor + tool.floorOffset;
+      ghostModules = tool.blueprint.modules;
       if (state.cursorWorld) {
-        const shiftGx = Math.floor(Math.floor(state.cursorWorld.x) / STATION_UNIT_M);
-        const shiftGy = Math.floor(Math.floor(state.cursorWorld.y) / STATION_UNIT_M);
-        for (let i = 0; i < tool.blueprint.modules.length; i++) {
-          const m = tool.blueprint.modules[i];
-          ghostModules.push({
-            ...m,
-            id: `__ghost_stamp_${i}`,
-            gx: m.gx + shiftGx,
-            gy: m.gy + shiftGy,
-            floor: m.floor + anchorFloor,
-          });
-        }
+        ghostOffset = {
+          gx: Math.floor(Math.floor(state.cursorWorld.x) / STATION_UNIT_M),
+          gy: Math.floor(Math.floor(state.cursorWorld.y) / STATION_UNIT_M),
+          floor: state.focusFloor + tool.floorOffset,
+        };
       } else {
-        for (const c of collectOpenGhostConnectors(tool.blueprint.modules)) {
-          heldTypes.add(c.type);
-        }
+        for (const c of collectOpenGhostConnectors(ghostModules)) heldTypes.add(c.type);
       }
     }
 
     // Only open boundary connectors of the ghost (excluding seams internally mated inside a stamp blueprint)
-    const ghostConns = collectOpenGhostConnectors(ghostModules);
+    const ghostConns = collectOpenGhostConnectors(ghostModules, ghostOffset);
     const ghostByKey = new Map<string, WorldConnector[]>();
     for (const gc of ghostConns) {
       heldTypes.add(gc.type);
@@ -1837,13 +1897,11 @@ export class CadSceneController {
           c.x, cyWorld, c.y + r, c.x - r, cyWorld, c.y,
           c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r,
         ];
-        this.dockHintsGroup.add(
-          createCrispLineSegments(pts, {
-            color: palette.connVertical,
-            opacity: c.floor === state.focusFloor ? 0.95 : 0.45,
-            widthPx: 1.5,
-          })
-        );
+        lines.add(pts, {
+          color: palette.connVertical,
+          opacity: c.floor === state.focusFloor ? 0.95 : 0.45,
+          widthPx: 1.5,
+        });
         continue;
       }
 
@@ -1877,36 +1935,32 @@ export class CadSceneController {
       const isXL = c.type === 'XLarge';
       const span = isXL ? 18 : 5.2;
       const col = compatible ? (isXL ? palette.connXLarge : palette.validGhost) : palette.connLarge;
-      const mark = createStationConnectorMark(
+      addStationConnectorMark(
+        lines,
         span,
         col,
         compatible ? 0.92 : 0.32,
-        compatible ? 'hint-match' : 'hint-dim'
+        compatible ? 'hint-match' : 'hint-dim',
+        c.x,
+        cyWorld,
+        c.y,
+        -c.rotation * (Math.PI / 2)
       );
-      mark.position.set(c.x, cyWorld, c.y);
-      mark.rotation.y = -c.rotation * (Math.PI / 2);
-      this.dockHintsGroup.add(mark);
     }
 
-    if (matchSealsPts.length >= 6) {
-      this.dockHintsGroup.add(
-        createCrispLineSegments(matchSealsPts, {
-          color: palette.dockMatchHint,
-          opacity: 1.0,
-          widthPx: 1.9,
-        })
-      );
-    }
+    lines.add(matchSealsPts, { color: palette.dockMatchHint, opacity: 1.0, widthPx: 1.9 });
+    lines.flush(this.dockHintsGroup);
   }
 
   private addGhostConnectors(
-    target: THREE.Group,
+    target: CrispLineBatcher,
     mod: PlacedModule,
     def: StationModuleDef,
     palette: CadThemePalette,
-    ghostColor: number
+    ghostColor: number,
+    offset: { gx: number; gy: number; floor: number } = { gx: 0, gy: 0, floor: 0 }
   ): void {
-    for (const c of getModuleWorldConnectors(mod, def)) {
+    for (const c of getModuleWorldConnectors(mod, def, offset)) {
       const cyWorld = c.floor * FLOOR_VISUAL_SPACING + 0.1;
       if (c.type.startsWith('Vertical')) {
         const r = c.type === 'Vertical2x2' ? 3.2 : 1.7;
@@ -1916,15 +1970,22 @@ export class CadSceneController {
           c.x, cyWorld, c.y + r, c.x - r, cyWorld, c.y,
           c.x - r, cyWorld, c.y, c.x, cyWorld, c.y - r,
         ];
-        target.add(createCrispLineSegments(pts, { color: ghostColor, opacity: 0.96, widthPx: 1.4 }));
+        target.add(pts, { color: ghostColor, opacity: 0.96, widthPx: 1.4 });
       } else {
         const isXL = c.type === 'XLarge';
         const span = isXL ? 18 : 5.2;
         const col = isXL ? palette.connXLarge : ghostColor;
-        const mark = createStationConnectorMark(span, col, 0.96, 'ghost');
-        mark.position.set(c.x, cyWorld, c.y);
-        mark.rotation.y = -c.rotation * (Math.PI / 2);
-        target.add(mark);
+        addStationConnectorMark(
+          target,
+          span,
+          col,
+          0.96,
+          'ghost',
+          c.x,
+          cyWorld,
+          c.y,
+          -c.rotation * (Math.PI / 2)
+        );
       }
     }
   }
@@ -1979,23 +2040,26 @@ export class CadSceneController {
 
   private updateRoundedGrid(state: SceneRenderState): void {
     const u = this.roundedGrid.uniforms;
-    this.roundedGrid.mesh.position.y = state.focusFloor * FLOOR_VISUAL_SPACING + 0.018;
+    const mesh = this.roundedGrid.mesh;
+    mesh.position.y = state.focusFloor * FLOOR_VISUAL_SPACING + 0.018;
 
     const isStation = state.viewMode === 'station';
-    u.uCellSize.value = isStation ? STATION_UNIT_M : 1.0;
-    u.uCursorRadius.value = isStation ? 44.0 : 6.8;
+    const cellSize = isStation ? STATION_UNIT_M : 1.0;
+    const cursorRadius = isStation ? 44.0 : 6.8;
+    u.uCellSize.value = cellSize;
+    u.uCursorRadius.value = cursorRadius;
     u.uCornerRadius.value = isStation ? 0.06 : 0.14;
 
+    const cursor = state.cursorWorld;
     const showForTool =
       state.activeTool.kind !== 'select' || state.boxSelectRect !== null || state.beltPreview.length > 0;
-    if (state.cursorWorld) {
-      u.uCursorWorld.value.set(state.cursorWorld.x, state.cursorWorld.y);
-      u.uCursorActive.value = 1.0;
+    u.uCursorActive.value = cursor ? 1.0 : 0.0;
+    if (cursor) {
+      u.uCursorWorld.value.set(cursor.x, cursor.y);
       u.uOpacity.value = showForTool ? 0.64 : isStation ? 0.3 : 0.42;
-    } else {
-      u.uCursorActive.value = 0.0;
     }
 
+    let hasFocusRect = false;
     if (state.boxSelectRect) {
       u.uFocusRect.value.set(
         state.boxSelectRect.minX,
@@ -2003,7 +2067,7 @@ export class CadSceneController {
         state.boxSelectRect.maxX,
         state.boxSelectRect.maxY
       );
-      u.uHasFocusRect.value = 1.0;
+      hasFocusRect = true;
     } else if (state.beltPreview.length > 0) {
       let minX = Infinity;
       let minY = Infinity;
@@ -2016,31 +2080,50 @@ export class CadSceneController {
         maxY = Math.max(maxY, s.y + 1);
       }
       u.uFocusRect.value.set(minX, minY, maxX, maxY);
-      u.uHasFocusRect.value = 1.0;
-    } else if (state.cursorWorld && state.activeTool.kind === 'place-building') {
+      hasFocusRect = true;
+    } else if (cursor && state.activeTool.kind === 'place-building') {
       const def = getBuildableDef(state.activeTool.buildingType);
       if (def) {
         const [w, d] = getBuildingSizeCells(def, state.activeTool.rotation);
-        const bx = Math.floor(state.cursorWorld.x - w / 2 + 0.5);
-        const by = Math.floor(state.cursorWorld.y - d / 2 + 0.5);
+        const bx = Math.floor(cursor.x - w / 2 + 0.5);
+        const by = Math.floor(cursor.y - d / 2 + 0.5);
         u.uFocusRect.value.set(bx, by, bx + w, by + d);
-        u.uHasFocusRect.value = 1.0;
-      } else {
-        u.uHasFocusRect.value = 0.0;
+        hasFocusRect = true;
       }
-    } else if (state.cursorWorld && state.activeTool.kind === 'stamp-blueprint') {
+    } else if (cursor && state.activeTool.kind === 'stamp-blueprint') {
       const bounds = getBlueprintBoundsM(state.activeTool.blueprint);
       const hasMods = state.activeTool.blueprint.modules.length > 0;
-      const ax = hasMods
-        ? Math.floor(state.cursorWorld.x / STATION_UNIT_M) * STATION_UNIT_M
-        : Math.floor(state.cursorWorld.x);
-      const ay = hasMods
-        ? Math.floor(state.cursorWorld.y / STATION_UNIT_M) * STATION_UNIT_M
-        : Math.floor(state.cursorWorld.y);
+      const ax = hasMods ? Math.floor(cursor.x / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.x);
+      const ay = hasMods ? Math.floor(cursor.y / STATION_UNIT_M) * STATION_UNIT_M : Math.floor(cursor.y);
       u.uFocusRect.value.set(ax, ay, ax + bounds.width, ay + bounds.depth);
-      u.uHasFocusRect.value = 1.0;
-    } else {
-      u.uHasFocusRect.value = 0.0;
+      hasFocusRect = true;
+    }
+    u.uHasFocusRect.value = hasFocusRect ? 1.0 : 0.0;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    if (cursor) {
+      minX = cursor.x - cursorRadius;
+      minY = cursor.y - cursorRadius;
+      maxX = cursor.x + cursorRadius;
+      maxY = cursor.y + cursorRadius;
+    }
+    if (hasFocusRect) {
+      const rect = u.uFocusRect.value;
+      const padding = cellSize * 2.5;
+      minX = Math.min(minX, rect.x - padding);
+      minY = Math.min(minY, rect.y - padding);
+      maxX = Math.max(maxX, rect.z + padding);
+      maxY = Math.max(maxY, rect.w + padding);
+    }
+
+    mesh.visible = !this.cameraDragging && (cursor !== null || hasFocusRect);
+    if (mesh.visible) {
+      mesh.position.x = (minX + maxX) * 0.5;
+      mesh.position.z = (minY + maxY) * 0.5;
+      mesh.scale.set(Math.max(0.001, maxX - minX), 1, Math.max(0.001, maxY - minY));
     }
   }
 
@@ -2051,10 +2134,23 @@ export class CadSceneController {
       x1, y, z1, x0, y, z1,
       x0, y, z1, x0, y, z0,
     ];
-    this.previewGroup.add(createCrispLineSegments(pts, { color, opacity, widthPx: 1.3 }));
+    this.previewLineBatch!.add(pts, { color, opacity, widthPx: 1.3 });
   }
 
   private rebuildPreview(state: SceneRenderState, palette: CadThemePalette): void {
+    const startedAt = performance.now();
+    const batch = new CrispLineBatcher();
+    this.previewLineBatch = batch;
+    try {
+      this.rebuildPreviewContent(state, palette);
+    } finally {
+      batch.flush(this.previewGroup);
+      this.previewLineBatch = null;
+      this.perf.recordStage('preview', startedAt);
+    }
+  }
+
+  private rebuildPreviewContent(state: SceneRenderState, palette: CadThemePalette): void {
     this.clearGroup(this.previewGroup);
     this.ghostExtrudeTargets = [];
     const yScale = this.getCurrentExtrusionScale();
@@ -2063,6 +2159,9 @@ export class CadSceneController {
       const beltType = state.activeTool.buildingType;
       const ugType = getMatchingUndergroundType(beltType) ?? beltType;
       const baseY = state.focusFloor * FLOOR_VISUAL_SPACING + 0.07;
+      const lines = this.previewLineBatch!;
+      const validPadTris: number[] = [];
+      const invalidPadTris: number[] = [];
       const pairEndpoints = new Map<number, { inSeg?: BeltCellSpec; outSeg?: BeltCellSpec; valid: boolean }>();
 
       for (const seg of state.beltPreview) {
@@ -2077,17 +2176,17 @@ export class CadSceneController {
           // Crisp double-framed underground hood preview (IN / OUT)
           this.addFlatRectGhost(seg.x + 0.06, seg.y + 0.06, seg.x + 0.94, seg.y + 0.94, baseY + 0.02, col, 0.96);
           this.addFlatRectGhost(seg.x + 0.2, seg.y + 0.2, seg.x + 0.8, seg.y + 0.8, baseY + 0.02, col, 0.72);
-          const pad = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.84, 0.84),
-            new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })
+          const padTris = issue ? invalidPadTris : validPadTris;
+          const px0 = seg.x + 0.08;
+          const px1 = seg.x + 0.92;
+          const pz0 = seg.y + 0.08;
+          const pz1 = seg.y + 0.92;
+          const py = baseY + 0.01;
+          padTris.push(
+            px0, py, pz0, px0, py, pz1, px1, py, pz1,
+            px0, py, pz0, px1, py, pz1, px1, py, pz0
           );
-          pad.rotation.x = -Math.PI / 2;
-          pad.position.set(seg.x + 0.5, baseY + 0.01, seg.y + 0.5);
-          this.previewGroup.add(pad);
-          const chev = createDirectionalChevron(0.32, col, 0.98);
-          chev.position.set(seg.x + 0.5, baseY + 0.03, seg.y + 0.5);
-          chev.rotation.y = -seg.rotation * (Math.PI / 2);
-          this.previewGroup.add(chev);
+          addDirectionalChevron(lines, 0.32, col, 0.98, seg.x + 0.5, baseY + 0.03, seg.y + 0.5, seg.rotation);
 
           if (seg.pairIndex !== undefined) {
             const p = pairEndpoints.get(seg.pairIndex) ?? { valid: true };
@@ -2099,19 +2198,14 @@ export class CadSceneController {
             // Armed underground dive (distance 0): draw dashed reach guide ray forward up to 8 cells
             const dx = seg.rotation === 0 ? 1 : seg.rotation === 2 ? -1 : 0;
             const dy = seg.rotation === 1 ? 1 : seg.rotation === 3 ? -1 : 0;
-            this.previewGroup.add(
-              createCrispLineSegments(
-                [seg.x + 0.5, baseY + 0.04, seg.y + 0.5, seg.x + 0.5 + dx * 8, baseY + 0.04, seg.y + 0.5 + dy * 8],
-                { color: col, opacity: 0.85, widthPx: 1.4, dashed: true, dashSize: 0.35, gapSize: 0.24 }
-              )
+            lines.add(
+              [seg.x + 0.5, baseY + 0.04, seg.y + 0.5, seg.x + 0.5 + dx * 8, baseY + 0.04, seg.y + 0.5 + dy * 8],
+              { color: col, opacity: 0.85, widthPx: 1.4, dashed: true, dashSize: 0.35, gapSize: 0.24 }
             );
           }
         } else {
           this.addFlatRectGhost(seg.x + 0.14, seg.y + 0.14, seg.x + 0.86, seg.y + 0.86, baseY, col, 0.6);
-          const chev = createDirectionalChevron(0.28, col, 0.94);
-          chev.position.set(seg.x + 0.5, baseY + 0.01, seg.y + 0.5);
-          chev.rotation.y = -seg.rotation * (Math.PI / 2);
-          this.previewGroup.add(chev);
+          addDirectionalChevron(lines, 0.28, col, 0.94, seg.x + 0.5, baseY + 0.01, seg.y + 0.5, seg.rotation);
         }
 
         if (seg.isWaypoint) {
@@ -2119,16 +2213,14 @@ export class CadSceneController {
           const cz = seg.y + 0.5;
           const r = 0.44;
           const wy = baseY + 0.045;
-          this.previewGroup.add(
-            createCrispLineSegments(
-              [
-                cx, wy, cz - r, cx + r, wy, cz,
-                cx + r, wy, cz, cx, wy, cz + r,
-                cx, wy, cz + r, cx - r, wy, cz,
-                cx - r, wy, cz, cx, wy, cz - r,
-              ],
-              { color: palette.selectOutline, opacity: 0.98, widthPx: 1.8 }
-            )
+          lines.add(
+            [
+              cx, wy, cz - r, cx + r, wy, cz,
+              cx + r, wy, cz, cx, wy, cz + r,
+              cx, wy, cz + r, cx - r, wy, cz,
+              cx - r, wy, cz, cx, wy, cz - r,
+            ],
+            { color: palette.selectOutline, opacity: 0.98, widthPx: 1.8 }
           );
         }
       }
@@ -2137,15 +2229,25 @@ export class CadSceneController {
       for (const pair of pairEndpoints.values()) {
         if (!pair.inSeg || !pair.outSeg) continue;
         const linkCol = pair.valid ? palette.validGhost : palette.invalidGhost;
-        this.previewGroup.add(
-          createCrispLineSegments(
-            [
-              pair.inSeg.x + 0.5, baseY + 0.04, pair.inSeg.y + 0.5,
-              pair.outSeg.x + 0.5, baseY + 0.04, pair.outSeg.y + 0.5,
-            ],
-            { color: linkCol, opacity: 0.94, widthPx: 1.7, dashed: true, dashSize: 0.34, gapSize: 0.22 }
-          )
+        lines.add(
+          [
+            pair.inSeg.x + 0.5, baseY + 0.04, pair.inSeg.y + 0.5,
+            pair.outSeg.x + 0.5, baseY + 0.04, pair.outSeg.y + 0.5,
+          ],
+          { color: linkCol, opacity: 0.94, widthPx: 1.7, dashed: true, dashSize: 0.34, gapSize: 0.22 }
         );
+      }
+      for (const [tris, color] of [
+        [validPadTris, palette.validGhost],
+        [invalidPadTris, palette.invalidGhost],
+      ] as const) {
+        if (tris.length < 9) continue;
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(tris, 3));
+        this.previewGroup.add(new THREE.Mesh(
+          geo,
+          new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })
+        ));
       }
       return;
     }
@@ -2235,7 +2337,7 @@ export class CadSceneController {
             x0 + inset, y + 0.01, z0 + inset, x1 - inset, y + 0.01, z1 - inset,
             x1 - inset, y + 0.01, z0 + inset, x0 + inset, y + 0.01, z1 - inset,
           ];
-          this.previewGroup.add(createCrispLineSegments(pts, { color: col, opacity: 0.98, widthPx: 2.0 }));
+          this.previewLineBatch!.add(pts, { color: col, opacity: 0.98, widthPx: 2.0 });
         } else {
           this.addFlatRectGhost(cx + 0.1, cy + 0.1, cx + 0.9, cy + 0.9, baseY + 0.1, col, 0.42);
         }
@@ -2268,7 +2370,7 @@ export class CadSceneController {
               cxM - arm, y + 0.01, czM - arm, cxM + arm, y + 0.01, czM + arm,
               cxM + arm, y + 0.01, czM - arm, cxM - arm, y + 0.01, czM + arm,
             ];
-            this.previewGroup.add(createCrispLineSegments(pts, { color: col, opacity: 0.98, widthPx: 2.2 }));
+            this.previewLineBatch!.add(pts, { color: col, opacity: 0.98, widthPx: 2.2 });
           }
         } else {
           const gx = Math.floor(state.cursorWorld.x / STATION_UNIT_M);
@@ -2349,7 +2451,7 @@ export class CadSceneController {
         }
       }
 
-      this.addGhostConnectors(this.previewGroup, ghostMod, def, palette, col);
+      this.addGhostConnectors(this.previewLineBatch!, ghostMod, def, palette, col);
       return;
     }
 
@@ -2368,10 +2470,16 @@ export class CadSceneController {
       const col = issue ? palette.invalidGhost : palette.validGhost;
       if (def.kind === 'belt') {
         this.addFlatRectGhost(bx + 0.14, by + 0.14, bx + 0.86, by + 0.86, baseY + 0.09, col, 0.88);
-        const chev = createDirectionalChevron(0.32, col, 0.96);
-        chev.position.set(bx + 0.5, baseY + 0.1, by + 0.5);
-        chev.rotation.y = -state.activeTool.rotation * (Math.PI / 2);
-        this.previewGroup.add(chev);
+        addDirectionalChevron(
+          this.previewLineBatch!,
+          0.32,
+          col,
+          0.96,
+          bx + 0.5,
+          baseY + 0.1,
+          by + 0.5,
+          state.activeTool.rotation
+        );
       } else {
         const ghostBld = {
           id: '__ghost',
@@ -2401,42 +2509,46 @@ export class CadSceneController {
         const dirSign = state.activeTool.undergroundMode === 'out' ? -1 : 1;
         const dx = state.activeTool.rotation === 0 ? 1 : state.activeTool.rotation === 2 ? -1 : 0;
         const dy = state.activeTool.rotation === 1 ? 1 : state.activeTool.rotation === 3 ? -1 : 0;
-        this.previewGroup.add(
-          createCrispLineSegments(
-            [bx + 0.5, baseY + 0.1, by + 0.5, bx + 0.5 + dx * dirSign * maxLen, baseY + 0.1, by + 0.5 + dy * dirSign * maxLen],
-            { color: col, opacity: 0.8, widthPx: 1.15, dashed: true, dashSize: 0.35, gapSize: 0.25 }
-          )
+        this.previewLineBatch!.add(
+          [bx + 0.5, baseY + 0.1, by + 0.5, bx + 0.5 + dx * dirSign * maxLen, baseY + 0.1, by + 0.5 + dy * dirSign * maxLen],
+          { color: col, opacity: 0.8, widthPx: 1.15, dashed: true, dashSize: 0.35, gapSize: 0.25 }
         );
       }
       return;
     }
 
-    // 4. Blueprint Stamp Ghost (O(1) spatial-indexed conflict check; zero cloning of doc.buildings!)
+    // 4. Blueprint Stamp Ghost
     if (state.activeTool.kind === 'stamp-blueprint') {
-      const anchorX = Math.floor(state.cursorWorld.x);
-      const anchorY = Math.floor(state.cursorWorld.y);
-      const anchorFloor = state.focusFloor + state.activeTool.floorOffset;
-      const { modules, buildings } = computeStampCandidates(state.activeTool.blueprint, {
-        x: anchorX,
-        y: anchorY,
-        floor: anchorFloor,
+      const tool = state.activeTool;
+      const bp = tool.blueprint;
+      const anchor = {
+        x: Math.floor(state.cursorWorld.x),
+        y: Math.floor(state.cursorWorld.y),
+        floor: state.focusFloor + tool.floorOffset,
+      };
+      const validation = validateStampBlueprintPlacement(state.doc, bp, anchor, {
+        forceReplace: state.forceReplaceHeld,
       });
-
-      // Tiny module-only doc so we NEVER miss state.doc's WeakMap spatial index!
-      const stampModDoc: BlueprintDocument | null =
-        modules.length > 0 ? { ...state.doc, modules, buildings: [] } : null;
-      const baseIdx = getDocSpatialIndex(state.doc);
-
+      const hasModules = bp.modules.length > 0;
+      const shiftGx = hasModules ? Math.floor(anchor.x / STATION_UNIT_M) : 0;
+      const shiftGy = hasModules ? Math.floor(anchor.y / STATION_UNIT_M) : 0;
+      const shiftX = hasModules ? shiftGx * STATION_UNIT_M : anchor.x;
+      const shiftY = hasModules ? shiftGy * STATION_UNIT_M : anchor.y;
+      const moduleOffset = { gx: shiftGx, gy: shiftGy, floor: anchor.floor };
       const validPts: number[] = [];
       const invalidPts: number[] = [];
 
-      for (const m of modules) {
+      for (let i = 0; i < bp.modules.length; i++) {
+        const m = bp.modules[i];
         const def = getModuleDef(m.type);
         if (!def) continue;
-        const issue = validateModulePlacement(state.doc, m);
-        const isBad = Boolean(issue && !state.forceReplaceHeld);
-        const [minX, minY, maxX, maxY] = getModuleBoundsM(m, def);
-        const y = m.floor * FLOOR_VISUAL_SPACING + 0.08;
+        const isBad = Boolean(validation.moduleIssues[i] && !state.forceReplaceHeld);
+        const [wu, du] = getModuleSizeUnits(def, m.rotation);
+        const minX = (m.gx + shiftGx) * STATION_UNIT_M;
+        const minY = (m.gy + shiftGy) * STATION_UNIT_M;
+        const maxX = (m.gx + shiftGx + wu) * STATION_UNIT_M;
+        const maxY = (m.gy + shiftGy + du) * STATION_UNIT_M;
+        const y = (m.floor + anchor.floor) * FLOOR_VISUAL_SPACING + 0.08;
         const dst = isBad ? invalidPts : validPts;
         dst.push(
           minX + 0.15, y, minY + 0.15, maxX - 0.15, y, minY + 0.15,
@@ -2444,70 +2556,41 @@ export class CadSceneController {
           maxX - 0.15, y, maxY - 0.15, minX + 0.15, y, maxY - 0.15,
           minX + 0.15, y, maxY - 0.15, minX + 0.15, y, minY + 0.15
         );
-        if (modules.length <= 24) {
-          this.addGhostConnectors(this.previewGroup, m, def, palette, isBad ? palette.invalidGhost : palette.validGhost);
+        if (bp.modules.length <= 24) {
+          this.addGhostConnectors(
+            this.previewLineBatch!,
+            m,
+            def,
+            palette,
+            isBad ? palette.invalidGhost : palette.validGhost,
+            moduleOffset
+          );
         }
       }
 
       const maxGhostBlds = 2500;
-      const stepBld = buildings.length > maxGhostBlds ? Math.ceil(buildings.length / maxGhostBlds) : 1;
-      for (let i = 0; i < buildings.length; i += stepBld) {
-        const b = buildings[i];
+      const stepBld = bp.buildings.length > maxGhostBlds ? Math.ceil(bp.buildings.length / maxGhostBlds) : 1;
+      for (let i = 0; i < bp.buildings.length; i += stepBld) {
+        const b = bp.buildings[i];
         const def = getBuildableDef(b.type);
         if (!def) continue;
         const [w, d] = getBuildingSizeCells(def, b.rotation);
-        let isBad = false;
-        // O(w*d) floor + overlap check against cached spatial index
-        for (let dx = 0; dx < w && !isBad; dx++) {
-          for (let dy = 0; dy < d; dy++) {
-            const cx = b.x + dx;
-            const cy = b.y + dy;
-            const onFloor =
-              Boolean(isCellBuildable(state.doc, cx, cy, b.floor)) ||
-              Boolean(stampModDoc && isCellBuildable(stampModDoc, cx, cy, b.floor));
-            if (!onFloor) {
-              isBad = true;
-              break;
-            }
-            if (!state.forceReplaceHeld) {
-              const cellMap = baseIdx.buildingCellByFloor.get(b.floor);
-              const hit = cellMap?.get(packCellKey(cx, cy));
-              if (hit) {
-                if (Array.isArray(hit)) {
-                  for (let k = 0; k < hit.length; k++) {
-                    const eDef = getBuildableDef(hit[k].type);
-                    if (!(def.kind === 'belt' && eDef?.kind === 'belt')) {
-                      isBad = true;
-                      break;
-                    }
-                  }
-                } else {
-                  const eDef = getBuildableDef(hit.type);
-                  if (!(def.kind === 'belt' && eDef?.kind === 'belt')) {
-                    isBad = true;
-                    break;
-                  }
-                }
-              }
-            }
-          }
-        }
-        const y = b.floor * FLOOR_VISUAL_SPACING + 0.09;
+        const isBad = validation.buildingIssues[i] !== null;
+        const x = b.x + shiftX;
+        const y = b.y + shiftY;
+        const floor = b.floor + anchor.floor;
+        const drawY = floor * FLOOR_VISUAL_SPACING + 0.09;
         const dst = isBad ? invalidPts : validPts;
         dst.push(
-          b.x + 0.1, y, b.y + 0.1, b.x + w - 0.1, y, b.y + 0.1,
-          b.x + w - 0.1, y, b.y + 0.1, b.x + w - 0.1, y, b.y + d - 0.1,
-          b.x + w - 0.1, y, b.y + d - 0.1, b.x + 0.1, y, b.y + d - 0.1,
-          b.x + 0.1, y, b.y + d - 0.1, b.x + 0.1, y, b.y + 0.1
+          x + 0.1, drawY, y + 0.1, x + w - 0.1, drawY, y + 0.1,
+          x + w - 0.1, drawY, y + 0.1, x + w - 0.1, drawY, y + d - 0.1,
+          x + w - 0.1, drawY, y + d - 0.1, x + 0.1, drawY, y + d - 0.1,
+          x + 0.1, drawY, y + d - 0.1, x + 0.1, drawY, y + 0.1
         );
       }
 
-      if (validPts.length >= 6) {
-        this.previewGroup.add(createCrispLineSegments(validPts, { color: palette.validGhost, opacity: 0.88, widthPx: 1.3 }));
-      }
-      if (invalidPts.length >= 6) {
-        this.previewGroup.add(createCrispLineSegments(invalidPts, { color: palette.invalidGhost, opacity: 0.9, widthPx: 1.35 }));
-      }
+      this.previewLineBatch!.add(validPts, { color: palette.validGhost, opacity: 0.88, widthPx: 1.3 });
+      this.previewLineBatch!.add(invalidPts, { color: palette.invalidGhost, opacity: 0.9, widthPx: 1.35 });
     }
   }
 
@@ -2516,9 +2599,19 @@ export class CadSceneController {
     palette: CadThemePalette,
     mode: BoxSelectMode = 'replace'
   ): void {
+    const rect = state.boxSelectRect;
+    const key = rect
+      ? `${palette.id}|${mode}|${state.selectionLayerMode}|${state.focusFloor}|${state.hideAbove ? 1 : 0}|${rect.minX},${rect.minY},${rect.maxX},${rect.maxY}`
+      : 'none';
+    if (key === this.lastBoxSelectKey) return;
+    const startedAt = performance.now();
+    this.lastBoxSelectKey = key;
     this.clearGroup(this.boxSelectGroup);
-    if (!state.boxSelectRect) return;
-    const { minX, minY, maxX, maxY } = state.boxSelectRect;
+    if (!rect) {
+      this.perf.recordStage('boxSelect', startedAt);
+      return;
+    }
+    const { minX, minY, maxX, maxY } = rect;
     const w = Math.max(0.2, maxX - minX);
     const d = Math.max(0.2, maxY - minY);
     const cx = (minX + maxX) / 2;
@@ -2561,11 +2654,15 @@ export class CadSceneController {
     });
     edges.position.copy(fill.position);
     this.boxSelectGroup.add(edges);
+    this.perf.recordStage('boxSelect', startedAt);
   }
 
   private tick = (now: number): void => {
     if (this.disposed) return;
+    const workStartedAt = performance.now();
+    this.perf.noteRafFired();
     this.rafId = requestAnimationFrame(this.tick);
+    this.perf.noteRafScheduled();
     const dt = Math.min(0.05, (now - this.lastTime) / 1000);
     this.lastTime = now;
 
@@ -2580,24 +2677,35 @@ export class CadSceneController {
     }
 
     this.rig.update(dt, now);
+    this.beforeRender?.();
     const yScale = this.getCurrentExtrusionScale();
     if (Math.abs(yScale - this.lastExtrusionScale) > 1e-4) {
       this.lastExtrusionScale = yScale;
       this.applyExtrusionScale(yScale);
     }
     this.applyDistanceLodAndFog();
+    const renderStartedAt = performance.now();
     this.renderer.render(this.scene, this.rig.camera);
+    this.perf.recordStage('render', renderStartedAt);
+    this.perf.recordFrame(now, workStartedAt);
   };
 
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.rafId);
+    this.perf.noteRafCancelled();
+    this.beforeRender = null;
     this.clearFloorBuckets();
     this.clearGroup(this.referenceGroup);
     this.clearGroup(this.selectionGroup);
     this.clearGroup(this.dockHintsGroup);
     this.clearGroup(this.previewGroup);
     this.clearGroup(this.boxSelectGroup);
+    this.roundedGrid.mesh.geometry.dispose();
+    (this.roundedGrid.mesh.material as THREE.Material).dispose();
+    if (Object.getOwnPropertyDescriptor(window, '__MS_CAD_PERF__')?.get === this.perfWindowGetter) {
+      delete (window as { __MS_CAD_PERF__?: CadPerfSnapshot }).__MS_CAD_PERF__;
+    }
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);

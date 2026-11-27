@@ -90,6 +90,7 @@ import { PaletteDock } from './ui/PaletteDock';
 import { SimulationPanel, type CheckFocusTarget } from './ui/SimulationPanel';
 
 const EMPTY_SELECTION: SelectionState = { moduleIds: [], buildingIds: [] };
+type PointerSample = Pick<React.PointerEvent<HTMLDivElement>, 'clientX' | 'clientY'>;
 
 function isTextInputFocused(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -198,6 +199,8 @@ export const App: React.FC = () => {
   }, [simReport, activeSimIssueId, showIoSpots]);
 
   const cursorWorldRef = useRef<{ x: number; y: number } | null>(null);
+  const pendingPointerRef = useRef<PointerSample | null>(null);
+  const processedPointerWorldRef = useRef<{ x: number; y: number } | null>(null);
   const hudCoordRef = useRef<HTMLSpanElement | null>(null);
   const hudGridRef = useRef<HTMLSpanElement | null>(null);
   const hudCamRef = useRef<HTMLSpanElement | null>(null);
@@ -460,6 +463,7 @@ export const App: React.FC = () => {
   } | null>(null);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const viewportRectRef = useRef<{ left: number; top: number; width: number; height: number } | null>(null);
   const sceneRef = useRef<CadSceneController | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -622,6 +626,7 @@ export const App: React.FC = () => {
     setHelpOpen(false);
     hideHoverTip();
     updateBoxBadge(false);
+    pendingPointerRef.current = null;
     sceneRef.current?.setCursorWorld(null);
     setCleanView(true);
     showToast(
@@ -706,10 +711,21 @@ export const App: React.FC = () => {
     });
     sceneRef.current = ctrl;
 
-    const ro = new ResizeObserver(() => ctrl.resize());
+    const updateViewportRect = () => {
+      const rect = el.getBoundingClientRect();
+      viewportRectRef.current = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    };
+    updateViewportRect();
+    const ro = new ResizeObserver(() => {
+      updateViewportRect();
+      ctrl.resize();
+    });
     ro.observe(el);
+    window.addEventListener('resize', updateViewportRect);
     return () => {
       ro.disconnect();
+      window.removeEventListener('resize', updateViewportRect);
+      viewportRectRef.current = null;
       ctrl.dispose();
       sceneRef.current = null;
     };
@@ -1156,6 +1172,7 @@ export const App: React.FC = () => {
           dragRef.current.kind = 'none';
           dragRef.current.moved = false;
           dragRef.current.liveSelection = null;
+          pendingPointerRef.current = null;
           sceneRef.current?.setLiveBoxSelect(null);
           updateBoxBadge(false);
           return;
@@ -1512,7 +1529,11 @@ export const App: React.FC = () => {
     const onBlur = () => {
       spaceHeldRef.current = false;
       setForceReplaceHeld(false);
+      pendingPointerRef.current = null;
+      dragRef.current.kind = 'none';
+      dragRef.current.moved = false;
       sceneRef.current?.clearKeys();
+      sceneRef.current?.setCameraDragging(false);
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -1552,10 +1573,9 @@ export const App: React.FC = () => {
   ]);
 
   const clientToWorld = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
-    const el = viewportRef.current;
     const ctrl = sceneRef.current;
-    if (!el || !ctrl) return null;
-    const rect = el.getBoundingClientRect();
+    const rect = viewportRectRef.current;
+    if (!ctrl || !rect || rect.width <= 0 || rect.height <= 0) return null;
     const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
     const hit = ctrl.rig.intersectFocusPlane(ndcX, ndcY);
@@ -1567,7 +1587,9 @@ export const App: React.FC = () => {
     hideHoverTip();
 
     if (stateRef.current.cleanView) {
+      pendingPointerRef.current = null;
       if (e.button === 1 || (e.button === 0 && spaceHeldRef.current)) {
+        sceneRef.current?.setCameraDragging(true);
         dragRef.current = {
           ...dragRef.current,
           kind: 'pan',
@@ -1579,6 +1601,7 @@ export const App: React.FC = () => {
           startWorld: null,
         };
       } else if (e.button === 0 || e.button === 2) {
+        sceneRef.current?.setCameraDragging(true);
         dragRef.current = {
           ...dragRef.current,
           kind: 'clean-orbit',
@@ -1593,10 +1616,9 @@ export const App: React.FC = () => {
       return;
     }
 
-    const world = clientToWorld(e.clientX, e.clientY);
-    if (world) updateLiveCursor(world);
-
     if (e.button === 2) {
+      pendingPointerRef.current = null;
+      sceneRef.current?.setCameraDragging(true);
       dragRef.current = {
         ...dragRef.current,
         kind: 'orbit',
@@ -1610,6 +1632,8 @@ export const App: React.FC = () => {
     }
 
     if (e.button === 1 || (e.button === 0 && spaceHeldRef.current)) {
+      pendingPointerRef.current = null;
+      sceneRef.current?.setCameraDragging(true);
       dragRef.current = {
         ...dragRef.current,
         kind: 'pan',
@@ -1618,11 +1642,12 @@ export const App: React.FC = () => {
         lastX: e.clientX,
         lastY: e.clientY,
         moved: false,
-        startWorld: world,
+        startWorld: null,
       };
       return;
     }
 
+    const world = flushPendingPointer(e);
     if (e.button !== 0 || !world) return;
     const { doc: curDoc, viewMode: vm, focusFloor: fl, activeTool: tool } = stateRef.current;
 
@@ -1851,8 +1876,9 @@ export const App: React.FC = () => {
     };
   };
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const processPointerMove = (e: PointerSample) => {
     const world = stateRef.current.cleanView ? null : clientToWorld(e.clientX, e.clientY);
+    processedPointerWorldRef.current = world;
     if (world) updateLiveCursor(world);
 
     const d = dragRef.current;
@@ -1895,7 +1921,7 @@ export const App: React.FC = () => {
       return;
     }
     if (d.kind === 'pan') {
-      const h = viewportRef.current?.clientHeight || 600;
+      const h = viewportRectRef.current?.height || 600;
       sceneRef.current?.rig.panByScreenDelta(dx, dy, h);
       return;
     }
@@ -1988,9 +2014,53 @@ export const App: React.FC = () => {
     }
   };
 
+  const flushPendingPointer = (sample?: PointerSample): { x: number; y: number } | null => {
+    if (sample) pendingPointerRef.current = { clientX: sample.clientX, clientY: sample.clientY };
+    const pending = pendingPointerRef.current;
+    if (!pending) return null;
+    pendingPointerRef.current = null;
+    processPointerMove(pending);
+    return processedPointerWorldRef.current;
+  };
+
+  useEffect(() => {
+    const ctrl = sceneRef.current;
+    if (!ctrl) return;
+    ctrl.setBeforeRender(() => {
+      flushPendingPointer();
+    });
+    return () => ctrl.setBeforeRender(null);
+  });
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (d.kind === 'orbit' || d.kind === 'clean-orbit' || d.kind === 'pan') {
+      pendingPointerRef.current = null;
+      hideHoverTip();
+      const dx = e.clientX - d.lastX;
+      const dy = e.clientY - d.lastY;
+      d.lastX = e.clientX;
+      d.lastY = e.clientY;
+      if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) >= 5) d.moved = true;
+      if (d.kind === 'pan') {
+        const h = viewportRectRef.current?.height || 600;
+        sceneRef.current?.rig.panByScreenDelta(dx, dy, h);
+      } else {
+        sceneRef.current?.rig.orbitByPixels(dx, dy);
+      }
+      return;
+    }
+
+    pendingPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+    if (d.kind === 'demolish') flushPendingPointer();
+  };
+
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
-    const world = clientToWorld(e.clientX, e.clientY);
+    if (d.kind === 'orbit' || d.kind === 'clean-orbit' || d.kind === 'pan') {
+      sceneRef.current?.setCameraDragging(false);
+    }
+    const world = flushPendingPointer(e);
 
     if (d.kind === 'clean-orbit') {
       if (!d.moved) {
@@ -2214,6 +2284,7 @@ export const App: React.FC = () => {
     dragRef.current.sweepCommitted = false;
     dragRef.current.sweepModCount = 0;
     dragRef.current.sweepBldCount = 0;
+    sceneRef.current?.setCameraDragging(false);
   };
 
   // Native non-passive wheel handler so Shift+Wheel steps floors cleanly without triggering browser scroll!
@@ -2238,7 +2309,8 @@ export const App: React.FC = () => {
       wheelFloorAccumRef.current = 0;
       const ctrl = sceneRef.current;
       if (!ctrl) return;
-      const rect = el.getBoundingClientRect();
+      const rect = viewportRectRef.current;
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
       const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       const hit = ctrl.rig.intersectFocusPlane(ndcX, ndcY);
@@ -2939,7 +3011,18 @@ export const App: React.FC = () => {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={() => {
+            pendingPointerRef.current = null;
+            dragRef.current.kind = 'none';
+            dragRef.current.moved = false;
+            dragRef.current.liveSelection = null;
+            sceneRef.current?.setCameraDragging(false);
+            sceneRef.current?.setLiveBoxSelect(null);
+            updateBoxBadge(false);
+          }}
           onPointerLeave={() => {
+            pendingPointerRef.current = null;
+            processedPointerWorldRef.current = null;
             updateLiveCursor(null);
             hideHoverTip();
           }}

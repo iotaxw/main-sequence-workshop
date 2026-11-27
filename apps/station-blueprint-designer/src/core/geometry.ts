@@ -347,8 +347,14 @@ export function getModuleWorldDockPorts(mod: PlacedModule, def: StationModuleDef
 }
 
 /** Transform module connectors into world coordinates */
-export function getModuleWorldConnectors(mod: PlacedModule, def: StationModuleDef): WorldConnector[] {
-  const [cx, cy] = getModuleCenterM(mod, def);
+export function getModuleWorldConnectors(
+  mod: PlacedModule,
+  def: StationModuleDef,
+  offset: { gx: number; gy: number; floor: number } = { gx: 0, gy: 0, floor: 0 }
+): WorldConnector[] {
+  const [wu, du] = getModuleSizeUnits(def, mod.rotation);
+  const cx = (mod.gx + offset.gx + wu / 2) * STATION_UNIT_M;
+  const cy = (mod.gy + offset.gy + du / 2) * STATION_UNIT_M;
   const [ox, oy] = getModuleOriginOffsetM(def);
   return def.connectors.map((c) => {
     // Native GridLocation unit = 4m (16m module has edge at ±2 native units = ±8m), shifted to centered module frame
@@ -361,7 +367,7 @@ export function getModuleWorldConnectors(mod: PlacedModule, def: StationModuleDe
       type: c.type,
       x: cx + rx,
       y: cy + ry,
-      floor: mod.floor + c.floorOffset,
+      floor: mod.floor + offset.floor + c.floorOffset,
       rotation: normalizeRotation(c.rotation + mod.rotation),
       ...(isVert ? { verticalFace: c.floorOffset > 0 ? 'top' : 'bottom' } : {}),
     };
@@ -388,13 +394,16 @@ export function areWorldConnectorsMated(a: WorldConnector, b: WorldConnector): b
  * Collect open (not internally mated) world connectors of a candidate module set
  * — shared identically by single-module placement and multi-module blueprint pasting.
  */
-export function collectOpenGhostConnectors(ghostModules: readonly PlacedModule[]): WorldConnector[] {
+export function collectOpenGhostConnectors(
+  ghostModules: readonly PlacedModule[],
+  offset: { gx: number; gy: number; floor: number } = { gx: 0, gy: 0, floor: 0 }
+): WorldConnector[] {
   const raw: WorldConnector[] = [];
   const byKey = new Map<string, WorldConnector[]>();
   for (const mod of ghostModules) {
     const def = getModuleDef(mod.type);
     if (!def) continue;
-    for (const c of getModuleWorldConnectors(mod, def)) {
+    for (const c of getModuleWorldConnectors(mod, def, offset)) {
       raw.push(c);
       const k = getWorldConnectorKey(c);
       const list = byKey.get(k);
@@ -475,6 +484,36 @@ function isLocalCellOnSurface(lx: number, ly: number, surf: StationFloorSurfaceD
   return true;
 }
 
+export function isCellBuildableOnModule(
+  mod: PlacedModule,
+  def: StationModuleDef,
+  cellX: number,
+  cellY: number,
+  floor: number,
+  offset: { gx: number; gy: number; floor: number } = { gx: 0, gy: 0, floor: 0 }
+): boolean {
+  if (!def.hasFactoryFloor) return false;
+  const floorOffset = floor - mod.floor - offset.floor;
+  if (floorOffset < 0 || floorOffset >= def.sizeUnits[2]) return false;
+  let surf: StationFloorSurfaceDef | undefined;
+  for (let s = 0; s < def.floors.length; s++) {
+    if (def.floors[s].floorOffset === floorOffset) {
+      surf = def.floors[s];
+      break;
+    }
+  }
+  if (!surf) return false;
+
+  const [wu, du] = getModuleSizeUnits(def, mod.rotation);
+  const mcx = (mod.gx + offset.gx + wu / 2) * STATION_UNIT_M;
+  const mcy = (mod.gy + offset.gy + du / 2) * STATION_UNIT_M;
+  const invRot = normalizeRotation(4 - mod.rotation);
+  const [lx, ly] = rotateVec2(cellX + 0.5 - mcx, cellY + 0.5 - mcy, invRot);
+  const halfW = (def.sizeUnits[0] * STATION_UNIT_M) / 2;
+  const halfD = (def.sizeUnits[1] * STATION_UNIT_M) / 2;
+  return isLocalCellOnSurface(lx, ly, surf, halfW, halfD);
+}
+
 /** Check whether a 1m world cell (cx, cy) on `floor` lies on ANY buildable station surface — O(1) via module spatial index */
 export function isCellBuildable(
   doc: BlueprintDocument,
@@ -490,31 +529,10 @@ export function isCellBuildable(
   const mods = grid.get(packCellKey(ugx, ugy));
   if (!mods) return null;
 
-  const wx = cellX + 0.5;
-  const wy = cellY + 0.5;
   for (let i = 0; i < mods.length; i++) {
     const mod = mods[i];
     const def = getModuleDef(mod.type);
-    if (!def || !def.hasFactoryFloor) continue;
-    const floorOffset = floor - mod.floor;
-    if (floorOffset < 0 || floorOffset >= def.sizeUnits[2]) continue;
-    let surf: StationFloorSurfaceDef | undefined;
-    for (let s = 0; s < def.floors.length; s++) {
-      if (def.floors[s].floorOffset === floorOffset) {
-        surf = def.floors[s];
-        break;
-      }
-    }
-    if (!surf) continue;
-
-    const [mcx, mcy] = getModuleCenterM(mod, def);
-    const invRot = normalizeRotation(4 - mod.rotation);
-    const [lx, ly] = rotateVec2(wx - mcx, wy - mcy, invRot);
-    const halfW = (def.sizeUnits[0] * STATION_UNIT_M) / 2;
-    const halfD = (def.sizeUnits[1] * STATION_UNIT_M) / 2;
-    if (isLocalCellOnSurface(lx, ly, surf, halfW, halfD)) {
-      return mod;
-    }
+    if (def && isCellBuildableOnModule(mod, def, cellX, cellY, floor)) return mod;
   }
   return null;
 }
@@ -797,9 +815,12 @@ export interface UndergroundLink {
  * 2. Fallback for legacy/unencoded blueprints pairs remaining undergrounds same-tier first, then nearest
  *    inline matching 'out' within `maxLength` (default 8 cells).
  */
+const undergroundLinksCache = new WeakMap<PlacedBuilding[], UndergroundLink[]>();
+
 export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink[] {
+  const cached = undergroundLinksCache.get(doc.buildings);
+  if (cached) return cached;
   const undergrounds = getBuildingSpatialIndex(doc.buildings).undergrounds;
-  if (undergrounds.length === 0) return [];
   const byId = new Map(undergrounds.map((u) => [u.id, u]));
   const links: UndergroundLink[] = [];
   const used = new Set<string>();
@@ -838,33 +859,39 @@ export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink
     });
   }
 
+  const exitsByCell = new Map<string, PlacedBuilding[]>();
+  for (const candidate of undergrounds) {
+    if (used.has(candidate.id) || candidate.undergroundMode !== 'out') continue;
+    if (candidate.undergroundPartnerId && byId.has(candidate.undergroundPartnerId)) continue;
+    const key = `${candidate.floor}|${candidate.rotation}|${packCellKey(candidate.x, candidate.y)}`;
+    const list = exitsByCell.get(key);
+    if (list) list.push(candidate);
+    else exitsByCell.set(key, [candidate]);
+  }
+
   // Pass 2: Backward-compatible fallback for unencoded undergrounds (prefer same-tier first, then nearest inline)
   for (const entry of undergrounds) {
     if (used.has(entry.id) || entry.undergroundMode === 'out') continue;
     const def = getBuildableDef(entry.type)!;
     const [dx, dy] = rotationToDelta(entry.rotation);
     const maxLen = def.maxLength ?? 8;
-
     let best: PlacedBuilding | null = null;
-    let bestSameTier = false;
-    let bestDist = maxLen + 1;
-    for (const candidate of undergrounds) {
-      if (candidate.id === entry.id || used.has(candidate.id)) continue;
-      if (candidate.undergroundPartnerId && byId.has(candidate.undergroundPartnerId)) continue;
-      if (!isInlineValid(entry, candidate, maxLen)) continue;
-      const candDef = getBuildableDef(candidate.type);
-      const sameTier = candDef?.tier === def.tier;
-      const along = (candidate.x - entry.x) * dx + (candidate.y - entry.y) * dy;
-      if (
-        !best ||
-        (sameTier && !bestSameTier) ||
-        (sameTier === bestSameTier && along < bestDist)
-      ) {
-        best = candidate;
-        bestSameTier = sameTier;
-        bestDist = along;
+
+    search: for (let along = 1; along <= maxLen; along++) {
+      const x = entry.x + dx * along;
+      const y = entry.y + dy * along;
+      const candidates = exitsByCell.get(`${entry.floor}|${entry.rotation}|${packCellKey(x, y)}`);
+      if (!candidates) continue;
+      for (const candidate of candidates) {
+        if (candidate.id === entry.id || used.has(candidate.id)) continue;
+        if (getBuildableDef(candidate.type)?.tier === def.tier) {
+          best = candidate;
+          break search;
+        }
+        if (!best) best = candidate;
       }
     }
+
     if (best) {
       used.add(entry.id);
       used.add(best.id);
@@ -880,6 +907,7 @@ export function computeUndergroundLinks(doc: BlueprintDocument): UndergroundLink
       });
     }
   }
+  undergroundLinksCache.set(doc.buildings, links);
   return links;
 }
 

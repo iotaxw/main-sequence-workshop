@@ -12,6 +12,7 @@ import {
   getModuleSizeUnits,
   getModuleSpatialIndex,
   isCellBuildable,
+  isCellBuildableOnModule,
   isPortToggleable,
   type MirrorAxis,
   normalizeRotation,
@@ -1031,8 +1032,15 @@ export function extractSelectionAsBlueprint(
   };
 }
 
+const blueprintBoundsCache = new WeakMap<
+  BlueprintDocument,
+  { width: number; depth: number; floors: number }
+>();
+
 /** Get bounding box of a blueprint in 1m units (for rotation/mirroring/preview) */
 export function getBlueprintBoundsM(bp: BlueprintDocument): { width: number; depth: number; floors: number } {
+  const cached = blueprintBoundsCache.get(bp);
+  if (cached) return cached;
   let maxX = 0;
   let maxY = 0;
   let maxF = 1;
@@ -1050,7 +1058,9 @@ export function getBlueprintBoundsM(bp: BlueprintDocument): { width: number; dep
     maxY = Math.max(maxY, b.y + d);
     maxF = Math.max(maxF, b.floor + 1);
   }
-  return { width: Math.max(1, maxX), depth: Math.max(1, maxY), floors: maxF };
+  const bounds = { width: Math.max(1, maxX), depth: Math.max(1, maxY), floors: maxF };
+  blueprintBoundsCache.set(bp, bounds);
+  return bounds;
 }
 
 /** Rotate an entire blueprint 90° CW (`delta=1`) or CCW (`delta=-1`), preserving relative positions */
@@ -1192,14 +1202,211 @@ export function computeStampCandidates(
   return { modules, buildings };
 }
 
+export interface StampPlacementValidation {
+  moduleIssues: Array<string | null>;
+  buildingIssues: Array<string | null>;
+  message: string | null;
+}
+
+export function validateStampBlueprintPlacement(
+  doc: BlueprintDocument,
+  bp: BlueprintDocument,
+  anchor: { x: number; y: number; floor: number },
+  options: { forceReplace?: boolean } = {}
+): StampPlacementValidation {
+  const forceReplace = Boolean(options.forceReplace);
+  const hasModules = bp.modules.length > 0;
+  const shiftGx = hasModules ? Math.floor(anchor.x / STATION_UNIT_M) : 0;
+  const shiftGy = hasModules ? Math.floor(anchor.y / STATION_UNIT_M) : 0;
+  const shiftX = hasModules ? shiftGx * STATION_UNIT_M : anchor.x;
+  const shiftY = hasModules ? shiftGy * STATION_UNIT_M : anchor.y;
+  const moduleOffset = { gx: shiftGx, gy: shiftGy, floor: anchor.floor };
+  const moduleIssues: Array<string | null> = new Array(bp.modules.length).fill(null);
+  const buildingIssues: Array<string | null> = new Array(bp.buildings.length).fill(null);
+  let message: string | null = null;
+  const recordIssue = (issues: Array<string | null>, index: number, issue: string): void => {
+    issues[index] = issue;
+    if (!forceReplace && message === null) message = issue;
+  };
+
+  const baseIdx = getDocSpatialIndex(doc);
+  const ghostModGridByFloor = new Map<number, Map<number, PlacedModule[]>>();
+  for (let i = 0; i < bp.modules.length; i++) {
+    const m = bp.modules[i];
+    const def = getModuleDef(m.type);
+    if (!def) {
+      recordIssue(moduleIssues, i, `未知空间站模块类型：${m.type}`);
+      continue;
+    }
+    const gx = m.gx + shiftGx;
+    const gy = m.gy + shiftGy;
+    const floor = m.floor + anchor.floor;
+    const [wu, du, hu] = getModuleSizeUnits(def, m.rotation);
+    let conflictMsg: string | null = null;
+    for (let df = 0; df < hu && !conflictMsg; df++) {
+      const f = floor + df;
+      const baseGrid = baseIdx.moduleGridByFloor.get(f);
+      const localGrid = ghostModGridByFloor.get(f);
+      for (let dx = 0; dx < wu && !conflictMsg; dx++) {
+        for (let dy = 0; dy < du; dy++) {
+          const k = packCellKey(gx + dx, gy + dy);
+          if (localGrid?.has(k)) {
+            conflictMsg = '蓝图内部模块位置重叠';
+            break;
+          }
+          const hits = baseGrid?.get(k);
+          if (hits && hits.length > 0) {
+            const mDef = getModuleDef(hits[0].type);
+            conflictMsg = `与已有模块「${mDef?.nameZh ?? hits[0].type}」空间重叠`;
+            break;
+          }
+        }
+      }
+    }
+    if (conflictMsg) {
+      recordIssue(moduleIssues, i, conflictMsg);
+      continue;
+    }
+
+    for (let df = 0; df < hu; df++) {
+      const f = floor + df;
+      let grid = ghostModGridByFloor.get(f);
+      if (!grid) {
+        grid = new Map();
+        ghostModGridByFloor.set(f, grid);
+      }
+      for (let dx = 0; dx < wu; dx++) {
+        for (let dy = 0; dy < du; dy++) {
+          const k = packCellKey(gx + dx, gy + dy);
+          const list = grid.get(k);
+          if (list) list.push(m);
+          else grid.set(k, [m]);
+        }
+      }
+    }
+  }
+
+  const isOnStampFloor = (x: number, y: number, floor: number): boolean => {
+    if (isCellBuildable(doc, x, y, floor)) return true;
+    const grid = ghostModGridByFloor.get(floor);
+    const candidates = grid?.get(packCellKey(Math.floor(x / STATION_UNIT_M), Math.floor(y / STATION_UNIT_M)));
+    if (!candidates) return false;
+    for (const m of candidates) {
+      const def = getModuleDef(m.type);
+      if (def && isCellBuildableOnModule(m, def, x, y, floor, moduleOffset)) return true;
+    }
+    return false;
+  };
+
+  interface LocalStampBuilding {
+    def: BuildableDef;
+    active: boolean;
+  }
+  const removeIds = new Set<string>();
+  const addedBldByCell = new Map<number, Map<number, LocalStampBuilding>>();
+  for (let i = 0; i < bp.buildings.length; i++) {
+    const b = bp.buildings[i];
+    const def = getBuildableDef(b.type);
+    if (!def) {
+      recordIssue(buildingIssues, i, `未知建筑类型：${b.type}`);
+      continue;
+    }
+    const x = b.x + shiftX;
+    const y = b.y + shiftY;
+    const floor = b.floor + anchor.floor;
+    const [w, d] = getBuildingSizeCells(def, b.rotation);
+    let floorOk = true;
+    for (let dx = 0; dx < w && floorOk; dx++) {
+      for (let dy = 0; dy < d; dy++) {
+        if (!isOnStampFloor(x + dx, y + dy, floor)) {
+          floorOk = false;
+          break;
+        }
+      }
+    }
+    if (!floorOk) {
+      recordIssue(buildingIssues, i, '超出可建造工厂地板范围（墙体、镂空或无地板）');
+      continue;
+    }
+
+    const baseFloorMap = baseIdx.buildingCellByFloor.get(floor);
+    const localFloorMap = addedBldByCell.get(floor);
+    const isBelt = def.kind === 'belt';
+    const localToReplace: LocalStampBuilding[] = [];
+    const baseToReplace: string[] = [];
+    let conflictMsg: string | null = null;
+    for (let dx = 0; dx < w && !conflictMsg; dx++) {
+      for (let dy = 0; dy < d; dy++) {
+        const k = packCellKey(x + dx, y + dy);
+        const localHit = localFloorMap?.get(k);
+        if (localHit?.active) {
+          if (forceReplace || (isBelt && localHit.def.kind === 'belt')) {
+            localToReplace.push(localHit);
+          } else {
+            conflictMsg = `与已有「${localHit.def.nameZh}」占地冲突`;
+            break;
+          }
+        }
+        const baseHit = baseFloorMap?.get(k);
+        if (baseHit) {
+          if (Array.isArray(baseHit)) {
+            for (const existing of baseHit) {
+              if (removeIds.has(existing.id)) continue;
+              const eDef = getBuildableDef(existing.type);
+              if (forceReplace || (isBelt && eDef?.kind === 'belt')) {
+                baseToReplace.push(existing.id);
+              } else {
+                conflictMsg = `与已有「${eDef?.nameZh ?? existing.type}」占地冲突`;
+                break;
+              }
+            }
+          } else if (!removeIds.has(baseHit.id)) {
+            const eDef = getBuildableDef(baseHit.type);
+            if (forceReplace || (isBelt && eDef?.kind === 'belt')) {
+              baseToReplace.push(baseHit.id);
+            } else {
+              conflictMsg = `与已有「${eDef?.nameZh ?? baseHit.type}」占地冲突`;
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (conflictMsg) {
+      recordIssue(buildingIssues, i, conflictMsg);
+      continue;
+    }
+
+    for (const local of localToReplace) local.active = false;
+    for (const id of baseToReplace) removeIds.add(id);
+    const placed: LocalStampBuilding = { def, active: true };
+    let targetFloorMap = localFloorMap;
+    if (!targetFloorMap) {
+      targetFloorMap = new Map();
+      addedBldByCell.set(floor, targetFloorMap);
+    }
+    for (let dx = 0; dx < w; dx++) {
+      for (let dy = 0; dy < d; dy++) {
+        targetFloorMap.set(packCellKey(x + dx, y + dy), placed);
+      }
+    }
+  }
+
+  return { moduleIssues, buildingIssues, message };
+}
+
 export function stampBlueprintCmd(
   doc: BlueprintDocument,
   bp: BlueprintDocument,
   anchor: { x: number; y: number; floor: number },
   options: { forceReplace?: boolean } = {}
 ): CommandResult {
-  const { modules: candMods, buildings: candBlds } = computeStampCandidates(bp, anchor);
   const forceReplace = Boolean(options.forceReplace);
+  if (!forceReplace) {
+    const validation = validateStampBlueprintPlacement(doc, bp, anchor);
+    if (validation.message) return { doc, changed: false, message: validation.message };
+  }
+  const { modules: candMods, buildings: candBlds } = computeStampCandidates(bp, anchor);
 
   // 1. Validate & accumulate station modules in one pass using spatial grid
   const baseIdx = getDocSpatialIndex(doc);

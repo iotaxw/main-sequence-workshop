@@ -14,6 +14,8 @@ import type { ModuleConfigPatch } from '../core/commands';
 import {
   findBuildingsInsideModule,
   getBuildingSizeCells,
+  getBuildingSpatialIndex,
+  getModuleSpatialIndex,
   getModuleWorldDockPorts,
   getToggleablePorts,
   isPortToggleable,
@@ -215,14 +217,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const [recipeQuery, setRecipeQuery] = useState('');
   const [itemQuery, setItemQuery] = useState('');
 
-  const selectedModules = useMemo(
-    () => doc.modules.filter((m) => selection.moduleIds.includes(m.id)),
-    [doc.modules, selection.moduleIds]
-  );
-  const selectedBuildings = useMemo(
-    () => doc.buildings.filter((b) => selection.buildingIds.includes(b.id)),
-    [doc.buildings, selection.buildingIds]
-  );
+  const selectedModules = useMemo(() => {
+    const byId = getModuleSpatialIndex(doc.modules).moduleById;
+    return selection.moduleIds.map((id) => byId.get(id)).filter((m): m is PlacedModule => Boolean(m));
+  }, [doc.modules, selection.moduleIds]);
+  const selectedBuildings = useMemo(() => {
+    const byId = getBuildingSpatialIndex(doc.buildings).buildingById;
+    return selection.buildingIds.map((id) => byId.get(id)).filter((b): b is PlacedBuilding => Boolean(b));
+  }, [doc.buildings, selection.buildingIds]);
 
   const totalSelected = selectedModules.length + selectedBuildings.length;
   if (totalSelected === 0) return null;
