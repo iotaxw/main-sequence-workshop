@@ -1,0 +1,224 @@
+{
+  "format": "station-blueprint-designer",
+  "formatVersion": 2,
+  "id": "ssb-manual-test-mother-station",
+  "name": "局部蓝图测试母站",
+  "description": "5模块手工测试母站：含跨门传送带、跨模块地下带对、骑跨门洞工作台与2x2双层阳台，用于测试Shift+左键多选、跨边缘自动剔除与全套拼接微调。",
+  "gameData": {
+    "buildId": "26639889",
+    "catalogVersion": 1
+  },
+  "modules": [
+    {
+      "id": "m_cmd",
+      "type": "BPO_CommandModule",
+      "gx": -1,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 2,
+      "nativeMeta": {
+        "block_id": 1001
+      }
+    },
+    {
+      "id": "m_a",
+      "type": "BPO_Station_01",
+      "gx": 0,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0,
+      "nativeMeta": {
+        "block_id": 1002
+      }
+    },
+    {
+      "id": "m_b",
+      "type": "BPO_Station_01",
+      "gx": 1,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0,
+      "nativeMeta": {
+        "block_id": 1003
+      }
+    },
+    {
+      "id": "m_c",
+      "type": "BPO_Station_01",
+      "gx": 0,
+      "gy": 1,
+      "floor": 0,
+      "rotation": 0,
+      "nativeMeta": {
+        "block_id": 1004
+      }
+    },
+    {
+      "id": "m_balcony",
+      "type": "BPO_Station_02",
+      "gx": 1,
+      "gy": 1,
+      "floor": 0,
+      "rotation": 0,
+      "nativeMeta": {
+        "block_id": 1005
+      }
+    }
+  ],
+  "buildings": [
+    {
+      "id": "a_ref_1",
+      "type": "DAT_Refinery",
+      "x": 3,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "a_ref_2",
+      "type": "DAT_Refinery",
+      "x": 7,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "a_split",
+      "type": "DAT_Splitter_2",
+      "x": 5,
+      "y": 7,
+      "floor": 0,
+      "rotation": 0,
+      "priorityOut": 2,
+      "portFilters": {
+        "0": "ITEM_HydrogenFuel"
+      }
+    },
+    {
+      "id": "a_belt1",
+      "type": "DAT_ConveyorBelt2",
+      "x": 6,
+      "y": 7,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "a_belt2",
+      "type": "DAT_ConveyorBelt2",
+      "x": 7,
+      "y": 7,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "cb_door_a",
+      "type": "DAT_ConveyorBelt2",
+      "x": 15,
+      "y": 7,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "cb_door_b",
+      "type": "DAT_ConveyorBelt2",
+      "x": 16,
+      "y": 7,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "cb_ug_in",
+      "type": "DAT_UndergroundBelt_2",
+      "x": 12,
+      "y": 10,
+      "floor": 0,
+      "rotation": 0,
+      "undergroundMode": "in",
+      "undergroundPartnerId": "cb_ug_out"
+    },
+    {
+      "id": "cb_ug_out",
+      "type": "DAT_UndergroundBelt_2",
+      "x": 18,
+      "y": 10,
+      "floor": 0,
+      "rotation": 0,
+      "undergroundMode": "out",
+      "undergroundPartnerId": "cb_ug_in"
+    },
+    {
+      "id": "cb_wb_ac",
+      "type": "DAT_WorkbenchMachine",
+      "x": 6,
+      "y": 14,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "b_ref_1",
+      "type": "DAT_Refinery",
+      "x": 20,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "b_ug_in",
+      "type": "DAT_UndergroundBelt_2",
+      "x": 20,
+      "y": 12,
+      "floor": 0,
+      "rotation": 0,
+      "undergroundMode": "in",
+      "undergroundPartnerId": "b_ug_out"
+    },
+    {
+      "id": "b_ug_out",
+      "type": "DAT_UndergroundBelt_2",
+      "x": 25,
+      "y": 12,
+      "floor": 0,
+      "rotation": 0,
+      "undergroundMode": "out",
+      "undergroundPartnerId": "b_ug_in"
+    },
+    {
+      "id": "bal_f0_ref1",
+      "type": "DAT_Refinery",
+      "x": 22,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "bal_f0_ref2",
+      "type": "DAT_Refinery",
+      "x": 27,
+      "y": 22,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "bal_f1_ref1",
+      "type": "DAT_Refinery",
+      "x": 17,
+      "y": 22,
+      "floor": 1,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "bal_f1_belt",
+      "type": "DAT_ConveyorBelt2",
+      "x": 18,
+      "y": 26,
+      "floor": 1,
+      "rotation": 1
+    }
+  ]
+}

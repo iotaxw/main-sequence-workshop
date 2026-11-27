@@ -1,0 +1,38 @@
+{
+  "format": "station-blueprint-designer",
+  "formatVersion": 2,
+  "id": "sec-04-l-shell",
+  "name": "04-L形三块纯壳体",
+  "description": "3块L形纯壳体测试：验证允许F镜像、Tab多朝向轮换，且确认退出设计器后不弹出室内机台搭建确认条。",
+  "gameData": {
+    "buildId": "26639889",
+    "catalogVersion": 1
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "type": "BPO_Station_01",
+      "gx": 0,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "m2",
+      "type": "BPO_Station_01",
+      "gx": 1,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "m3",
+      "type": "BPO_Station_01",
+      "gx": 0,
+      "gy": 1,
+      "floor": 0,
+      "rotation": 0
+    }
+  ],
+  "buildings": []
+}

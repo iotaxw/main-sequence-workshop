@@ -95,10 +95,44 @@ local function gameplay_statics()
     return class:GetCDO()
 end
 
+local CONTROLLER_CLASSES = {
+    "BP_PlayerController_C",
+    "BP_DesignerController_C",
+}
+
+local function inspect_controller_candidates(visitor)
+    if type(FindAllOf) == "function" then
+        local seen = {}
+        for _, class_name in ipairs(CONTROLLER_CLASSES) do
+            local ok, objects = pcall(FindAllOf, class_name)
+            if ok and type(objects) == "table" then
+                for _, controller in ipairs(objects) do
+                    if native.is_valid(controller) then
+                        local addr_ok, address = pcall(function()
+                            return controller:GetAddress()
+                        end)
+                        local key = addr_ok and address or controller
+                        if not seen[key] then
+                            seen[key] = true
+                            visitor(controller)
+                        end
+                    end
+                end
+            end
+        end
+        return true
+    end
+    if type(ForEachUObject) == "function" then
+        ForEachUObject(visitor)
+        return true
+    end
+    return false
+end
+
 function M.find_session()
     local sessions = {}
     local session_error
-    ForEachUObject(function(controller)
+    inspect_controller_candidates(function(controller)
         local controller_class = native.class_name(controller)
         if controller_class ~= "BP_PlayerController_C" and controller_class ~= "BP_DesignerController_C" then
             return

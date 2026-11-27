@@ -2,25 +2,35 @@
 
 《主星序 Main Sequence》空间站局部蓝图 Mod（UE4SS Lua + `ms-blueprint-codec` 共享编解码核心），在原生空间站规划界面内支持 `Shift + 左键` 多选、含室内机台双协议保存（自动剔除跨模块边缘建筑并明文报告）、目标块悬浮快贴 + `H` 锁定微调，以及退出规划后的两阶段原生室内机台搭建。
 
-## 克隆后一键启动调试（零修改游戏目录）
+## 版本与 UE4SS 兼容说明（重要）
 
-前置条件：已安装 [UE4SS](INSTALL.md)、PowerShell 7 (`pwsh`) 与 Rust 工具链（`cargo`，首次自动编译 `ms-blueprint-codec.exe`）。
+- **游戏 Build `26885430` 及以上（当前 Steam 最新版）**：必须安装 **UE4SS `4.0.0`**（官方 RE-UE4SS 4.0.0 发布版）；旧版 `3.0.1-beta` 注入 Build `26885430` 后会在数秒内触发访问违例崩溃。
+- **UE4SS 4.0.0 启动稳定性**：`ssb_native_designer.lua::find_session` 与 `ssb_machine_paste.lua` 均优先采用定向 `FindAllOf` 查找（不再在游戏启动阶段执行全量 `ForEachUObject` 回调），避免 UE4SS 4.0.0 GameThread 访问违例。
+- **历史游戏 Build `26639889`**：兼容 UE4SS `3.0.1-beta`；当前内置目录数据（`ssb_catalog_data.lua` / `catalog-26639889.json`）基于 Build `26639889` 生成。
+
+## 克隆后一键启动调试（兼 Agent 自助分发指引）
+
+前置条件：已按 [INSTALL.md](INSTALL.md) 放入与游戏版本匹配的 **UE4SS `4.0.0`**、PowerShell 7 (`pwsh`) 与 Rust 工具链（`cargo`，首次自动编译 `ms-blueprint-codec.exe`）。
 
 ```powershell
 git clone https://github.com/iotaxw/main-sequence-workshop.git
 cd main-sequence-workshop
 
-# 1. 自动编译编解码器 + 写入全套测试蓝图 + 免改游戏目录直接拉起游戏调试：
+# 1. 自动编译 ms-blueprint-codec.exe + 从 test-blueprints/ 播种全套 5 份测试蓝图 + 免改游戏目录直接拉起游戏：
 pwsh -NoProfile -File apps/station-section-blueprints/scripts/start-debug.ps1 -SeedTestBlueprints
 ```
 
-- 脚本会自动从 Steam 库探测 `MainSequence-Win64-Shipping.exe`（也可显式传 `-GameExe "<路径>"` 或设置 `$env:MAIN_SEQUENCE_EXE`）。
-- 启动时通过 `UE4SS_MODS_PATHS` 直接挂载本仓库的 `apps/station-section-blueprints/Mods`，**不复制也不修改游戏安装目录**。
-- 调试期间直接修改 `apps/station-section-blueprints/Mods/StationSectionBlueprints/Scripts/*.lua`，在 UE4SS 控制台按 `Ctrl+R` 热重载即可生效，日志位于 `<游戏Win64目录>\ue4ss\UE4SS.log`。
-- 仅编译不启动游戏：
-  ```powershell
-  pwsh -NoProfile -File apps/station-section-blueprints/scripts/start-debug.ps1 -BuildOnly -Package
-  ```
+### Agent 跨机自助配置清单
+1. **核对 UE4SS 版本**：确认 `<游戏>\Windows\MainSequence\Binaries\Win64\ue4ss\` 为 **UE4SS `4.0.0`**（如为旧版 `3.0.1-beta` 在 Build `26885430`+ 上会秒崩）。
+2. **一键编译并播种测试蓝图**：运行上述 `start-debug.ps1 -SeedTestBlueprints`（若只需编译与播种不启动游戏，加 `-BuildOnly`）。仓库内 [test-blueprints/](test-blueprints/README.md) 已直接附带全部 5 份原创合成测试蓝图（Canonical JSON v2），脚本会自动将其编码并安装到：
+   - 原版整站设计：`%LOCALAPPDATA%\MainSequence\Saved\SaveGames\Designs\局部蓝图测试母站.sav`
+   - 局部蓝图库：`%LOCALAPPDATA%\MainSequence\Saved\SaveGames\StationSectionBlueprints\`（含 `基础对接/` 与 `异形与多层/` 共 4 套局部蓝图与校验过的 `index.ssb`）
+3. **快速进入创造模式测试**：公开仓库遵循隐私与存档边界**不提交玩家世界存档文件（`*_M.sav` / `*_S.sav`）**；游戏启动后在主菜单直接 **新建游戏 → 勾选创造模式**（约 3 秒），进任意空间站规划器先用原版载入 **`局部蓝图测试母站`**，即可完整测试全部 5 类场景（具体验收项见 [test-blueprints/README.md](test-blueprints/README.md)）。
+4. **零侵入热重载调试**：启动脚本通过 `UE4SS_MODS_PATHS` 挂载本仓库的 `apps/station-section-blueprints/Mods`，**不修改游戏安装目录**；修改 `Mods/StationSectionBlueprints/Scripts/*.lua` 后在 UE4SS 控制台按 `Ctrl+R` 即可热重载，日志位于 `<游戏Win64目录>\ue4ss\UE4SS.log`。
+5. **自定义路径或仅打包**：可显式传 `-GameExe "<路径>"` 或设 `$env:MAIN_SEQUENCE_EXE`；仅编译并打发布 zip：
+   ```powershell
+   pwsh -NoProfile -File apps/station-section-blueprints/scripts/start-debug.ps1 -BuildOnly -Package
+   ```
 
 ## 核心操作与快捷键
 
@@ -29,9 +39,10 @@ pwsh -NoProfile -File apps/station-section-blueprints/scripts/start-debug.ps1 -S
 - **异形/多层 `H` 锁定微调**：按 `H` 或鼠标中键锁定全息预览并释放 3D 视角自由观察（如 `BPO_Station_02` 双层阳台）；锁定期间方向键按相机朝向平移 ±16m、`PageUp`/`PageDown` 升降 ±1 层（8m）、`R` 原地旋转不丢偏移、`Tab` 继续轮换、`Enter`/左键确认、再按 `H` 解锁。
 - **两阶段室内机台搭建**：壳体确认并应用改动退出规划界面后，HUD 弹出「待建室内机台」确认条，点击「开始搭建」后先执行 1m 占用栅格防重叠拦截，再通过原生 `AddBuildCommand` 与强类型 `AddInputCommand` 分批建造并还原配方、地下带长度、分流器优先级与过滤槽（完全服从原生生存材料与科技校验，零作弊）。
 
-## 当前实测状态（Build `26639889`）
+## 当前实测状态
 
-- **已实机验证通过**：32/32 Lua 行为单测 + 15/15 Rust 编解码测试；原生设计器严格会话、`Shift+左键` 增删复选、含机器双协议保存与删除、`UpdatePreview` 钩子接管与 `bSnapping` 恢复、UI 挂载与 15 项快捷键注册；空背包生存材料门禁拦截、1m 防重叠拦截、以及精炼厂配方（`REC_HydrogenFuel`）、二级地下带长度（`Length=6`）与二级分流器优先级/过滤槽（`PriorityOutputIndex=2`, `ITEM_HydrogenFuel`）逐机回读。
+- **Build `26639889` 全链路实机通过**：33/33 Lua 行为单测 + 15/15 Rust 编解码测试；原生设计器严格会话、`Shift+左键` 增删复选、含机器双协议保存与删除、`UpdatePreview` 钩子接管与 `bSnapping` 恢复、UI 挂载与 15 项快捷键注册；空背包生存材料门禁拦截、1m 防重叠拦截、以及精炼厂配方（`REC_HydrogenFuel`）、二级地下带长度（`Length=6`）与二级分流器优先级/过滤槽（`PriorityOutputIndex=2`, `ITEM_HydrogenFuel`）逐机回读。
+- **Build `26885430` + UE4SS `4.0.0`**：已实测定位并修复 `find_session` 全量 `ForEachUObject` 启动崩溃（改为定向 `FindAllOf`）；Build `26885430` 完整交互与新增内容兼容性待后续按需复测。
 - **待继续复测边界**：`MachinePortInput` 端口开关、`SetPaletteInput` 非零调色板、`LogisticFilterInput`、`SetTextInputCommand`、`CreativeContainerInput` 的逐项真机回读，以及多人联机同步边界。
 
 ## 安装、单元测试与打包

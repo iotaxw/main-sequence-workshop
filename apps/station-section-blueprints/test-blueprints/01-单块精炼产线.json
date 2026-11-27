@@ -1,0 +1,69 @@
+{
+  "format": "station-blueprint-designer",
+  "formatVersion": 2,
+  "id": "sec-01-single-refinery",
+  "name": "01-单块精炼产线",
+  "description": "1x1常规快贴测试：含2台氢燃料精炼厂、分流器(优先口2+过滤氢燃料)与传送带；测试悬停单块快贴、R旋转、F禁镜像与退出后机台搭建。",
+  "gameData": {
+    "buildId": "26639889",
+    "catalogVersion": 1
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "type": "BPO_Station_01",
+      "gx": 0,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0
+    }
+  ],
+  "buildings": [
+    {
+      "id": "s1_ref1",
+      "type": "DAT_Refinery",
+      "x": 3,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "s1_ref2",
+      "type": "DAT_Refinery",
+      "x": 8,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "s1_split",
+      "type": "DAT_Splitter_2",
+      "x": 6,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0,
+      "priorityOut": 2,
+      "portFilters": {
+        "0": "ITEM_HydrogenFuel"
+      }
+    },
+    {
+      "id": "s1_belt1",
+      "type": "DAT_ConveyorBelt2",
+      "x": 7,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "s1_belt2",
+      "type": "DAT_ConveyorBelt2",
+      "x": 8,
+      "y": 8,
+      "floor": 0,
+      "rotation": 0
+    }
+  ]
+}

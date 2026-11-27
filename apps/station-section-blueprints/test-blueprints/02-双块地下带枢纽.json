@@ -1,0 +1,88 @@
+{
+  "format": "station-blueprint-designer",
+  "formatVersion": 2,
+  "id": "sec-02-dual-underground",
+  "name": "02-双块地下带枢纽",
+  "description": "2x1多接口对齐测试：测试双接口优先排序、Tab/Shift+Tab轮换对接位、Alt自由网格，以及跨内门地下带(Length=7)与分流器还原。",
+  "gameData": {
+    "buildId": "26639889",
+    "catalogVersion": 1
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "type": "BPO_Station_01",
+      "gx": 0,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "m2",
+      "type": "BPO_Station_01",
+      "gx": 1,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0
+    }
+  ],
+  "buildings": [
+    {
+      "id": "s2_ref1",
+      "type": "DAT_Refinery",
+      "x": 4,
+      "y": 3,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "s2_split",
+      "type": "DAT_Splitter_2",
+      "x": 12,
+      "y": 7,
+      "floor": 0,
+      "rotation": 0,
+      "priorityOut": 1,
+      "portFilters": {
+        "0": "ITEM_HydrogenFuel"
+      }
+    },
+    {
+      "id": "s2_belt1",
+      "type": "DAT_ConveyorBelt2",
+      "x": 15,
+      "y": 7,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "s2_belt2",
+      "type": "DAT_ConveyorBelt2",
+      "x": 16,
+      "y": 7,
+      "floor": 0,
+      "rotation": 0
+    },
+    {
+      "id": "s2_ug_in",
+      "type": "DAT_UndergroundBelt_2",
+      "x": 12,
+      "y": 11,
+      "floor": 0,
+      "rotation": 0,
+      "undergroundMode": "in",
+      "undergroundPartnerId": "s2_ug_out"
+    },
+    {
+      "id": "s2_ug_out",
+      "type": "DAT_UndergroundBelt_2",
+      "x": 18,
+      "y": 11,
+      "floor": 0,
+      "rotation": 0,
+      "undergroundMode": "out",
+      "undergroundPartnerId": "s2_ug_in"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "format": "station-blueprint-designer",
+  "formatVersion": 2,
+  "id": "sec-03-balcony-2floor",
+  "name": "03-双层阳台工厂",
+  "description": "2x2x2异形多层测试：重点测试H键/中键锁定预览、自由旋转3D视角检查2F挑台、方向键(±16m)与PageUp/Down(±1层)微调及R原地旋转。",
+  "gameData": {
+    "buildId": "26639889",
+    "catalogVersion": 1
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "type": "BPO_Station_02",
+      "gx": 0,
+      "gy": 0,
+      "floor": 0,
+      "rotation": 0
+    }
+  ],
+  "buildings": [
+    {
+      "id": "s3_f0_ref1",
+      "type": "DAT_Refinery",
+      "x": 6,
+      "y": 6,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "s3_f0_ref2",
+      "type": "DAT_Refinery",
+      "x": 12,
+      "y": 6,
+      "floor": 0,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "s3_f1_ref1",
+      "type": "DAT_Refinery",
+      "x": 1,
+      "y": 6,
+      "floor": 1,
+      "rotation": 0,
+      "recipeId": "REC_HydrogenFuel"
+    },
+    {
+      "id": "s3_f1_belt",
+      "type": "DAT_ConveyorBelt2",
+      "x": 2,
+      "y": 10,
+      "floor": 1,
+      "rotation": 1
+    }
+  ]
+}

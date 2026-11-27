@@ -613,4 +613,53 @@ test("catalog resolves canonical and native alias recipe/item names", function()
     equal(catalog.item_by_alias["reinforcedplate"], "ITEM_ReinforcedPlates")
 end)
 
+test("find_session prefers FindAllOf over ForEachUObject to avoid UE4SS 4.0 startup crashes", function()
+    local prev_find_all = _G.FindAllOf
+    local prev_for_each = _G.ForEachUObject
+    local prev_flags = _G.EObjectFlags
+    _G.EObjectFlags = { RF_ClassDefaultObject = 1, RF_ArchetypeObject = 2 }
+    local function make_obj(cls, addr, extra)
+        local obj = extra or {}
+        function obj:IsValid() return true end
+        function obj:HasAnyFlags() return false end
+        function obj:GetAddress() return addr end
+        function obj:GetFullName() return cls .. " /Game/Test." .. cls .. "_" .. tostring(addr) end
+        function obj:GetClass()
+            return { GetFName = function() return { ToString = function() return cls end } end }
+        end
+        return obj
+    end
+    local controller = make_obj("BP_PlayerController_C", 1001, {})
+    local hud = make_obj("WBP_DesignerHUD_C", 1005, {})
+    local designer = make_obj("Designer", 1004, { Controller = controller })
+    local component = make_obj("BPC_Designer_C", 1003, { Designer = designer })
+    local pawn = make_obj("BP_DesignerPawn_C", 1002, { BPC_Designer = component, DesignerHUD = hud })
+    controller.Pawn = pawn
+
+    local queried = {}
+    local foreach_called = false
+    _G.FindAllOf = function(name)
+        queried[#queried + 1] = name
+        if name == "BP_PlayerController_C" then
+            return { controller }
+        end
+        return {}
+    end
+    _G.ForEachUObject = function()
+        foreach_called = true
+        error("ForEachUObject must not be called when FindAllOf is available")
+    end
+
+    local ok, session, err = pcall(designer_native.find_session)
+    _G.FindAllOf = prev_find_all
+    _G.ForEachUObject = prev_for_each
+    _G.EObjectFlags = prev_flags
+    truthy(ok, tostring(session))
+    truthy(session, tostring(err))
+    equal(foreach_called, false)
+    equal(#queried, 2)
+    equal(session.designer:GetAddress(), 1004)
+    equal(session.hud:GetAddress(), 1005)
+end)
+
 print(string.format("%d tests passed", passed))
