@@ -2297,8 +2297,9 @@ body,
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
-.floor-rail-eye:hover {
+.floor-rail-eye:hover:not(.active) {
   background: var(--bg-surface-hover);
+  border-color: var(--border-mid);
   color: var(--text-bright);
 }
 
@@ -2314,17 +2315,19 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
   color: var(--text-muted);
   font-size: 9px;
   cursor: pointer;
   padding: 0;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
 .floor-rail-step:hover:not(:disabled) {
   background: var(--bg-surface-hover);
+  border-color: var(--border-subtle);
   color: var(--text-bright);
 }
 
@@ -2363,16 +2366,22 @@ body,
   font-weight: 500;
   cursor: pointer;
   padding: 0;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, opacity 120ms ease;
-}
-
-.floor-rail-pill:hover {
-  background: var(--bg-surface-hover);
-  color: var(--text-bright);
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease, opacity 140ms ease;
 }
 
 .floor-rail-pill.populated {
   color: var(--text-main);
+}
+
+.floor-rail-pill.dimmed {
+  opacity: 0.42;
+}
+
+.floor-rail-pill:hover:not(.active) {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-mid);
+  color: var(--text-bright);
+  opacity: 1;
 }
 
 .floor-rail-pill.active {
@@ -2380,10 +2389,6 @@ body,
   border-color: var(--border-focus);
   color: var(--text-bright);
   font-weight: 600;
-}
-
-.floor-rail-pill.dimmed {
-  opacity: 0.42;
 }
 
 .floor-rail-dot {
