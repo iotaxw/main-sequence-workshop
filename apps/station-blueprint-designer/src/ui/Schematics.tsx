@@ -482,17 +482,21 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
     }
     if (id === 'BPO_Frame_01' || id.startsWith('BPO_FrameSlope_')) {
       return (
-        <>
-          <rect x="4.5" y="4.5" width="15" height="15" rx="1.2" {...s} />
+        <g transform="rotate(180 12 12)">
           {id === 'BPO_Frame_01' ? (
             <>
-              <line x1="5" y1="5" x2="19" y2="19" {...dim} />
-              <line x1="19" y1="5" x2="5" y2="19" {...dim} />
+              {/* Real open cross-shaped (+) tubular corridor */}
+              <polygon points="9,4 15,4 15,9 20,9 20,15 15,15 15,20 9,20 9,15 4,15 4,9 9,9" {...s} />
+              <rect x="9.5" y="9.5" width="5" height="5" rx="1" {...dim} />
             </>
           ) : (
-            <line x1="5" y1="18.5" x2="19" y2="5.5" {...s} />
+            <>
+              {/* Real cantilever triangular frame slope */}
+              <path d="M5,7 V17 H10 L19,14 V10 L10,7 Z" {...s} />
+              <line x1="9" y1="8.5" x2="17" y2="12" {...dim} />
+            </>
           )}
-        </>
+        </g>
       );
     }
     if (id === 'BPO_LadderBlock') {
@@ -510,10 +514,10 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
     if (id === 'BPO_LandingGear_01') {
       return (
         <>
-          <rect x="6" y="4.5" width="12" height="7" rx="1.5" {...s} />
-          <line x1="9" y1="11.5" x2="7" y2="18.5" {...s} />
-          <line x1="15" y1="11.5" x2="17" y2="18.5" {...s} />
-          <line x1="4.5" y1="18.5" x2="19.5" y2="18.5" {...s} />
+          <line x1="4" y1="12" x2="20" y2="12" {...dim} />
+          <rect x="8.5" y="4.5" width="7" height="4.5" rx="1" {...s} />
+          <rect x="8.5" y="15" width="7" height="4.5" rx="1" {...s} />
+          <line x1="12" y1="9" x2="12" y2="15" {...s} />
         </>
       );
     }
@@ -523,62 +527,92 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
       const relic = id.startsWith('BPO_Thruster_04');
       return (
         <g transform="rotate(180 12 12)">
-          <polygon points="8.5,5.5 19.5,7.5 19.5,16.5 8.5,18.5" {...s} />
-          <line x1="4" y1="8.5" x2="8" y2="8.5" {...s} />
-          <line x1="3" y1="12" x2="8" y2="12" {...s} />
-          <line x1="4" y1="15.5" x2="8" y2="15.5" {...s} />
-          {relic && <polyline points="12,9.5 15.5,12 12,14.5" {...dim} />}
-          {(large || med) && <line x1="14" y1="6.8" x2="14" y2="17.2" {...dim} />}
-          {large && <line x1="11" y1="6.2" x2="11" y2="17.8" {...dim} />}
+          {relic ? (
+            <>
+              {/* Real elongated 18m relic thruster with split tail fins & dashed 1-cell hint */}
+              <path d="M4,8.5 L15,7.5 Q19.5,8 20,12 Q19.5,16 15,16.5 L4,15.5 L7,13.5 L7,10.5 Z" {...s} />
+              <line x1="2.5" y1="10.2" x2="7.5" y2="10.2" {...s} />
+              <line x1="2.5" y1="13.8" x2="7.5" y2="13.8" {...s} />
+              <rect x="11" y="6.2" width="9.5" height="11.6" rx="1" strokeDasharray="2 1.5" {...dim} />
+            </>
+          ) : large ? (
+            <>
+              <rect x="9.5" y="4.5" width="10.5" height="15" rx="1.8" {...s} />
+              <polygon points="4.5,6 9.5,5.5 9.5,9 4.5,8.5" {...s} />
+              <polygon points="4,10.5 9.5,10 9.5,14 4,13.5" {...s} />
+              <polygon points="4.5,15.5 9.5,15 9.5,18.5 4.5,18" {...s} />
+            </>
+          ) : med ? (
+            <>
+              <path d="M8.5,7 H19.5 Q20.5,12 19.5,17 H8.5 Z" {...s} />
+              <polygon points="3.5,9 8.5,8 8.5,16 3.5,15" {...s} />
+              <line x1="12" y1="12" x2="18.5" y2="12" {...dim} />
+            </>
+          ) : (
+            <>
+              {/* Real side-pod small thruster with stepped twin cones */}
+              <path d="M8,8.5 L15.5,7.5 Q19.5,8 19.8,12 Q19.5,15.5 15.5,16 H8 Z" {...s} />
+              <line x1="3.5" y1="10.2" x2="8" y2="10.2" {...s} />
+              <line x1="4.5" y1="13.8" x2="8" y2="13.8" {...s} />
+              <rect x="11.5" y="6.8" width="8.8" height="10.4" rx="1" strokeDasharray="2 1.5" {...dim} />
+            </>
+          )}
         </g>
       );
     }
     if (id === 'BPO_ReactorBlock_Small') {
-      // 3-fin radial fusion reactor matching 3D CAD silhouette
+      // Real D-shaped semicircular hull (flat +X bow, curved -X stern) with solid circular fusion cap
       return (
-        <>
-          <polygon points="12,5.8 17.4,9 17.4,15 12,18.2 6.6,15 6.6,9" {...dim} />
-          <circle cx="12" cy="12" r="2.6" {...s} />
-          <line x1="12" y1="3.5" x2="12" y2="9.2" {...s} />
-          <line x1="4.7" y1="16.2" x2="9.7" y2="13.3" {...s} />
-          <line x1="19.3" y1="16.2" x2="14.3" y2="13.3" {...s} />
-        </>
+        <g transform="rotate(180 12 12)">
+          <path d="M19,5 H11.5 A7,7 0 0,0 11.5,19 H19 Z" {...s} />
+          <circle cx="13.2" cy="12" r="3.4" {...s} />
+          <circle cx="13.2" cy="12" r="1.2" {...dim} />
+        </g>
       );
     }
     if (id === 'BPO_WarpDriveBlock' || id === 'BPO_InterstellarWarpDriveBlock') {
-      // Twin flanking longitudinal warp coils + central diamond singularity
+      // Real D-shaped semicircular hull with large HOLLOW toroidal warp ring (vs solid-core Reactor!)
       const inter = id === 'BPO_InterstellarWarpDriveBlock';
       return (
-        <>
-          <rect x="4.5" y="4.5" width="15" height="3.2" rx="1" {...s} />
-          <rect x="4.5" y="16.3" width="15" height="3.2" rx="1" {...s} />
-          <polygon points="12,8.6 15.6,12 12,15.4 8.4,12" {...s} />
-          <circle cx="12" cy="12" r="1.2" {...dim} />
-          {inter && (
+        <g transform="rotate(180 12 12)">
+          {inter ? (
             <>
-              <line x1="3" y1="9" x2="3" y2="15" {...dim} />
-              <line x1="21" y1="9" x2="21" y2="15" {...dim} />
+              <rect x="5" y="4" width="14" height="16" rx="1.5" {...s} />
+              <circle cx="12" cy="12" r="5" {...s} />
+              <circle cx="12" cy="12" r="2.4" {...dim} />
+            </>
+          ) : (
+            <>
+              <path d="M19,5 H11.5 A7,7 0 0,0 11.5,19 H19 Z" {...s} />
+              <circle cx="12.2" cy="12" r="5.2" {...dim} />
+              <circle cx="12.2" cy="12" r="2.7" {...s} />
             </>
           )}
-        </>
+        </g>
       );
     }
     if (id === 'BPO_ShipContainerBlock') {
+      // Real twin parallel cargo racks with central walkway corridor
       return (
         <>
-          <rect x="4" y="4" width="16" height="16" rx="2" {...s} />
-          <line x1="12" y1="4.5" x2="12" y2="19.5" {...dim} />
-          <line x1="4.5" y1="12" x2="19.5" y2="12" {...dim} />
+          <rect x="4" y="4.5" width="16" height="5.2" rx="1" {...s} />
+          <rect x="4" y="14.3" width="16" height="5.2" rx="1" {...s} />
+          <line x1="8" y1="4.5" x2="8" y2="9.7" {...dim} />
+          <line x1="12" y1="4.5" x2="12" y2="9.7" {...dim} />
+          <line x1="16" y1="4.5" x2="16" y2="9.7" {...dim} />
+          <line x1="8" y1="14.3" x2="8" y2="19.5" {...dim} />
+          <line x1="12" y1="14.3" x2="12" y2="19.5" {...dim} />
+          <line x1="16" y1="14.3" x2="16" y2="19.5" {...dim} />
         </>
       );
     }
     if (id === 'BPO_WorkstationBlock') {
+      // Real half-depth trapezoidal workstation bay
       return (
-        <>
-          <rect x="4" y="6" width="16" height="12" rx="2" {...s} />
-          <circle cx="9" cy="12" r="2.3" {...dim} />
-          <rect x="13.5" y="9.8" width="4.2" height="4.4" rx="0.8" {...dim} />
-        </>
+        <g transform="rotate(180 12 12)">
+          <polygon points="4.5,13 19.5,13 17.5,20 6.5,20" {...s} />
+          <circle cx="12" cy="16.5" r="1.8" {...dim} />
+        </g>
       );
     }
     if (id === 'BPO_Hangar_2') {
@@ -592,47 +626,51 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
     }
     if (id === 'BPO_AstronomicScanner' || id === 'BPO_BiosampleCollector') {
       return (
-        <>
-          <circle cx="12" cy="12" r="7" {...s} />
-          <circle cx="12" cy="12" r="3" {...dim} />
+        <g transform="rotate(180 12 12)">
+          <rect x="5" y="4.5" width="14" height="15" rx="1.5" {...s} />
           {id === 'BPO_AstronomicScanner' ? (
-            <line x1="12" y1="5" x2="17.5" y2="12" {...s} />
+            <>
+              <path d="M18.5,7 A5.5,5.5 0 0,0 18.5,17" {...s} />
+              <line x1="8" y1="12" x2="16" y2="12" {...dim} />
+            </>
           ) : (
             <>
-              <circle cx="12" cy="8.2" r="1" {...s} />
-              <circle cx="8.8" cy="14" r="1" {...s} />
-              <circle cx="15.2" cy="14" r="1" {...s} />
+              <line x1="14" y1="7" x2="20" y2="7" {...s} />
+              <line x1="14" y1="10.3" x2="20" y2="10.3" {...s} />
+              <line x1="14" y1="13.7" x2="20" y2="13.7" {...s} />
+              <line x1="14" y1="17" x2="20" y2="17" {...s} />
             </>
           )}
-        </>
+        </g>
       );
     }
     if (id.startsWith('BPO_CannonBlock')) {
       return (
         <g transform="rotate(180 12 12)">
-          <rect x="4" y="7.5" width="9" height="9" rx="2" {...s} />
-          <line x1="13" y1="10" x2="20.5" y2="10" {...s} />
-          <line x1="13" y1="14" x2="20.5" y2="14" {...s} />
+          <rect x="4" y="7.5" width="8.5" height="9" rx="1.8" {...s} />
+          <line x1="12.5" y1="9.6" x2="21" y2="9.6" {...s} />
+          <line x1="12.5" y1="14.4" x2="21" y2="14.4" {...s} />
         </g>
       );
     }
     if (id.startsWith('BPO_MiningLaserBlock')) {
+      // Real thick single central mining barrel with dorsal radiator ribs
       return (
         <g transform="rotate(180 12 12)">
-          <rect x="4" y="8" width="8" height="8" rx="2" {...s} />
-          <line x1="12" y1="12" x2="21" y2="12" {...s} />
-          <line x1="11.5" y1="7.5" x2="18.5" y2="10" {...dim} />
-          <line x1="11.5" y1="16.5" x2="18.5" y2="14" {...dim} />
+          <rect x="4.5" y="7.8" width="8" height="8.4" rx="1.6" {...s} />
+          <rect x="12.5" y="10.2" width="8.5" height="3.6" rx="0.8" {...s} />
+          <line x1="7.5" y1="9" x2="7.5" y2="15" {...dim} />
+          <line x1="10.5" y1="9" x2="10.5" y2="15" {...dim} />
         </g>
       );
     }
     if (id === 'BPO_LanceBlock') {
+      // Real sleek narrow spinal lance
       return (
         <g transform="rotate(180 12 12)">
-          <rect x="3" y="8" width="15" height="8" rx="1.5" {...dim} />
-          <line x1="4" y1="10.5" x2="21" y2="10.5" {...s} />
-          <line x1="4" y1="13.5" x2="21" y2="13.5" {...s} />
-          <polyline points="18,9.5 21,12 18,14.5" {...s} />
+          <rect x="3" y="9" width="6" height="6" rx="1" {...s} />
+          <rect x="9" y="10.6" width="12.2" height="2.8" rx="0.6" {...s} />
+          <line x1="12" y1="12" x2="19" y2="12" {...dim} />
         </g>
       );
     }
@@ -648,28 +686,37 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
       );
     }
     if (id.startsWith('BPO_ShipLaserTurretBlock')) {
+      // Real 6-petal radial star Point Defence turret!
       return (
-        <g transform="rotate(180 12 12)">
-          <circle cx="10.5" cy="12" r="5" {...s} />
-          <line x1="15.5" y1="12" x2="21" y2="12" {...s} />
-          <circle cx="10.5" cy="12" r="1.6" {...dim} />
-        </g>
+        <>
+          <circle cx="12" cy="12" r="3.4" {...s} />
+          <line x1="12" y1="4.2" x2="12" y2="8.4" {...s} />
+          <line x1="12" y1="15.6" x2="12" y2="19.8" {...s} />
+          <line x1="5.2" y1="8.1" x2="8.9" y2="10.2" {...s} />
+          <line x1="15.1" y1="13.8" x2="18.8" y2="15.9" {...s} />
+          <line x1="5.2" y1="15.9" x2="8.9" y2="13.8" {...s} />
+          <line x1="15.1" y1="10.2" x2="18.8" y2="8.1" {...s} />
+        </>
       );
     }
     if (id.startsWith('BPO_TractorBeamBlock')) {
+      // Real compact square base + centered circular tractor dish
       return (
         <g transform="rotate(180 12 12)">
-          <rect x="4.5" y="7.5" width="7.5" height="9" rx="2" {...s} />
-          <path d="M14,7.5 A6,6 0 0,1 14,16.5" {...s} />
-          <path d="M17.5,5.5 A8.5,8.5 0 0,1 17.5,18.5" {...dim} />
+          <rect x="5.5" y="6.5" width="12.5" height="11" rx="2" {...s} />
+          <circle cx="12.5" cy="12" r="3.2" {...s} />
+          <circle cx="12.5" cy="12" r="1.2" {...dim} />
         </g>
       );
     }
     if (id.startsWith('BPO_ShipShieldGenerator_01')) {
+      // Real flat horizontal X-braced twin-truss emitter frame!
       return (
         <>
-          <path d="M12,3.5 L19,6.5 V12.5 C19,16.5 16,19.2 12,20.5 C8,19.2 5,16.5 5,12.5 V6.5 Z" {...s} />
-          <circle cx="12" cy="11.5" r="2.6" {...dim} />
+          <rect x="4" y="7" width="16" height="10" rx="1.8" {...s} />
+          <line x1="5.5" y1="8.2" x2="18.5" y2="15.8" {...s} />
+          <line x1="18.5" y1="8.2" x2="5.5" y2="15.8" {...s} />
+          <line x1="4.5" y1="12" x2="19.5" y2="12" {...dim} />
         </>
       );
     }

@@ -99,6 +99,7 @@ import { CadCameraRig, MAX_DISTANCE } from '../renderer/camera-rig';
 import { CrispLineBatcher } from '../renderer/crisp-lines';
 import { CadPerfMetrics } from '../renderer/perf-metrics';
 import { createRoundedGridOverlay } from '../renderer/rounded-grid-shader';
+import { buildShipModuleArt } from '../renderer/ship-line-art';
 import { CAD_THEMES } from '../renderer/theme';
 
 function computeLegacyUndergroundLinksForTest(doc: ReturnType<typeof createEmptyBlueprint>) {
@@ -3069,5 +3070,33 @@ describe('Ship Blueprint Mode (Phase 1-3)', () => {
     // Switching back to station mode restores yaw = 0
     rig.setFrameSpacing(10, false, 0);
     expect(rig.currentYawRad).toBeCloseTo(0, 4);
+  });
+
+  it('builds valid true-to-game 3D CAD geometry for all 45 ship modules with dashed collision hints on overhanging visuals', () => {
+    const overhangIds = new Set([
+      'BPO_Thruster_02R',
+      'BPO_Thruster_02L',
+      'BPO_Thruster_04R',
+      'BPO_Thruster_04L',
+      'BPO_Thruster_05',
+      'BPO_Cockpit_03',
+      'BPO_AstronomicScanner',
+      'BPO_BiosampleCollector',
+    ]);
+    for (const def of SHIP_MODULES) {
+      const mod = { id: `m_${def.id}`, type: def.id, gx: 0, gy: 0, floor: 0, rotation: 0 as const };
+      const art = buildShipModuleArt(mod, def, 0, 1.0, false, CAD_THEMES['platinum-gold']);
+      expect(art.roofHeight, def.id).toBeGreaterThan(0);
+      expect(art.extrudeGroup.children.length, `${def.id} children`).toBeGreaterThan(0);
+
+      let hasDashedCollision = false;
+      art.extrudeGroup.traverse((obj) => {
+        const mat = (obj as THREE.Mesh).material as { dashed?: boolean } | undefined;
+        if (mat?.dashed) hasDashedCollision = true;
+      });
+      if (overhangIds.has(def.id)) {
+        expect(hasDashedCollision, `${def.id} should include dashed collision footprint hint`).toBe(true);
+      }
+    }
   });
 });
