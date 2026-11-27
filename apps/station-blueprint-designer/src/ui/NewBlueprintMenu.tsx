@@ -63,24 +63,21 @@ export const NewBlueprintMenu: React.FC<NewBlueprintMenuProps> = ({
 
       {open && (
         <div className={`new-bp-popover align-${align}`} role="menu">
-          <div className="interop-section-title">{t('新建蓝图类型', 'Blueprint Type')}</div>
           <button
             type="button"
-            className="interop-action-btn row primary"
+            className="new-bp-item"
             role="menuitem"
             onClick={() => choose('station')}
           >
-            <span className="interop-action-main">{t('空间站蓝图', 'Station Blueprint')}</span>
-            <span className="interop-tag">{t('空间站', 'Station')}</span>
+            {t('空间站', 'Station')}
           </button>
           <button
             type="button"
-            className="interop-action-btn row reserved"
+            className="new-bp-item reserved"
             role="menuitem"
             onClick={() => choose('ship')}
           >
-            <span className="interop-action-main">{t('飞船蓝图', 'Ship Blueprint')}</span>
-            <span className="interop-tag muted">{t('即将支持', 'Soon')}</span>
+            {t('飞船', 'Ship')}
           </button>
         </div>
       )}
