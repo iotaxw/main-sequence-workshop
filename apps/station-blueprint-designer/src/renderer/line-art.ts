@@ -64,8 +64,17 @@ function pushLoop(out: number[], pts: Array<[number, number]>, y = 0): void {
   }
 }
 
-function pushRect(out: number[], hw: number, hd: number, y = 0, chamfer = 0): void {
-  pushLoop(out, getChamferLoop(hw, hd, chamfer), y);
+function pushRect(out: number[], hw: number, hd: number, y = 0, chamfer = 0, cx = 0, cz = 0): void {
+  const pts = getChamferLoop(hw, hd, chamfer);
+  if (cx === 0 && cz === 0) {
+    pushLoop(out, pts, y);
+  } else {
+    pushLoop(
+      out,
+      pts.map(([x, z]) => [x + cx, z + cz]),
+      y
+    );
+  }
 }
 
 function pushArc(
@@ -1859,6 +1868,8 @@ export function buildShipModuleArt(
 
   const primaryPts: number[] = [];
   const detailPts: number[] = [];
+  const accentPts: number[] = [];
+  let accentColor: number | null = null;
   let roofHeight = Math.max(2.6, Math.min(8.2, def.heightSpanM * 0.92));
 
   // Helper: map actor-local (ax, az) into module-centered frame
@@ -2031,18 +2042,24 @@ export function buildShipModuleArt(
         extrudeGroup,
         nozzleR,
         nozzleR * 0.82,
-        10,
+        isRelic ? 6 : 10,
         roofHeight * 0.18,
         roofHeight * 0.86,
         0,
         fillUpper,
         primaryPts,
         detailPts,
-        { cx: nozzleXs + nozzleR * 0.55, cz: nz, ribCount: 4 }
+        { cx: nozzleXs + nozzleR * 0.55, cz: nz, ribCount: isRelic ? 6 : 4 }
       );
       // Aft thrust exhaust lines pointing -X
       pushSeg(primaryPts, nozzleXs - 0.2, nz - nozzleR * 0.45, nozzleXs - 1.35, nz - nozzleR * 0.6, roofHeight * 0.52);
       pushSeg(primaryPts, nozzleXs - 0.2, nz + nozzleR * 0.45, nozzleXs - 1.35, nz + nozzleR * 0.6, roofHeight * 0.52);
+    }
+    if (isRelic) {
+      // Relic angular shroud chevron & cool cyan harmonic ring to distinguish from basic thruster
+      accentColor = palette.researchTint;
+      pushPolygon(accentPts, 1.35, 6, roofHeight + 0.04, 0, -0.35, cowlingCz);
+      pushChevron(accentPts, 1.15, cowlingCz, 1.8, roofHeight + 0.04);
     }
     // Side mount flange indicator
     if (id.endsWith('R') || isLeft) {
@@ -2050,31 +2067,70 @@ export function buildShipModuleArt(
       pushSeg(primaryPts, -2.4, mountZ, 2.4, mountZ, roofHeight * 0.5, roofHeight * 0.5);
     }
   } else if (id === 'BPO_ReactorBlock_Small') {
-    roofHeight = 3.85;
-    addChamferPrism(extrudeGroup, hw - 0.3, hd - 0.25, 0, 2.2, 0.75, fillBase, primaryPts, detailPts);
-    // Cylindrical magnetic containment reactor core
-    addPolyDrum(extrudeGroup, 2.65, 2.3, 12, 2.2, roofHeight, 0, fillUpper, primaryPts, detailPts, { ribCount: 6 });
-    pushPolygon(primaryPts, 1.2, 8, roofHeight + 0.03);
-  } else if (id === 'BPO_WarpDriveBlock' || id === 'BPO_InterstellarWarpDriveBlock') {
-    const isInter = id === 'BPO_InterstellarWarpDriveBlock';
-    roofHeight = isInter ? 7.1 : 3.75;
-    addChamferPrism(extrudeGroup, hw - 0.22, hd - 0.22, 0, roofHeight * 0.56, 1.0, fillBase, primaryPts, detailPts);
-    // Concentric warp field containment coils
-    const rOuter = isInter ? 6.6 : 2.95;
-    const rInner = isInter ? 3.8 : 1.55;
-    addPolyDrum(extrudeGroup, rOuter, rOuter * 0.92, 16, roofHeight * 0.56, roofHeight, 0, fillUpper, primaryPts, detailPts, {
-      ribCount: 8,
+    // Unmistakable Fusion Reactor: octagonal deck + 3 radial cooling fins (120°) + hex core in warm gold accent
+    roofHeight = 3.95;
+    accentColor = palette.powerTint;
+    addChamferPrism(extrudeGroup, hw - 0.28, hd - 0.28, 0, 1.9, 1.15, fillBase, primaryPts, detailPts);
+    // Compact hexagonal magnetic core column
+    addPolyDrum(extrudeGroup, 1.85, 1.45, 6, 1.9, roofHeight, Math.PI / 6, fillUpper, primaryPts, detailPts, {
+      ribCount: 6,
     });
-    pushPolygon(primaryPts, rInner, 12, roofHeight + 0.04);
-    if (isInter) {
-      // Twin flanking field stabilizer nacelles along ±Z
-      for (const sz of [-1, 1]) {
-        addRectBlock(extrudeGroup, 0, sz * (hd - 2.3), hw - 1.4, 1.35, roofHeight * 0.56, roofHeight * 0.9, fillUpper, primaryPts, detailPts);
+    // Three 120° radial heat-sink fins extending from core to deck corners
+    for (let k = 0; k < 3; k++) {
+      const a = (k * Math.PI * 2) / 3 + Math.PI / 6;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const px = -sa * 0.32;
+      const pz = ca * 0.32;
+      const r0 = 1.45;
+      const r1 = 3.25;
+      const yTop = 3.35;
+      // Fin top ridge & outer drop
+      pushSeg(accentPts, ca * r0, sa * r0, ca * r1, sa * r1, yTop, 2.35);
+      pushSeg(primaryPts, ca * r0 + px, sa * r0 + pz, ca * r1 + px, sa * r1 + pz, yTop - 0.15, 2.15);
+      pushSeg(primaryPts, ca * r0 - px, sa * r0 - pz, ca * r1 - px, sa * r1 - pz, yTop - 0.15, 2.15);
+      pushSeg(detailPts, ca * r1, sa * r1, ca * r1, sa * r1, 1.9, 2.35);
+    }
+    // Core fusion triad ring in warm champagne gold
+    pushPolygon(accentPts, 1.38, 6, roofHeight + 0.04, Math.PI / 6);
+    pushPolygon(accentPts, 0.72, 3, roofHeight + 0.05, Math.PI / 6);
+  } else if (id === 'BPO_WarpDriveBlock' || id === 'BPO_InterstellarWarpDriveBlock') {
+    // Unmistakable Warp Drive: twin flanking longitudinal warp coils + suspended diamond singularity in cool cyan accent
+    const isInter = id === 'BPO_InterstellarWarpDriveBlock';
+    roofHeight = isInter ? 7.1 : 3.85;
+    accentColor = palette.researchTint;
+    addChamferPrism(extrudeGroup, hw - 0.22, hd - 0.22, 0, roofHeight * 0.45, 1.0, fillBase, primaryPts, detailPts);
+    // Twin parallel longitudinal warp-coil nacelles along ±Z (distinct rectangular silhouette vs round reactor!)
+    const coilZ = isInter ? hd - 3.1 : 2.35;
+    const coilHx = isInter ? hw - 1.5 : hw - 0.75;
+    const coilHz = isInter ? 1.85 : 0.72;
+    const coilY0 = roofHeight * 0.45;
+    const coilY1 = isInter ? roofHeight * 0.92 : roofHeight * 0.94;
+    for (const sz of [-1, 1]) {
+      addRectBlock(extrudeGroup, 0, sz * coilZ, coilHx, coilHz, coilY0, coilY1, fillUpper, primaryPts, detailPts);
+      // Transverse warp coil ribs along each nacelle
+      const ribStep = isInter ? 3.2 : 1.5;
+      for (let rx = -coilHx + ribStep * 0.6; rx <= coilHx - ribStep * 0.5; rx += ribStep) {
+        pushSeg(accentPts, rx, sz * (coilZ - coilHz), rx, sz * (coilZ + coilHz), coilY1 + 0.03);
       }
+    }
+    // Central suspended warp singularity diamond + field rings (cool mineral cyan)
+    const rField = isInter ? 5.6 : 1.65;
+    const rCore = isInter ? 2.9 : 0.92;
+    const yMid = isInter ? roofHeight * 0.78 : roofHeight * 0.88;
+    pushPolygon(accentPts, rField, 16, yMid, 0);
+    pushPolygon(accentPts, rCore, 4, roofHeight + 0.05, 0);
+    pushPolygon(primaryPts, rField * 0.78, 4, yMid - 0.15, Math.PI / 4);
+    // Cross-bridge struts linking nacelles to singularity ring
+    pushSeg(detailPts, 0, -coilZ + coilHz, 0, -rField, yMid);
+    pushSeg(detailPts, 0, coilZ - coilHz, 0, rField, yMid);
+    if (isInter) {
+      // Interstellar secondary outer harmonic ring
+      pushPolygon(accentPts, 7.2, 16, roofHeight * 0.52, 0);
     }
   } else if (id === 'BPO_DockingCollar') {
     roofHeight = 3.5;
-    // Half-depth airlock docking collar along -Z
+    // Half-depth airlock docking collar along -Z with 4-way lock clamps
     addChamferPrism(extrudeGroup, hw - 0.2, hd * 0.48, 0, roofHeight, 0.65, fillBase, primaryPts, detailPts, {
       cz: -hd * 0.48,
     });
@@ -2082,6 +2138,11 @@ export function buildShipModuleArt(
       cz: -hd * 0.45,
       ribCount: 4,
     });
+    const hatchZ = -hd * 0.45;
+    pushSeg(primaryPts, -2.2, hatchZ, -1.4, hatchZ, roofHeight + 0.08);
+    pushSeg(primaryPts, 1.4, hatchZ, 2.2, hatchZ, roofHeight + 0.08);
+    pushSeg(detailPts, -1.0, hatchZ, 1.0, hatchZ, roofHeight + 0.17);
+    pushSeg(detailPts, 0, hatchZ - 1.0, 0, hatchZ + 1.0, roofHeight + 0.17);
   } else if (id === 'BPO_ShipContainerBlock' || id === 'BPO_WorkstationBlock') {
     roofHeight = 3.5;
     const isBench = id === 'BPO_WorkstationBlock';
@@ -2103,7 +2164,11 @@ export function buildShipModuleArt(
       pushSeg(detailPts, 0, -hd + 0.4, 0, hd - 0.4, roofHeight + 0.02);
       pushRect(detailPts, hw - 1.2, hd - 1.2, roofHeight + 0.02, 0.25);
     } else {
-      pushRect(detailPts, hw - 1.4, 1.1, roofHeight + 0.02, 0.2);
+      // Dual-station deck silhouette: Refinery furnace drum (-X) + Assembler bay (+X)
+      const bz = hd * 0.36;
+      pushPolygon(primaryPts, 1.05, 8, roofHeight + 0.04, 0, -1.75, bz);
+      pushRect(primaryPts, 1.25, 0.95, roofHeight + 0.04, 0.2, 1.55, bz);
+      pushSeg(detailPts, -0.3, bz - 1.1, -0.3, bz + 1.1, roofHeight + 0.03);
     }
   } else if (id === 'BPO_Hangar_2') {
     roofHeight = 7.4;
@@ -2181,22 +2246,42 @@ export function buildShipModuleArt(
       ribCount: 4,
     });
     const barrelY = (t0 + t1) / 2;
-    if (isCannon || isMining) {
+    if (isCannon) {
+      // Twin parallel plasma cannon barrels with subtle gunmetal-champagne accent
+      accentColor = palette.turretTint;
       addRectBlock(extrudeGroup, 2.0, -0.55, 1.85, 0.28, barrelY - 0.25, barrelY + 0.25, fillUpper, primaryPts, detailPts);
       addRectBlock(extrudeGroup, 2.0, 0.55, 1.85, 0.28, barrelY - 0.25, barrelY + 0.25, fillUpper, primaryPts, detailPts);
+      pushSeg(accentPts, 0.4, -0.55, 3.85, -0.55, barrelY + 0.28);
+      pushSeg(accentPts, 0.4, 0.55, 3.85, 0.55, barrelY + 0.28);
+    } else if (isMining) {
+      // 3-prong industrial focusing mining laser (clearly distinct from twin plasma cannon!)
+      accentColor = palette.powerTint;
+      addRectBlock(extrudeGroup, 1.75, 0, 1.65, 0.32, barrelY - 0.25, barrelY + 0.25, fillUpper, primaryPts, detailPts);
+      // Angled focusing claws converging toward forward focal point
+      pushSeg(primaryPts, 0.6, -1.25, 3.25, -0.45, barrelY + 0.12);
+      pushSeg(primaryPts, 0.6, 1.25, 3.25, 0.45, barrelY + 0.12);
+      pushSeg(accentPts, 1.2, 0, 3.7, 0, barrelY + 0.28);
+      pushPolygon(accentPts, 0.65, 6, t1 + 0.03, 0, -0.35, 0);
     } else if (isPD) {
+      accentColor = palette.turretTint;
       addRectBlock(extrudeGroup, 1.65, 0, 1.65, 0.26, barrelY - 0.2, barrelY + 0.2, fillUpper, primaryPts, detailPts);
+      pushPolygon(accentPts, 0.85, 8, t1 + 0.03, 0, -0.35, 0);
     } else {
       // Tractor beam dish emitter
-      pushArc(primaryPts, 1.5, 0, 1.55, -Math.PI * 0.45, Math.PI * 0.45, 8, barrelY);
+      accentColor = palette.solarTint;
+      pushArc(accentPts, 1.5, 0, 1.55, -Math.PI * 0.45, Math.PI * 0.45, 8, barrelY);
+      pushArc(accentPts, 2.25, 0, 1.15, -Math.PI * 0.38, Math.PI * 0.38, 6, barrelY);
     }
   } else if (id.startsWith('BPO_ShipShieldGenerator_01')) {
     const [b0, b1] = vy(0, 1.1);
     const [t0, t1] = vy(1.1, 2.45);
     roofHeight = Math.max(b1, t1);
+    accentColor = palette.solarTint;
     addChamferPrism(extrudeGroup, 3.3, 2.2, b0, b1, 0.75, fillBase, primaryPts, detailPts);
-    addPolyDrum(extrudeGroup, 1.9, 1.15, 12, t0, t1, 0, fillUpper, primaryPts, detailPts, { ribCount: 6 });
-    pushPolygon(primaryPts, 2.5, 8, (b0 + b1) / 2 + 0.1);
+    addPolyDrum(extrudeGroup, 1.85, 1.1, 12, t0, t1, 0, fillUpper, primaryPts, detailPts, { ribCount: 6 });
+    // Suspended octagonal shield projection halo in cool slate-blue
+    pushPolygon(accentPts, 2.65, 8, (b1 + t1) * 0.52);
+    pushPolygon(accentPts, 1.2, 8, t1 + 0.05);
   } else if (id === 'BPO_Armour_01R' || id === 'BPO_Armour_01L') {
     roofHeight = 2.85;
     const isLeft = id === 'BPO_Armour_01L';
@@ -2238,6 +2323,17 @@ export function buildShipModuleArt(
   if (primaryPts.length > 0) {
     extrudeGroup.add(
       buildLineSegments(primaryPts, primaryColor, isGhost ? opacity * 0.94 : opacity, isSelected ? 1.55 : 1.25, 'primary')
+    );
+  }
+  if (accentPts.length > 0) {
+    extrudeGroup.add(
+      buildLineSegments(
+        accentPts,
+        isGhost ? ghostTint : isSelected ? palette.lineSelected : (accentColor ?? palette.linePrimary),
+        isGhost ? opacity * 0.9 : opacity,
+        isSelected ? 1.45 : 1.22,
+        'primary'
+      )
     );
   }
   if (detailPts.length > 0) {

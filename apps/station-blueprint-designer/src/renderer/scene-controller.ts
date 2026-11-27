@@ -364,6 +364,7 @@ class FloorRenderBucket {
   private appliedDetailLod = -1;
   private appliedMicroLod = -1;
   private appliedExtrusion = -1;
+  private appliedLabelYaw = Number.NaN;
 
   constructor(floor: number, private readonly floorSpacing = FLOOR_VISUAL_SPACING) {
     this.floor = floor;
@@ -708,7 +709,8 @@ class FloorRenderBucket {
     microLod: number,
     yScale: number,
     isFocus: boolean,
-    cameraDist: number
+    cameraDist: number,
+    cameraYaw = 0
   ): void {
     const effDetailLod = isFocus ? detailLod : 0.0;
     const effMicroLod = isFocus ? microLod : 0.0;
@@ -775,6 +777,13 @@ class FloorRenderBucket {
       for (let i = 0; i < this.labelEntries.length; i++) {
         const lbl = this.labelEntries[i];
         lbl.mesh.position.y = lbl.baseOffsetY + lbl.roofHeight * yScale;
+      }
+    }
+
+    if ((showStLabels || showBldLabels) && (Number.isNaN(this.appliedLabelYaw) || Math.abs(cameraYaw - this.appliedLabelYaw) > 1e-3)) {
+      this.appliedLabelYaw = cameraYaw;
+      for (let i = 0; i < this.labelEntries.length; i++) {
+        this.labelEntries[i].mesh.rotation.y = cameraYaw;
       }
     }
   }
@@ -1317,7 +1326,7 @@ export class CadSceneController {
       this.activeCategory = nextCategory;
       this.activeUnitM = spec.unitM;
       this.activeFloorSpacing = spec.visualFloorSpacing;
-      this.rig.setFrameSpacing(spec.visualFloorSpacing, nextCategory === 'ship');
+      this.rig.setFrameSpacing(spec.visualFloorSpacing, nextCategory === 'ship', nextCategory === 'ship' ? Math.PI : 0);
       if (!themeChanged) {
         this.buildMinimalReferenceAxes(palette);
       }
@@ -1401,6 +1410,10 @@ export class CadSceneController {
   }
 
   private layerOpacityFor(floor: number, focusFloor: number, hideAbove: boolean): number {
+    if (this.activeCategory === 'ship') {
+      // Ship mode: either ONLY focusFloor renders normally (all others hidden), OR ALL floors render equally as focus!
+      return hideAbove ? (floor === focusFloor ? 1.0 : 0) : 1.0;
+    }
     if (floor > focusFloor) return hideAbove ? 0 : 0.14;
     if (floor === focusFloor) return 1.0;
     const dist = focusFloor - floor;
@@ -2421,6 +2434,8 @@ export class CadSceneController {
       fogDensity = this.scene.fog.density;
     }
 
+    const camYaw = this.rig.currentYawRad;
+
     // Layer 1: Compact per-floor station hulls/slabs/connectors (~5 buckets, always crisp!)
     for (const bucket of this.stationFloorBuckets.values()) {
       if (bucket.isEmpty) {
@@ -2433,8 +2448,11 @@ export class CadSceneController {
         continue;
       }
       bucket.root.visible = true;
-      const isFocus = bucket.floor === state.focusFloor;
-      bucket.syncVisuals(floorOp, state.viewMode, detailLod, microLod, yScale, isFocus, dist);
+      const isFocus =
+        this.activeCategory === 'ship'
+          ? !state.hideAbove || bucket.floor === state.focusFloor
+          : bucket.floor === state.focusFloor;
+      bucket.syncVisuals(floorOp, state.viewMode, detailLod, microLod, yScale, isFocus, dist, camYaw);
     }
 
     // Layer 2: Analytic-SDF Instanced Belts (1 Draw Call per visible floor, 64m chunk frustum culling!)
@@ -2461,7 +2479,7 @@ export class CadSceneController {
         continue;
       }
       bucket.root.visible = true;
-      bucket.syncVisuals(floorOp, state.viewMode, detailLod, microLod, yScale, isFocus, dist);
+      bucket.syncVisuals(floorOp, state.viewMode, detailLod, microLod, yScale, isFocus, dist, camYaw);
     }
 
     if (Math.abs(yScale - this.lastExtrusionScale) > 1e-4) {
@@ -3079,8 +3097,13 @@ export class CadSceneController {
     let lowFloor = state.focusFloor;
     let highFloor = state.focusFloor;
     if (state.selectionLayerMode === 'visible') {
-      lowFloor = Math.min(0, state.focusFloor);
-      highFloor = state.hideAbove ? state.focusFloor : Math.max(state.focusFloor + 2, 2);
+      if (this.activeCategory === 'ship') {
+        lowFloor = state.hideAbove ? state.focusFloor : Math.min(0, state.focusFloor);
+        highFloor = state.hideAbove ? state.focusFloor : Math.max(state.focusFloor + 2, 2);
+      } else {
+        lowFloor = Math.min(0, state.focusFloor);
+        highFloor = state.hideAbove ? state.focusFloor : Math.max(state.focusFloor + 2, 2);
+      }
     } else if (state.selectionLayerMode === 'all') {
       lowFloor = Math.min(0, state.focusFloor);
       highFloor = Math.max(state.focusFloor + 2, 3);

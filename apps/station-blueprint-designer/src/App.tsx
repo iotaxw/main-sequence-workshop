@@ -2475,9 +2475,14 @@ export const App: React.FC = () => {
       setStampingLibPath(null);
       if (loaded.category === 'ship') {
         setViewMode('station');
+        setHideAbove(false);
         setSimOpen(false);
         setActiveSimIssueId(null);
         sceneRef.current?.rig.setViewMode('station', false);
+        sceneRef.current?.rig.setYaw(Math.PI, true);
+      } else {
+        setHideAbove(true);
+        sceneRef.current?.rig.setYaw(0, true);
       }
       showToast(warnings.length > 0 ? `已打开（提示：${warnings[0]}）` : `已打开「${loaded.name}」`);
       window.setTimeout(() => fitAllStation(), 60);
@@ -2730,12 +2735,16 @@ export const App: React.FC = () => {
     setActiveSimIssueId(null);
     setViewMode('station');
     if (category === 'ship') {
+      setHideAbove(false);
       setActiveTool({ kind: 'place-module', moduleType: 'BPO_Cockpit_01', rotation: 0 });
       sceneRef.current?.rig.setViewMode('station', false);
+      sceneRef.current?.rig.setYaw(Math.PI, true);
       sceneRef.current?.rig.focusPoint(4, 4, 42);
     } else {
+      setHideAbove(true);
       setActiveTool({ kind: 'place-module', moduleType: 'BPO_Station_02A', rotation: 0 });
       sceneRef.current?.rig.setViewMode('station', true);
+      sceneRef.current?.rig.setYaw(0, true);
       sceneRef.current?.rig.focusPoint(16, 16, 76);
     }
   };

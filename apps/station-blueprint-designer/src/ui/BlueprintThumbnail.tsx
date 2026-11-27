@@ -126,7 +126,15 @@ export function renderBlueprintThumbnailDataUrl(doc: BlueprintDocument, theme: C
   const toY = (wy: number) => offsetY + wy * scale;
   const floorRange = Math.max(1, maxFloor - minFloor);
 
-  // Layer 1: Station modules (sorted low floor -> high floor for natural top-down depth)
+  // Default ship orientation: bow (+X) faces LEFT (180° rotated to match 3D ship canvas)
+  const isShip = doc.category === 'ship';
+  if (isShip) {
+    ctx.save();
+    ctx.translate(W, H);
+    ctx.rotate(Math.PI);
+  }
+
+  // Layer 1: Station/Ship modules (sorted low floor -> high floor for natural top-down depth)
   const sortedModules = [...doc.modules].sort((a, b) => a.floor - b.floor);
   for (const m of sortedModules) {
     const def = getModuleDef(m.type);
@@ -140,24 +148,29 @@ export function renderBlueprintThumbnailDataUrl(doc: BlueprintDocument, theme: C
     const floorNorm = (m.floor - minFloor) / floorRange;
 
     const alpha = isLight ? 0.1 + floorNorm * 0.14 : 0.13 + floorNorm * 0.18;
-    const isSolar = m.type.includes('Solar');
-    const isTurret = m.type.includes('Turret');
+    const isSolar = m.type.includes('Solar') || m.type.includes('WarpDrive') || m.type.includes('Shield');
+    const isReactor = m.type === 'BPO_ReactorBlock_Small';
+    const isTurret = m.type.includes('Turret') || m.type.includes('Cannon') || m.type.includes('Lance');
     const isCorner = m.type === 'BPO_StationCorner_01';
     const isDock = m.type.includes('Dock') || m.type.includes('Shipyard') || m.type.includes('MiningDrone');
 
-    ctx.fillStyle = isSolar
+    ctx.fillStyle = isReactor
       ? isLight
-        ? `rgba(28, 110, 164, ${alpha + 0.08})`
-        : `rgba(82, 184, 224, ${alpha + 0.08})`
-      : isTurret
+        ? `rgba(181, 123, 36, ${alpha + 0.1})`
+        : `rgba(200, 169, 120, ${alpha + 0.1})`
+      : isSolar
         ? isLight
-          ? `rgba(166, 77, 60, ${alpha + 0.08})`
-          : `rgba(214, 130, 108, ${alpha + 0.08})`
-        : isLight
-          ? `rgba(43, 80, 125, ${alpha})`
-          : `rgba(116, 160, 212, ${alpha})`;
+          ? `rgba(28, 110, 164, ${alpha + 0.08})`
+          : `rgba(82, 184, 224, ${alpha + 0.08})`
+        : isTurret
+          ? isLight
+            ? `rgba(166, 77, 60, ${alpha + 0.08})`
+            : `rgba(214, 130, 108, ${alpha + 0.08})`
+          : isLight
+            ? `rgba(43, 80, 125, ${alpha})`
+            : `rgba(116, 160, 212, ${alpha})`;
 
-    ctx.strokeStyle = isSolar ? solarAccent : isTurret ? turretAccent : hullStroke;
+    ctx.strokeStyle = isReactor ? crafterCol : isSolar ? solarAccent : isTurret ? turretAccent : hullStroke;
     ctx.lineWidth = Math.max(1, Math.min(2, scale * 0.12));
 
     if (isCorner) {
@@ -275,6 +288,7 @@ export function renderBlueprintThumbnailDataUrl(doc: BlueprintDocument, theme: C
     }
   }
 
+  if (isShip) ctx.restore();
   return canvas.toDataURL('image/png');
 }
 

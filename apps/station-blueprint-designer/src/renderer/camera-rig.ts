@@ -94,6 +94,10 @@ export class CadCameraRig {
     return this.curPitch;
   }
 
+  get currentYawRad(): number {
+    return this.curYaw;
+  }
+
   get currentDistance(): number {
     return this.curDistance;
   }
@@ -113,12 +117,25 @@ export class CadCameraRig {
     this.camera.updateProjectionMatrix();
   }
 
-  setFrameSpacing(spacing: number, lockStation: boolean): void {
+  setYaw(rad: number, immediate = false): void {
+    const norm = normalizeAngle(rad);
+    this.targetYaw = norm;
+    if (immediate) {
+      this.curYaw = norm;
+      this.applyCameraTransform();
+    }
+  }
+
+  setFrameSpacing(spacing: number, lockStation: boolean, defaultYaw?: number): void {
+    const modeChanged = this.lockStationView !== lockStation;
     this.floorVisualSpacing = spacing;
     this.lockStationView = lockStation;
     this.targetFloorY = this.focusFloor * this.floorVisualSpacing;
     if (lockStation && this.viewMode !== 'station') {
       this.viewMode = 'station';
+    }
+    if (modeChanged && defaultYaw !== undefined) {
+      this.setYaw(defaultYaw, true);
     }
   }
 

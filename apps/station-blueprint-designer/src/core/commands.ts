@@ -883,12 +883,16 @@ export function boxSelectEntities(
 ): SelectionState {
   const { viewMode, focusFloor, hideAbove, layerMode } = options;
 
+  const isShip = doc.category === 'ship';
   const floorAllowed = (floor: number, span = 1): boolean => {
     const topFloor = floor + span - 1;
     if (layerMode === 'focus') {
       return focusFloor >= floor && focusFloor <= topFloor;
     }
     if (layerMode === 'visible') {
+      if (isShip) {
+        return hideAbove ? focusFloor >= floor && focusFloor <= topFloor : true;
+      }
       return hideAbove ? floor <= focusFloor : true;
     }
     return true; // 'all'

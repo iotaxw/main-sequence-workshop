@@ -434,15 +434,15 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
       );
     }
 
-    // === Ship Modules (1:1 matched to 3D top-down CAD silhouettes) ===
+    // === Ship Modules (1:1 matched to 3D top-down CAD silhouettes; default bow faces LEFT <-) ===
     if (id.startsWith('BPO_Cockpit_')) {
       const big = id !== 'BPO_Cockpit_01';
       return (
-        <>
+        <g transform="rotate(180 12 12)">
           <polygon points="4,6.5 14,6.5 20.5,10 20.5,14 14,17.5 4,17.5" {...s} />
           <polyline points="12.5,8.5 17,12 12.5,15.5" {...dim} />
           {big && <line x1="8" y1="7" x2="8" y2="17" {...dim} />}
-        </>
+        </g>
       );
     }
     if (id === 'BPO_DockingCollar') {
@@ -520,37 +520,44 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
     if (id.startsWith('BPO_Thruster_')) {
       const large = id === 'BPO_Thruster_05';
       const med = id === 'BPO_Thruster_03';
+      const relic = id.startsWith('BPO_Thruster_04');
       return (
-        <>
+        <g transform="rotate(180 12 12)">
           <polygon points="8.5,5.5 19.5,7.5 19.5,16.5 8.5,18.5" {...s} />
           <line x1="4" y1="8.5" x2="8" y2="8.5" {...s} />
           <line x1="3" y1="12" x2="8" y2="12" {...s} />
           <line x1="4" y1="15.5" x2="8" y2="15.5" {...s} />
+          {relic && <polyline points="12,9.5 15.5,12 12,14.5" {...dim} />}
           {(large || med) && <line x1="14" y1="6.8" x2="14" y2="17.2" {...dim} />}
           {large && <line x1="11" y1="6.2" x2="11" y2="17.8" {...dim} />}
-        </>
+        </g>
       );
     }
     if (id === 'BPO_ReactorBlock_Small') {
+      // 3-fin radial fusion reactor matching 3D CAD silhouette
       return (
         <>
-          <rect x="4" y="4" width="16" height="16" rx="3" {...dim} />
-          <circle cx="12" cy="12" r="5.5" {...s} />
-          <circle cx="12" cy="12" r="2.2" {...s} />
+          <polygon points="12,5.8 17.4,9 17.4,15 12,18.2 6.6,15 6.6,9" {...dim} />
+          <circle cx="12" cy="12" r="2.6" {...s} />
+          <line x1="12" y1="3.5" x2="12" y2="9.2" {...s} />
+          <line x1="4.7" y1="16.2" x2="9.7" y2="13.3" {...s} />
+          <line x1="19.3" y1="16.2" x2="14.3" y2="13.3" {...s} />
         </>
       );
     }
     if (id === 'BPO_WarpDriveBlock' || id === 'BPO_InterstellarWarpDriveBlock') {
+      // Twin flanking longitudinal warp coils + central diamond singularity
       const inter = id === 'BPO_InterstellarWarpDriveBlock';
       return (
         <>
-          <circle cx="12" cy="12" r="7.5" {...s} />
-          <circle cx="12" cy="12" r="4.2" {...dim} />
-          <polygon points="12,9 15,12 12,15 9,12" {...s} />
+          <rect x="4.5" y="4.5" width="15" height="3.2" rx="1" {...s} />
+          <rect x="4.5" y="16.3" width="15" height="3.2" rx="1" {...s} />
+          <polygon points="12,8.6 15.6,12 12,15.4 8.4,12" {...s} />
+          <circle cx="12" cy="12" r="1.2" {...dim} />
           {inter && (
             <>
-              <line x1="3" y1="7" x2="3" y2="17" {...s} />
-              <line x1="21" y1="7" x2="21" y2="17" {...s} />
+              <line x1="3" y1="9" x2="3" y2="15" {...dim} />
+              <line x1="21" y1="9" x2="21" y2="15" {...dim} />
             </>
           )}
         </>
@@ -569,18 +576,18 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
       return (
         <>
           <rect x="4" y="6" width="16" height="12" rx="2" {...s} />
-          <line x1="7.5" y1="10" x2="16.5" y2="10" {...dim} />
-          <line x1="7.5" y1="14" x2="13" y2="14" {...dim} />
+          <circle cx="9" cy="12" r="2.3" {...dim} />
+          <rect x="13.5" y="9.8" width="4.2" height="4.4" rx="0.8" {...dim} />
         </>
       );
     }
     if (id === 'BPO_Hangar_2') {
       return (
-        <>
+        <g transform="rotate(180 12 12)">
           <rect x="3.5" y="4" width="17" height="16" rx="2" {...s} />
           <rect x="6.5" y="7" width="11" height="10" rx="1" {...dim} />
           <polyline points="10.5,9.5 14,12 10.5,14.5" {...s} />
-        </>
+        </g>
       );
     }
     if (id === 'BPO_AstronomicScanner' || id === 'BPO_BiosampleCollector') {
@@ -600,24 +607,33 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
         </>
       );
     }
-    if (id.startsWith('BPO_CannonBlock') || id.startsWith('BPO_MiningLaserBlock')) {
+    if (id.startsWith('BPO_CannonBlock')) {
       return (
-        <>
+        <g transform="rotate(180 12 12)">
           <rect x="4" y="7.5" width="9" height="9" rx="2" {...s} />
           <line x1="13" y1="10" x2="20.5" y2="10" {...s} />
           <line x1="13" y1="14" x2="20.5" y2="14" {...s} />
-          {id.startsWith('BPO_MiningLaserBlock') && <line x1="17" y1="12" x2="21" y2="12" {...dim} />}
-        </>
+        </g>
+      );
+    }
+    if (id.startsWith('BPO_MiningLaserBlock')) {
+      return (
+        <g transform="rotate(180 12 12)">
+          <rect x="4" y="8" width="8" height="8" rx="2" {...s} />
+          <line x1="12" y1="12" x2="21" y2="12" {...s} />
+          <line x1="11.5" y1="7.5" x2="18.5" y2="10" {...dim} />
+          <line x1="11.5" y1="16.5" x2="18.5" y2="14" {...dim} />
+        </g>
       );
     }
     if (id === 'BPO_LanceBlock') {
       return (
-        <>
+        <g transform="rotate(180 12 12)">
           <rect x="3" y="8" width="15" height="8" rx="1.5" {...dim} />
           <line x1="4" y1="10.5" x2="21" y2="10.5" {...s} />
           <line x1="4" y1="13.5" x2="21" y2="13.5" {...s} />
           <polyline points="18,9.5 21,12 18,14.5" {...s} />
-        </>
+        </g>
       );
     }
     if (id === 'BPO_MissileLauncherBlock_01') {
@@ -633,20 +649,20 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
     }
     if (id.startsWith('BPO_ShipLaserTurretBlock')) {
       return (
-        <>
+        <g transform="rotate(180 12 12)">
           <circle cx="10.5" cy="12" r="5" {...s} />
           <line x1="15.5" y1="12" x2="21" y2="12" {...s} />
           <circle cx="10.5" cy="12" r="1.6" {...dim} />
-        </>
+        </g>
       );
     }
     if (id.startsWith('BPO_TractorBeamBlock')) {
       return (
-        <>
+        <g transform="rotate(180 12 12)">
           <rect x="4.5" y="7.5" width="7.5" height="9" rx="2" {...s} />
           <path d="M14,7.5 A6,6 0 0,1 14,16.5" {...s} />
           <path d="M17.5,5.5 A8.5,8.5 0 0,1 17.5,18.5" {...dim} />
-        </>
+        </g>
       );
     }
     if (id.startsWith('BPO_ShipShieldGenerator_01')) {

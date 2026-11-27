@@ -59,13 +59,22 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
   const canStepUp = focusFloor < 8;
   const canStepDown = focusFloor > -2;
 
+  const isShip = doc.category === 'ship';
+  const eyeTitle = isShip
+    ? hideAbove
+      ? t('仅看本层 (V)', 'Current deck only (V)')
+      : t('全层同等显示 (V)', 'All decks equal (V)')
+    : hideAbove
+      ? t('上层已隐 (V)', 'Upper hidden (V)')
+      : t('上层透视 (V)', 'Upper visible (V)');
+
   return (
     <aside className={`cad-floor-rail ${shifted ? 'shifted' : ''}`} aria-label={t('楼层快切', 'Floor stack')}>
       <button
         type="button"
         className={`floor-rail-eye ${hideAbove ? 'active' : ''}`}
         onClick={onToggleHideAbove}
-        title={hideAbove ? t('上层已隐 (V)', 'Upper hidden (V)') : t('上层透视 (V)', 'Upper visible (V)')}
+        title={eyeTitle}
       >
         {hideAbove ? (
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -96,8 +105,7 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
           const info = countsByFloor.get(f);
           const hasContent = Boolean(info && (info.mods > 0 || info.blds > 0));
           const isCurrent = f === focusFloor;
-          const isHiddenAbove = hideAbove && f > focusFloor;
-          const isShip = doc.category === 'ship';
+          const isHiddenFloor = hideAbove && (isShip ? f !== focusFloor : f > focusFloor);
           const tip = hasContent
             ? isShip
               ? isEn
@@ -112,7 +120,7 @@ export const FloorStackRail: React.FC<FloorStackRailProps> = ({
               key={f}
               type="button"
               className={`floor-rail-pill ${isCurrent ? 'active' : ''} ${hasContent ? 'populated' : ''} ${
-                isHiddenAbove ? 'dimmed' : ''
+                isHiddenFloor ? 'dimmed' : ''
               }`}
               onClick={() => onSelectFloor(f)}
               title={tip}

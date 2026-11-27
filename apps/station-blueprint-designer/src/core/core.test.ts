@@ -3034,4 +3034,40 @@ describe('Ship Blueprint Mode (Phase 1-3)', () => {
     expect(mirrored.changed).toBe(true);
     expect(mirrored.doc.modules[0].type).toBe('BPO_Thruster_02L');
   });
+
+  it('isolates focus deck vs all decks equally in ship boxSelectEntities and defaults ship camera yaw to Math.PI (bow left)', () => {
+    let doc = createEmptyBlueprint('三层战舰', 'ship');
+    doc = placeModuleCmd(doc, { type: 'BPO_Body_01', gx: 0, gy: 0, floor: 0, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_ReactorBlock_Small', gx: 0, gy: 0, floor: 1, rotation: 0 }).doc;
+    doc = placeModuleCmd(doc, { type: 'BPO_WarpDriveBlock', gx: 0, gy: 0, floor: 2, rotation: 0 }).doc;
+
+    const box = { minX: -2, minY: -2, maxX: 10, maxY: 10 };
+    // Focus on middle deck L1 with hideAbove=true -> ONLY L1 selected (both L0 below and L2 above excluded!)
+    const singleDeck = boxSelectEntities(doc, box, {
+      viewMode: 'station',
+      focusFloor: 1,
+      hideAbove: true,
+      layerMode: 'visible',
+    });
+    expect(singleDeck.moduleIds.length).toBe(1);
+    expect(doc.modules.find((m) => m.id === singleDeck.moduleIds[0])?.floor).toBe(1);
+
+    // With hideAbove=false -> ALL 3 decks equally visible & selectable
+    const allDecks = boxSelectEntities(doc, box, {
+      viewMode: 'station',
+      focusFloor: 1,
+      hideAbove: false,
+      layerMode: 'visible',
+    });
+    expect(allDecks.moduleIds.length).toBe(3);
+
+    // Camera rig default yaw snaps to Math.PI (180°, bow +X pointing LEFT) when entering ship mode
+    const rig = new CadCameraRig(16 / 9);
+    expect(rig.currentYawRad).toBeCloseTo(0, 4);
+    rig.setFrameSpacing(SHIP_FLOOR_VISUAL_SPACING, true, Math.PI);
+    expect(rig.currentYawRad).toBeCloseTo(Math.PI, 4);
+    // Switching back to station mode restores yaw = 0
+    rig.setFrameSpacing(10, false, 0);
+    expect(rig.currentYawRad).toBeCloseTo(0, 4);
+  });
 });
