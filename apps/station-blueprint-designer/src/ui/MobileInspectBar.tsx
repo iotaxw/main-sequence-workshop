@@ -27,10 +27,22 @@ interface MobileInspectBarProps {
   onExitTool: () => void;
 }
 
-function isMirroredModuleVariant(typeId: string): boolean {
+function getMirrorActionLabel(typeId: string, isEn: boolean): string {
   const def = getModuleDef(typeId);
-  if (!def?.mirrorId && typeId !== 'BPO_StationArmour_01B') return false;
-  return /(_B|01B|02B|L)$/.test(typeId);
+  const mirrorId =
+    def?.mirrorId ??
+    (typeId === 'BPO_StationArmour_01'
+      ? 'BPO_StationArmour_01B'
+      : typeId === 'BPO_StationArmour_01B'
+        ? 'BPO_StationArmour_01'
+        : undefined);
+  if (mirrorId) {
+    if (typeId.endsWith('R') && mirrorId.endsWith('L')) return isEn ? 'Stbd' : '右舷';
+    if (typeId.endsWith('L') && mirrorId.endsWith('R')) return isEn ? 'Port' : '左舷';
+    if (/(_B|01B|02B)$/.test(typeId)) return isEn ? 'Bottom' : '底挂';
+    if (/(_B|01B|02B)$/.test(mirrorId)) return isEn ? 'Top' : '顶挂';
+  }
+  return isEn ? 'Mirror' : '镜像';
 }
 
 function fmtShipSpec(typeId: string): string {
@@ -74,7 +86,7 @@ export const MobileInspectBar: React.FC<MobileInspectBarProps> = ({
       const spec = fmtShipSpec(first.type);
       const canRot = canModuleRotate(first.type, shipFreeRotate);
       const hasMirror = Boolean(def?.mirrorId) || canRot;
-      const mirrorActive = isMirroredModuleVariant(first.type);
+      const mirrorLabel = getMirrorActionLabel(first.type, isEn);
       return (
         <div className="mobile-ctx-bar ship-docked" role="region" aria-label={t('部件操作', 'Block Actions')}>
           <div className="mobile-ctx-info">
@@ -89,8 +101,8 @@ export const MobileInspectBar: React.FC<MobileInspectBarProps> = ({
           </div>
           <div className="mobile-ctx-actions">
             {hasMirror && (
-              <button type="button" className={`cad-btn ${mirrorActive ? 'accent' : ''}`} onClick={onMirror}>
-                {t('镜像', 'Mirror')}
+              <button type="button" className="cad-btn" onClick={onMirror}>
+                {mirrorLabel}
               </button>
             )}
             <button
@@ -122,7 +134,7 @@ export const MobileInspectBar: React.FC<MobileInspectBarProps> = ({
       const spec = fmtShipSpec(activeTool.moduleType);
       const canRot = canModuleRotate(activeTool.moduleType, shipFreeRotate);
       const hasMirror = Boolean(def?.mirrorId) || canRot;
-      const mirrorActive = isMirroredModuleVariant(activeTool.moduleType);
+      const mirrorLabel = getMirrorActionLabel(activeTool.moduleType, isEn);
       return (
         <div className="mobile-ctx-bar ship-docked" role="region" aria-label={t('放置部件', 'Place Block')}>
           <div className="mobile-ctx-info">
@@ -140,8 +152,8 @@ export const MobileInspectBar: React.FC<MobileInspectBarProps> = ({
           </div>
           <div className="mobile-ctx-actions">
             {hasMirror && (
-              <button type="button" className={`cad-btn ${mirrorActive ? 'accent' : ''}`} onClick={onMirror}>
-                {t('镜像', 'Mirror')}
+              <button type="button" className="cad-btn" onClick={onMirror}>
+                {mirrorLabel}
               </button>
             )}
             <button

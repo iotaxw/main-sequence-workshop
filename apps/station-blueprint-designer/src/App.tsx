@@ -3017,13 +3017,26 @@ export const App: React.FC = () => {
       const def = getModuleDef(activeTool.moduleType);
       const docCat = doc.category ?? 'station';
       const grp = findGroupForEntity('station', activeTool.moduleType, docCat);
-      const isArmour =
-        activeTool.moduleType === 'BPO_StationArmour_01' || activeTool.moduleType === 'BPO_StationArmour_01B';
       const canRot = !isShip || shipFreeRotate || def?.canRotate !== false;
-      const showMirror = !isShip || Boolean(def?.mirrorId);
-      const isMirrored =
-        (Boolean(def?.mirrorId) || activeTool.moduleType === 'BPO_StationArmour_01B') &&
-        /(_B|01B|02B|L)$/.test(activeTool.moduleType);
+      const mirrorPairId =
+        def?.mirrorId ??
+        (activeTool.moduleType === 'BPO_StationArmour_01'
+          ? 'BPO_StationArmour_01B'
+          : activeTool.moduleType === 'BPO_StationArmour_01B'
+            ? 'BPO_StationArmour_01'
+            : undefined);
+      const showMirror = !isShip || Boolean(mirrorPairId);
+      const mirrorLabel = mirrorPairId
+        ? activeTool.moduleType.endsWith('R') && mirrorPairId.endsWith('L')
+          ? t('右舷', 'Stbd')
+          : activeTool.moduleType.endsWith('L') && mirrorPairId.endsWith('R')
+            ? t('左舷', 'Port')
+            : /(_B|01B|02B)$/.test(activeTool.moduleType)
+              ? t('底挂', 'Bottom')
+              : /(_B|01B|02B)$/.test(mirrorPairId)
+                ? t('顶挂', 'Top')
+                : t('镜像', 'Mirror')
+        : t('镜像', 'Mirror');
       return {
         mode: getShortLabel(activeTool.moduleType, isEn ? def?.nameEn : def?.nameZh, lang),
         badge: activeTool.label || undefined,
@@ -3032,9 +3045,7 @@ export const App: React.FC = () => {
           ...(canRot
             ? [{ keys: 'R', label: t('旋转', 'Rotate') }]
             : [{ keys: 'R', label: t('原版锁向', 'Locked') }]),
-          ...(showMirror
-            ? [{ keys: 'F', label: isArmour || def?.mirrorId ? t('镜像', 'Mirror') : t('镜像', 'Mirror'), active: isMirrored }]
-            : []),
+          ...(showMirror ? [{ keys: 'F', label: mirrorLabel }] : []),
           { keys: 'Q/E', label: t('切层', 'Floor') },
           ...(grp && grp.members.length > 1 ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),
         ],
