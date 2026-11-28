@@ -16,6 +16,7 @@ interface PaletteDockProps {
   viewMode: ViewMode;
   docCategory?: BlueprintCategory;
   shipFreeRotate?: boolean;
+  mobile?: boolean;
   activeTool: ActiveTool;
   lastGroupMember: Record<string, string>;
   onSelectEntity: (entityId: string) => void;
@@ -33,6 +34,7 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
   viewMode,
   docCategory = 'station',
   shipFreeRotate = false,
+  mobile = false,
   activeTool,
   lastGroupMember,
   onSelectEntity,
@@ -129,8 +131,8 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
   };
 
   return (
-    <div className="s2-dock-anchor" onMouseLeave={() => setHoverMeta(null)}>
-      {hoverMeta && (
+    <div className={`s2-dock-anchor ${mobile ? 'mobile-dock' : ''}`} onMouseLeave={() => setHoverMeta(null)}>
+      {!mobile && hoverMeta && (
         <div className="s2-hover-card">
           <div className="s2-hover-row">
             <span className="s2-hover-title">{hoverMeta.title}</span>
@@ -147,7 +149,7 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
 
       {activeGroup && activeGroup.members.length > 1 && (
         <div className="s2-subtray" role="toolbar" aria-label={getGroupName(activeGroup, lang)}>
-          <span className="s2-subtray-label">{getGroupName(activeGroup, lang)}</span>
+          {!mobile && <span className="s2-subtray-label">{getGroupName(activeGroup, lang)}</span>}
           <div className="s2-subtray-items">
             {activeGroup.members.map((memberId) => {
               const activeDef = activeEntityId ? getModuleDef(activeEntityId) : undefined;
@@ -160,7 +162,7 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
                   type="button"
                   className={`s2-tile sub ${isCur ? 'active' : ''}`}
                   onClick={() => onSelectEntity(memberId)}
-                  onMouseEnter={() => setHoverMeta(buildMeta(memberId, true))}
+                  onMouseEnter={mobile ? undefined : () => setHoverMeta(buildMeta(memberId, true))}
                 >
                   <EntityGlyph id={memberId} size={20} />
                   <span className="s2-tile-label">{getShortLabel(memberId, undefined, lang)}</span>
@@ -168,7 +170,7 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
               );
             })}
           </div>
-          <kbd className="cad-op-kbd s2-subtray-kbd">Tab</kbd>
+          {!mobile && <kbd className="cad-op-kbd s2-subtray-kbd">Tab</kbd>}
         </div>
       )}
 
@@ -177,16 +179,19 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
           type="button"
           className={`s2-tile util ${activeTool.kind === 'select' ? 'active' : ''}`}
           onClick={() => onSelectTool({ kind: 'select' })}
-          onMouseEnter={() =>
-            setHoverMeta({
-              title: t('选择', 'Select'),
-              spec: isEn ? 'Esc / RMB' : 'Esc / 右键',
-              hints: [
-                { keys: t('拖', 'Drag'), label: t('框选', 'Box') },
-                { keys: 'Shift', label: t('加选', 'Add') },
-                { keys: 'Alt', label: t('减选', 'Sub') },
-              ],
-            })
+          onMouseEnter={
+            mobile
+              ? undefined
+              : () =>
+                  setHoverMeta({
+                    title: t('选择', 'Select'),
+                    spec: isEn ? 'Esc / RMB' : 'Esc / 右键',
+                    hints: [
+                      { keys: t('拖', 'Drag'), label: t('框选', 'Box') },
+                      { keys: 'Shift', label: t('加选', 'Add') },
+                      { keys: 'Alt', label: t('减选', 'Sub') },
+                    ],
+                  })
           }
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
@@ -199,15 +204,18 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
           type="button"
           className={`s2-tile util ${activeTool.kind === 'demolish' ? 'active-warn' : ''}`}
           onClick={() => onSelectTool({ kind: 'demolish' })}
-          onMouseEnter={() =>
-            setHoverMeta({
-              title: t('拆除', 'Demolish'),
-              spec: 'X',
-              hints: [
-                { keys: t('左键', 'LMB'), label: t('点/扫', 'Sweep') },
-                { keys: t('Shift+拖', 'Shift+Drag'), label: t('框拆', 'Box') },
-              ],
-            })
+          onMouseEnter={
+            mobile
+              ? undefined
+              : () =>
+                  setHoverMeta({
+                    title: t('拆除', 'Demolish'),
+                    spec: 'X',
+                    hints: [
+                      { keys: t('左键', 'LMB'), label: t('点/扫', 'Sweep') },
+                      { keys: t('Shift+拖', 'Shift+Drag'), label: t('框拆', 'Box') },
+                    ],
+                  })
           }
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
@@ -231,9 +239,9 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
               type="button"
               className={`s2-tile ${isGroupActive ? 'active' : ''}`}
               onClick={() => onSelectEntity(displayId)}
-              onMouseEnter={() => setHoverMeta(buildMeta(displayId, group.members.length > 1))}
+              onMouseEnter={mobile ? undefined : () => setHoverMeta(buildMeta(displayId, group.members.length > 1))}
             >
-              <span className="s2-slot-num">{group.slot}</span>
+              {!mobile && <span className="s2-slot-num">{group.slot}</span>}
               <EntityGlyph id={displayId} size={22} />
               <span className="s2-tile-label">{getShortLabel(displayId, undefined, lang)}</span>
               {group.members.length > 1 && <span className="s2-group-dots" aria-hidden="true" />}

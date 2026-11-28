@@ -45,12 +45,27 @@ export function useHoverMenu(options: UseHoverMenuOptions = {}) {
     setOpenState(false);
   }, [clearTimers]);
 
-  const openNow = useCallback(() => {
+  const isTouchLike = () =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(hover: none), (pointer: coarse)').matches;
+
+  const toggle = useCallback(() => {
     clearTimers();
-    setOpenState(true);
+    setOpenState((v) => !v);
+  }, [clearTimers]);
+
+  const onTriggerClick = useCallback(() => {
+    clearTimers();
+    if (isTouchLike()) {
+      setOpenState((v) => !v);
+    } else {
+      setOpenState(true);
+    }
   }, [clearTimers]);
 
   const onMouseEnter = useCallback(() => {
+    if (isTouchLike()) return;
     if (closeTimerRef.current !== null) {
       window.clearTimeout(closeTimerRef.current);
       closeTimerRef.current = null;
@@ -64,6 +79,7 @@ export function useHoverMenu(options: UseHoverMenuOptions = {}) {
   }, [openDelayMs]);
 
   const onMouseLeave = useCallback(() => {
+    if (isTouchLike()) return;
     if (openTimerRef.current !== null) {
       window.clearTimeout(openTimerRef.current);
       openTimerRef.current = null;
@@ -80,7 +96,7 @@ export function useHoverMenu(options: UseHoverMenuOptions = {}) {
 
   useEffect(() => {
     if (!open) return;
-    const onDocDown = (e: MouseEvent) => {
+    const onDocDown = (e: PointerEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
         close();
       }
@@ -88,10 +104,10 @@ export function useHoverMenu(options: UseHoverMenuOptions = {}) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
     };
-    window.addEventListener('mousedown', onDocDown);
+    window.addEventListener('pointerdown', onDocDown);
     window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('mousedown', onDocDown);
+      window.removeEventListener('pointerdown', onDocDown);
       window.removeEventListener('keydown', onKey);
     };
   }, [open, close]);
@@ -100,11 +116,12 @@ export function useHoverMenu(options: UseHoverMenuOptions = {}) {
     open,
     setOpen,
     close,
+    toggle,
     wrapRef,
     containerProps: {
       onMouseEnter,
       onMouseLeave,
     },
-    onTriggerClick: openNow,
+    onTriggerClick,
   };
 }

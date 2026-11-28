@@ -3070,6 +3070,19 @@ describe('Ship Blueprint Mode (Phase 1-3)', () => {
     // Switching back to station mode restores yaw = 0
     rig.setFrameSpacing(10, false, 0);
     expect(rig.currentYawRad).toBeCloseTo(0, 4);
+
+    // Multi-touch pinch zoom: ratio > 1 zooms in (reduces targetDistance), ratio < 1 zooms out
+    const distBefore = rig.targetDistance;
+    rig.zoomByPinch(1.2, null);
+    expect(rig.targetDistance).toBeLessThan(distBefore);
+    const distZoomedIn = rig.targetDistance;
+    rig.zoomByPinch(0.8, null);
+    expect(rig.targetDistance).toBeGreaterThan(distZoomedIn);
+    // Invalid ratios are safely ignored
+    const distSafe = rig.targetDistance;
+    rig.zoomByPinch(0, null);
+    rig.zoomByPinch(Number.NaN, null);
+    expect(rig.targetDistance).toBe(distSafe);
   });
 
   it('builds valid true-to-game 3D CAD geometry for all 45 ship modules with dashed collision hints on overhanging visuals', () => {

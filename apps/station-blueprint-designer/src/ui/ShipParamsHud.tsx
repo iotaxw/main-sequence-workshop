@@ -4,6 +4,9 @@ import type { ShipPowerBucket, ShipStatsReport } from '../core/ship-stats';
 
 interface ShipParamsHudProps {
   stats: ShipStatsReport;
+  mobile?: boolean;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 function fmtNum(v: number): string {
@@ -24,9 +27,16 @@ const ROLE_LABELS: Record<ShipPowerBucket['role'], { zh: string; en: string }> =
  * Displays verified Build 26639889 Mass / Thrust / Hull / Actual & Boost Speed / Warp Speed,
  * itemized Power generation vs operating-range consumption table, and stateful system summary.
  */
-export const ShipParamsHud: React.FC<ShipParamsHudProps> = ({ stats }) => {
+export const ShipParamsHud: React.FC<ShipParamsHudProps> = ({
+  stats,
+  mobile = false,
+  mobileOpen = false,
+  onMobileClose,
+}) => {
   const { isEn, t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
+
+  if (mobile && !mobileOpen) return null;
 
   const p = stats.power;
   const sys = stats.systems;
@@ -99,16 +109,21 @@ export const ShipParamsHud: React.FC<ShipParamsHudProps> = ({ stats }) => {
     equipChips.push({ label: t('采样', 'BioCol'), value: `×${sys.bioCollectors}` });
   }
 
+  const effectiveCollapsed = mobile ? false : collapsed;
+
   return (
-    <aside className={`ship-hud ${collapsed ? 'collapsed' : ''}`} aria-label={t('飞船参数', 'Ship Parameters')}>
+    <aside
+      className={`ship-hud ${effectiveCollapsed ? 'collapsed' : ''} ${mobile ? 'mobile-sheet' : ''}`}
+      aria-label={t('飞船参数', 'Ship Parameters')}
+    >
       <button
         type="button"
         className="ship-hud-head"
-        onClick={() => setCollapsed((v) => !v)}
-        aria-expanded={!collapsed}
+        onClick={() => (mobile ? onMobileClose?.() : setCollapsed((v) => !v))}
+        aria-expanded={!effectiveCollapsed}
       >
         <span className="ship-hud-title">
-          {collapsed ? (
+          {effectiveCollapsed ? (
             <span className="ship-hud-mini-line">
               <span>{fmtNum(stats.totalWeightT)}t</span>
               <span className="ship-hud-sep">·</span>
@@ -130,11 +145,11 @@ export const ShipParamsHud: React.FC<ShipParamsHudProps> = ({ stats }) => {
           )}
         </span>
         <span className="ship-hud-chevron" aria-hidden="true">
-          {collapsed ? '▾' : '▴'}
+          {mobile ? '×' : effectiveCollapsed ? '▾' : '▴'}
         </span>
       </button>
 
-      {!collapsed && (
+      {!effectiveCollapsed && (
         <div className="ship-hud-body">
           {/* Section 1: Core Flight Performance */}
           <div className="ship-hud-grid">

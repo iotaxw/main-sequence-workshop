@@ -14,6 +14,7 @@ import { NewBlueprintMenu } from './NewBlueprintMenu';
 
 interface BlueprintLibraryModalProps {
   open: boolean;
+  mobile?: boolean;
   onClose: () => void;
   driver: BlueprintLibraryDriver;
   fsSupported: boolean;
@@ -66,6 +67,7 @@ function collectFolders(nodes: LibraryNode[]): LibraryFolderEntry[] {
 
 export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
   open,
+  mobile = false,
   onClose,
   driver,
   fsSupported,
@@ -107,11 +109,11 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
   }, [driver]);
 
   useEffect(() => {
-    if (open) {
+    if (open && !mobile) {
       const id = window.setTimeout(() => searchInputRef.current?.focus(), 40);
       return () => window.clearTimeout(id);
     }
-  }, [open]);
+  }, [open, mobile]);
 
   const totalCount = useMemo(() => countFiles(tree), [tree]);
 
@@ -268,18 +270,33 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
               {t('刷新', 'Refresh')}
             </button>
             <span className="bpm-divider" />
-            <NewBlueprintMenu
-              label={t('+ 新建 ▾', '+ New ▾')}
-              title={t('新建蓝图', 'New Blueprint')}
-              align="right"
-              onSelectCategory={(cat) => {
-                onNewBlueprint(cat);
-                if (cat === 'station') onClose();
-              }}
-            />
-            <button type="button" className="cad-btn" onClick={() => onCreateFolder(selectedFolder)}>
-              {t('+ 目录', '+ Folder')}
-            </button>
+            {mobile ? (
+              <button
+                type="button"
+                className="cad-btn accent"
+                onClick={() => {
+                  onNewBlueprint('ship');
+                  onClose();
+                }}
+              >
+                {t('+ 新建飞船', '+ New Ship')}
+              </button>
+            ) : (
+              <>
+                <NewBlueprintMenu
+                  label={t('+ 新建 ▾', '+ New ▾')}
+                  title={t('新建蓝图', 'New Blueprint')}
+                  align="right"
+                  onSelectCategory={(cat) => {
+                    onNewBlueprint(cat);
+                    onClose();
+                  }}
+                />
+                <button type="button" className="cad-btn" onClick={() => onCreateFolder(selectedFolder)}>
+                  {t('+ 目录', '+ Folder')}
+                </button>
+              </>
+            )}
             <button
               type="button"
               className="cad-btn"
@@ -342,8 +359,10 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                 onChange={(e) => setSearch(e.target.value)}
               />
               <span className="bpm-meta-hint">
-                {t('单击盖章 · 双击打开', 'Click to stamp · Dbl-click to open')} ·{' '}
-                {selectedFolder ? `/${selectedFolder}` : t('全部', 'All')} ·{' '}
+                {mobile
+                  ? t('轻点打开 · 空间站只读 · 飞船可编辑', 'Tap to open · Station read-only · Ship editable')
+                  : t('单击盖章 · 双击打开', 'Click to stamp · Dbl-click to open')}{' '}
+                · {selectedFolder ? `/${selectedFolder}` : t('全部', 'All')} ·{' '}
                 {isEn ? `${visibleFiles.length}` : `${visibleFiles.length} 份`}
               </span>
             </div>
@@ -365,21 +384,34 @@ export const BlueprintLibraryModal: React.FC<BlueprintLibraryModalProps> = ({
                     <div
                       key={file.path}
                       className={`bpm-card ${isEditing ? 'editing' : ''} ${isStamping ? 'stamping' : ''}`}
-                      draggable
-                      onDragStart={() => setDragPath(file.path)}
-                      onDragEnd={() => {
-                        setDragPath(null);
-                        setDropFolder(null);
-                      }}
+                      draggable={!mobile}
+                      onDragStart={mobile ? undefined : () => setDragPath(file.path)}
+                      onDragEnd={
+                        mobile
+                          ? undefined
+                          : () => {
+                              setDragPath(null);
+                              setDropFolder(null);
+                            }
+                      }
                       onClick={() => {
-                        onStampFromLibrary(file);
-                        onClose();
+                        if (mobile) {
+                          onOpenFromLibrary(file);
+                          onClose();
+                        } else {
+                          onStampFromLibrary(file);
+                          onClose();
+                        }
                       }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        onOpenFromLibrary(file);
-                        onClose();
-                      }}
+                      onDoubleClick={
+                        mobile
+                          ? undefined
+                          : (e) => {
+                              e.stopPropagation();
+                              onOpenFromLibrary(file);
+                              onClose();
+                            }
+                      }
                     >
                       <div className="bpm-card-thumb">
                         <BlueprintThumbnail

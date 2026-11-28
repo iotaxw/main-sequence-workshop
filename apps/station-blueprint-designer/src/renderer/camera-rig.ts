@@ -239,11 +239,24 @@ export class CadCameraRig {
    */
   zoomByWheel(deltaY: number, anchorWorld: THREE.Vector3 | null): void {
     const factor = Math.exp(Math.sign(deltaY) * Math.min(Math.abs(deltaY), 160) * 0.0018);
+    this.zoomByFactor(factor, anchorWorld);
+  }
+
+  /**
+   * Multi-touch pinch zoom: scaleRatio > 1 zooms in (fingers spread apart), < 1 zooms out.
+   */
+  zoomByPinch(scaleRatio: number, anchorWorld: THREE.Vector3 | null): void {
+    if (!Number.isFinite(scaleRatio) || scaleRatio <= 0) return;
+    const clampedRatio = THREE.MathUtils.clamp(scaleRatio, 0.72, 1.38);
+    this.zoomByFactor(1 / clampedRatio, anchorWorld);
+  }
+
+  private zoomByFactor(factor: number, anchorWorld: THREE.Vector3 | null): void {
     const prevDist = this.targetDistance;
     const nextDist = THREE.MathUtils.clamp(prevDist * factor, MIN_DISTANCE, MAX_DISTANCE);
     this.targetDistance = nextDist;
 
-    // Anchor zoom smoothly toward cursor ground hit
+    // Anchor zoom smoothly toward cursor/pinch ground hit
     if (anchorWorld) {
       const ratio = 1 - nextDist / prevDist;
       this.targetX += (anchorWorld.x - this.targetX) * ratio * 0.72;

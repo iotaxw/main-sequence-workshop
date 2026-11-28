@@ -481,6 +481,8 @@ textarea {
   position: absolute;
   inset: 0;
   cursor: crosshair;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
 
 .cad-viewport.tool-select {
@@ -3457,4 +3459,539 @@ textarea {
   color: var(--line-invalid, #f07272);
   background: rgba(240, 114, 114, 0.14);
   border: 1px solid rgba(240, 114, 114, 0.42);
+}
+
+/* ================================================================
+   Unified Mobile CAD Layout (Station Read-Only + Ship Editable)
+   Inherits exact CAD surface/border/typography tokens across themes
+   ================================================================ */
+.cad-shell.mobile-mode {
+  height: 100dvh;
+}
+
+.cad-shell.mobile-mode .cad-topbar {
+  height: calc(44px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 8px 0;
+  gap: 6px;
+}
+
+.cad-shell.mobile-mode .mobile-top-left {
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 6px;
+}
+
+.cad-shell.mobile-mode .mobile-top-right {
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.cad-shell.mobile-mode .cad-btn {
+  height: 30px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.cad-shell.mobile-mode .seg-btn {
+  height: 28px;
+  padding: 0 9px;
+  font-size: 11.5px;
+}
+
+.mobile-doc-pill {
+  flex: 0 1 116px;
+  min-width: 48px;
+  max-width: 150px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-surface);
+  color: var(--text-bright);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.cad-shell.mobile-mode .mobile-undo-btn {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.mobile-doc-pill:active {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-mid);
+}
+
+.mobile-doc-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.mobile-specs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  padding: 0 8px !important;
+}
+
+.mobile-specs-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.mobile-specs-dot.ok {
+  background: var(--line-active);
+}
+
+.mobile-specs-dot.warn {
+  background: var(--line-warn);
+}
+
+.mobile-specs-dot.err {
+  background: var(--line-disabled);
+}
+
+.mobile-prefs-popover {
+  right: 0;
+  min-width: 224px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 64px);
+  overflow-y: auto;
+}
+
+/* Subtle read-only station title badge below topbar left */
+.mobile-station-badge {
+  position: absolute;
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  left: 10px;
+  z-index: 20;
+  max-width: calc(100vw - 74px);
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-panel);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.mobile-station-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-ro-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+/* Unified right rail stack: FloorStackRail + Touch Camera Toggle */
+.mobile-right-stack {
+  position: absolute;
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  right: 10px;
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.mobile-right-stack > * {
+  pointer-events: auto;
+}
+
+.cad-shell.mobile-mode .mobile-right-stack .cad-floor-rail {
+  position: static;
+  top: auto;
+  right: auto;
+  padding: 5px 4px;
+  gap: 3px;
+}
+
+.cad-shell.mobile-mode .floor-rail-list {
+  max-height: 170px;
+  overflow-y: auto;
+}
+
+.mobile-cam-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 4px;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-hairline);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.mobile-cam-btn {
+  width: 34px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mobile-cam-btn:active {
+  background: var(--bg-surface-hover);
+  color: var(--text-bright);
+}
+
+.mobile-cam-btn.active {
+  background: var(--bg-surface-active);
+  border-color: var(--border-focus);
+  color: var(--text-bright);
+}
+
+/* Mobile Ship Parameters floating sheet */
+.ship-hud.mobile-sheet {
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  left: 10px;
+  right: 56px;
+  width: auto;
+  max-width: 340px;
+  max-height: calc(100dvh - 180px);
+  z-index: 32;
+}
+
+/* Mobile bottom stack: Contextual Action/Inspect Bar + Ship PaletteDock */
+.mobile-bottom-stack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index: 26;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.mobile-bottom-stack > * {
+  pointer-events: auto;
+}
+
+.mobile-ctx-bar {
+  width: min(100%, 460px);
+  padding: 7px 9px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-topbar);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mobile-ctx-bar.tone-warn {
+  border-color: var(--line-warn);
+}
+
+.mobile-ctx-info {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-ctx-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mobile-ctx-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-bright);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-ctx-deg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-dim);
+}
+
+.mobile-ctx-sub {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-ctx-note {
+  font-size: 10.5px;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.mobile-ctx-note.error {
+  color: var(--text-danger);
+}
+
+.mobile-ctx-note.warn {
+  color: var(--text-warn);
+}
+
+.mobile-ctx-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.mobile-ctx-actions .cad-btn.muted-lock {
+  opacity: 0.55;
+}
+
+/* Mobile PaletteDock inside bottom stack */
+.s2-dock-anchor.mobile-dock {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  width: 100%;
+  max-width: 100%;
+  gap: 5px;
+}
+
+.s2-dock-anchor.mobile-dock .s2-subtray {
+  max-width: 100%;
+  padding: 4px 6px;
+  border-radius: 9px;
+}
+
+.s2-dock-anchor.mobile-dock .s2-subtray-items {
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.s2-dock-anchor.mobile-dock .s2-subtray-items::-webkit-scrollbar,
+.s2-dock-anchor.mobile-dock .s2-dock-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.s2-dock-anchor.mobile-dock .s2-dock-bar {
+  width: 100%;
+  max-width: 100%;
+  justify-content: flex-start;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 5px 6px;
+  border-radius: 10px;
+}
+
+.s2-dock-anchor.mobile-dock .s2-tile {
+  flex: 0 0 auto;
+  min-width: 48px;
+  height: 46px;
+  padding: 4px 6px;
+}
+
+.s2-dock-anchor.mobile-dock .s2-tile.sub {
+  min-width: 46px;
+  height: 40px;
+}
+
+/* Mobile SimulationPanel becomes a clean bottom drawer */
+.cad-shell.mobile-mode .cad-sim-panel {
+  top: auto;
+  left: 8px;
+  right: 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  width: auto;
+  max-height: 62dvh;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  z-index: 34;
+}
+
+/* Mobile Toast floats cleanly above bottom dock */
+.cad-shell.mobile-mode .cad-toast {
+  bottom: calc(136px + env(safe-area-inset-bottom, 0px));
+  max-width: calc(100vw - 24px);
+}
+
+/* Mobile BlueprintLibraryModal: full-bleed responsive drawer */
+.cad-shell.mobile-mode .bpm-overlay {
+  padding: 0;
+}
+
+.cad-shell.mobile-mode .bpm-modal {
+  width: 100vw;
+  height: 100dvh;
+  border-radius: 0;
+  border: none;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.cad-shell.mobile-mode .bpm-header {
+  padding: 8px 10px;
+  gap: 8px;
+}
+
+.cad-shell.mobile-mode .bpm-source-pill {
+  display: none;
+}
+
+.cad-shell.mobile-mode .bpm-divider {
+  display: none;
+}
+
+.cad-shell.mobile-mode .bpm-body {
+  flex-direction: column;
+}
+
+.cad-shell.mobile-mode .bpm-folders {
+  width: 100%;
+  border-right: none;
+  border-bottom: 1px solid var(--border-hairline);
+  padding: 6px 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.cad-shell.mobile-mode .bpm-folders::-webkit-scrollbar {
+  display: none;
+}
+
+.cad-shell.mobile-mode .bpm-folder-scroll {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+
+.cad-shell.mobile-mode .bpm-folder-scroll > div,
+.cad-shell.mobile-mode .bpm-folder-scroll > div > div:not(.bpm-folder-row) {
+  display: contents;
+}
+
+.cad-shell.mobile-mode .bpm-folder-actions {
+  display: none;
+}
+
+.cad-shell.mobile-mode .bpm-folder-row {
+  flex: 0 0 auto;
+  padding: 5px 10px !important;
+  border-radius: 999px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-panel-solid);
+  white-space: nowrap;
+}
+
+.cad-shell.mobile-mode .bpm-folder-row.active {
+  border-color: var(--border-focus);
+  background: var(--bg-surface-active);
+}
+
+.cad-shell.mobile-mode .bpm-toolbar {
+  padding: 8px 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.cad-shell.mobile-mode .bpm-search {
+  max-width: none;
+  font-size: 14px;
+}
+
+.cad-shell.mobile-mode .bpm-grid {
+  padding: 8px 10px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 360px) {
+  .cad-shell.mobile-mode .bpm-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cad-shell.mobile-mode .bpm-card-actions {
+  gap: 4px;
+}
+
+.cad-shell.mobile-mode .bpm-card-btn {
+  padding: 3px 6px;
+  font-size: 10.5px;
+}
+
+/* Mobile Dialogs (GitHub Connect / Save) */
+.cad-shell.mobile-mode .cad-modal {
+  width: calc(100vw - 24px);
+  max-width: 420px;
+  max-height: calc(100dvh - 32px);
+}
+
+.cad-shell.mobile-mode .cad-input {
+  font-size: 14px;
 }

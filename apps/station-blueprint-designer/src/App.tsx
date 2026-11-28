@@ -88,10 +88,12 @@ import { HelpDrawer } from './ui/HelpDrawer';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { ToolActionBar, type KeyHintItem } from './ui/KeyHintBar';
 import { LibrarySidebar } from './ui/LibrarySidebar';
+import { MobileInspectBar } from './ui/MobileInspectBar';
 import { PaletteDock } from './ui/PaletteDock';
 import { ShipParamsHud } from './ui/ShipParamsHud';
 import { SimulationPanel, type CheckFocusTarget } from './ui/SimulationPanel';
 import { useHoverMenu } from './ui/useHoverMenu';
+import { useMobileLayout } from './ui/useMobileLayout';
 
 const EMPTY_SELECTION: SelectionState = { moduleIds: [], buildingIds: [] };
 type PointerSample = Pick<React.PointerEvent<HTMLDivElement>, 'clientX' | 'clientY'>;
@@ -118,6 +120,10 @@ function collectFolderPaths(nodes: LibraryNode[]): string[] {
 
 export const App: React.FC = () => {
   const { lang, isEn, toggleLang, t } = useI18n();
+  const { isMobile } = useMobileLayout();
+  const [mobileCamMode, setMobileCamMode] = useState<'pan' | 'orbit'>('pan');
+  const [mobileSpecsOpen, setMobileSpecsOpen] = useState(false);
+  const mobileImportRef = useRef<HTMLInputElement | null>(null);
   const initialSession = useMemo(() => {
     const recovered = loadWorkspaceAutosave();
     if (recovered) return recovered;
@@ -152,6 +158,7 @@ export const App: React.FC = () => {
   const {
     open: prefsMenuOpen,
     setOpen: setPrefsMenuOpen,
+    toggle: togglePrefsMenu,
     wrapRef: prefsMenuRef,
     containerProps: prefsMenuContainerProps,
     onTriggerClick: onPrefsTriggerClick,
@@ -498,6 +505,8 @@ export const App: React.FC = () => {
     showIoSpots,
     activeSimIssueId,
     lang,
+    isMobile,
+    mobileCamMode,
   });
   stateRef.current = {
     doc,
@@ -515,7 +524,39 @@ export const App: React.FC = () => {
     showIoSpots,
     activeSimIssueId,
     lang,
+    isMobile,
+    mobileCamMode,
   };
+
+  const touchRef = useRef<{
+    pointers: Map<number, { x: number; y: number }>;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    moved: boolean;
+    hadMultiTouch: boolean;
+    pinchDist: number;
+    pinchMidX: number;
+    pinchMidY: number;
+    pinchAngle: number;
+    pinchRotateActive: boolean;
+    pinchStartAngle: number;
+  }>({
+    pointers: new Map(),
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    moved: false,
+    hadMultiTouch: false,
+    pinchDist: 0,
+    pinchMidX: 0,
+    pinchMidY: 0,
+    pinchAngle: 0,
+    pinchRotateActive: false,
+    pinchStartAngle: 0,
+  });
 
   const dragRef = useRef<{
     kind: 'none' | 'orbit' | 'pan' | 'clean-orbit' | 'box-select' | 'box-demolish' | 'shift-place-or-box' | 'demolish';
@@ -1142,6 +1183,66 @@ export const App: React.FC = () => {
     [commitDoc, selectEntityTool, showToast, t]
   );
 
+  const applyRotateAction = useCallback(
+    (delta: 1 | -1 = 1) => {
+      const { activeTool: tool, doc: curDoc, shipFreeRotate: freeRot, selection: curSel } = stateRef.current;
+      if (tool.kind === 'place-module') {
+        if (curDoc.category === 'ship' && !canModuleRotate(tool.moduleType, freeRot)) {
+          showToast(
+            t(
+              '原版锁定朝向（镜像切换，或在「视角」开启自由旋转）',
+              'Orientation locked (mirror instead, or enable Free Rotate in View)'
+            ),
+            'info'
+          );
+          return;
+        }
+        setActiveTool({ ...tool, rotation: normalizeRotation(tool.rotation + delta) });
+      } else if (tool.kind === 'place-building') {
+        setActiveTool({ ...tool, rotation: normalizeRotation(tool.rotation + delta) });
+      } else if (tool.kind === 'stamp-blueprint') {
+        setActiveTool({
+          ...tool,
+          blueprint: rotateBlueprint(tool.blueprint, delta),
+          rotation: normalizeRotation(tool.rotation + delta),
+        });
+      } else {
+        if (curDoc.category === 'ship' && !freeRot && curSel.moduleIds.length > 0) {
+          const hasLocked = curSel.moduleIds.some((mid) => {
+            const m = curDoc.modules.find((x) => x.id === mid);
+            return m ? !canModuleRotate(m.type, false) : false;
+          });
+          if (hasLocked) {
+            showToast(
+              t(
+                '选区含原版锁定朝向部件（可在「视角」开启自由旋转）',
+                'Selection includes orientation-locked blocks (enable Free Rotate in View)'
+              ),
+              'info'
+            );
+            return;
+          }
+        }
+        const res = rotateSelectionInPlaceCmd(curDoc, curSel, delta);
+        if (res.changed) commitDoc(res.doc);
+      }
+    },
+    [commitDoc, showToast, t]
+  );
+
+  // Enforce mobile invariant: station blueprints are strictly read-only on mobile; ship mode stays editable.
+  useEffect(() => {
+    if (isMobile && doc.category !== 'ship') {
+      clearBeltSession();
+      setStampingLibPath(null);
+      setActiveTool((cur) => (cur.kind === 'select' ? cur : { kind: 'select' }));
+      setMobileSpecsOpen(false);
+    }
+    if (doc.category === 'ship') {
+      setSimOpen(false);
+    }
+  }, [isMobile, doc.category, clearBeltSession]);
+
   const pipetteAtWorld = useCallback(
     (world: { x: number; y: number }) => {
       const { doc: curDoc, viewMode: vm, focusFloor: fl } = stateRef.current;
@@ -1469,47 +1570,7 @@ export const App: React.FC = () => {
           refreshBeltSessionPreview();
           return;
         }
-        const { activeTool: tool, doc: curDoc, shipFreeRotate: freeRot, selection: curSel } = stateRef.current;
-        if (tool.kind === 'place-module') {
-          if (curDoc.category === 'ship' && !canModuleRotate(tool.moduleType, freeRot)) {
-            showToast(
-              t(
-                '原版锁定朝向（按 F 镜像，或在「视角」开启自由旋转）',
-                'Orientation locked (F to mirror, or enable Free Rotate in View)'
-              ),
-              'info'
-            );
-            return;
-          }
-          setActiveTool({ ...tool, rotation: normalizeRotation(tool.rotation + delta) });
-        } else if (tool.kind === 'place-building') {
-          setActiveTool({ ...tool, rotation: normalizeRotation(tool.rotation + delta) });
-        } else if (tool.kind === 'stamp-blueprint') {
-          setActiveTool({
-            ...tool,
-            blueprint: rotateBlueprint(tool.blueprint, delta),
-            rotation: normalizeRotation(tool.rotation + delta),
-          });
-        } else {
-          if (curDoc.category === 'ship' && !freeRot && curSel.moduleIds.length > 0) {
-            const hasLocked = curSel.moduleIds.some((mid) => {
-              const m = curDoc.modules.find((x) => x.id === mid);
-              return m ? !canModuleRotate(m.type, false) : false;
-            });
-            if (hasLocked) {
-              showToast(
-                t(
-                  '选区含原版锁定朝向部件（可在「视角」开启自由旋转）',
-                  'Selection includes orientation-locked blocks (enable Free Rotate in View)'
-                ),
-                'info'
-              );
-              return;
-            }
-          }
-          const res = rotateSelectionInPlaceCmd(curDoc, curSel, delta);
-          if (res.changed) commitDoc(res.doc);
-        }
+        applyRotateAction(delta);
         return;
       }
       if (e.key === 'Alt' && beltSessionRef.current) {
@@ -1631,6 +1692,7 @@ export const App: React.FC = () => {
     };
   }, [
     applyMirrorAction,
+    applyRotateAction,
     clearBeltSession,
     commitDoc,
     copySelectionToGhost,
@@ -1667,9 +1729,141 @@ export const App: React.FC = () => {
     return hit ? { x: hit.x, y: hit.z } : null;
   }, []);
 
+  const handleMobileTap = (clientX: number, clientY: number) => {
+    if (stateRef.current.cleanView) {
+      exitCleanView();
+      return;
+    }
+    const world = clientToWorld(clientX, clientY);
+    updateLiveCursor(null);
+    if (!world) return;
+
+    const { doc: curDoc, viewMode: vm, focusFloor: fl, activeTool: tool, simReport: curSim, showIoSpots: curShowIo } =
+      stateRef.current;
+
+    // 1. Station blueprint on mobile: strictly read-only tap-to-inspect
+    if (curDoc.category !== 'ship') {
+      const cellX = Math.floor(world.x);
+      const cellY = Math.floor(world.y);
+      const clickedBld = findBuildingAtCell(curDoc, cellX, cellY, fl);
+
+      if (curSim) {
+        const faultHits = curSim.faults.filter(
+          (i) =>
+            i.floor === fl &&
+            ((i.x === cellX && i.y === cellY) || (clickedBld !== null && i.buildingId === clickedBld.id))
+        );
+        const ioHits = curShowIo
+          ? curSim.ioSpots.filter(
+              (s) =>
+                s.floor === fl &&
+                ((s.x === cellX && s.y === cellY) || (clickedBld !== null && s.buildingId === clickedBld.id))
+            )
+          : [];
+        const hits = [
+          ...faultHits.map((f) => ({ id: f.id, message: f.message, kind: f.severity as 'error' | 'warn' })),
+          ...ioHits.map((s) => ({ id: s.id, message: s.message, kind: 'info' as const })),
+        ];
+        if (hits.length > 0) {
+          const curIdx = hits.findIndex((i) => i.id === stateRef.current.activeSimIssueId);
+          const picked = hits[(curIdx + 1) % hits.length];
+          setActiveSimIssueId(picked.id);
+          showToast(picked.message, picked.kind);
+        } else {
+          setActiveSimIssueId(null);
+        }
+      }
+
+      if (vm === 'building') {
+        setSelection(clickedBld ? { moduleIds: [], buildingIds: [clickedBld.id] } : EMPTY_SELECTION);
+      } else {
+        const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
+        setSelection(m ? { moduleIds: [m.id], buildingIds: [] } : EMPTY_SELECTION);
+      }
+      return;
+    }
+
+    // 2. Ship blueprint on mobile: coarse-grid direct tap placement / selection / erase
+    if (tool.kind === 'demolish') {
+      const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
+      if (m) {
+        const res = deleteSelectionCmd(curDoc, { moduleIds: [m.id], buildingIds: [] });
+        if (res.changed) {
+          commitDoc(res.doc);
+          setSelection(EMPTY_SELECTION);
+        }
+      }
+      return;
+    }
+
+    if (tool.kind === 'place-module') {
+      const existing = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
+      if (existing) {
+        // Tapping an occupied ship block selects it for quick Rotate / Mirror / Delete without accidental overwrite
+        setSelection({ moduleIds: [existing.id], buildingIds: [] });
+        return;
+      }
+      if (stateRef.current.selection.moduleIds.length > 0) {
+        // First tap on empty space while inspecting a block clears selection instead of placing unexpectedly
+        setSelection(EMPTY_SELECTION);
+        return;
+      }
+      const unitM = getFrameGridSpec(curDoc.category).unitM;
+      const gx = Math.floor(world.x / unitM);
+      const gy = Math.floor(world.y / unitM);
+      const res = placeModuleCmd(curDoc, {
+        type: tool.moduleType,
+        gx,
+        gy,
+        floor: fl,
+        rotation: tool.rotation,
+        ...(tool.label ? { label: tool.label } : {}),
+      });
+      if (res.changed) {
+        commitDoc(res.doc);
+        setSelection(EMPTY_SELECTION);
+      } else if (res.message) {
+        showToast(res.message, 'warn');
+      }
+      return;
+    }
+
+    const hitMod = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
+    setSelection(hitMod ? { moduleIds: [hitMod.id], buildingIds: [] } : EMPTY_SELECTION);
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     hideHoverTip();
+
+    // Multi-touch & mobile viewport unified touch state machine (Pan / Pinch / Twist + Tap)
+    if (e.pointerType === 'touch' || (stateRef.current.isMobile && e.button === 0)) {
+      pendingPointerRef.current = null;
+      const tr = touchRef.current;
+      tr.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (tr.pointers.size === 1) {
+        tr.startX = e.clientX;
+        tr.startY = e.clientY;
+        tr.lastX = e.clientX;
+        tr.lastY = e.clientY;
+        tr.moved = false;
+        tr.hadMultiTouch = false;
+        tr.pinchRotateActive = false;
+      } else if (tr.pointers.size === 2) {
+        const pts = Array.from(tr.pointers.values());
+        tr.hadMultiTouch = true;
+        tr.moved = true;
+        tr.pinchDist = Math.max(1, Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y));
+        tr.pinchMidX = (pts[0].x + pts[1].x) * 0.5;
+        tr.pinchMidY = (pts[0].y + pts[1].y) * 0.5;
+        const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+        tr.pinchAngle = ang;
+        tr.pinchStartAngle = ang;
+        tr.pinchRotateActive = false;
+        sceneRef.current?.setCameraDragging(true);
+      }
+      return;
+    }
 
     if (stateRef.current.cleanView) {
       pendingPointerRef.current = null;
@@ -2119,6 +2313,82 @@ export const App: React.FC = () => {
   });
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const tr = touchRef.current;
+    if (tr.pointers.has(e.pointerId)) {
+      tr.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const ctrl = sceneRef.current;
+      const rect = viewportRectRef.current;
+      const h = rect?.height || 600;
+
+      if (tr.pointers.size >= 2 && ctrl) {
+        const pts = Array.from(tr.pointers.values());
+        const dist = Math.max(1, Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y));
+        const midX = (pts[0].x + pts[1].x) * 0.5;
+        const midY = (pts[0].y + pts[1].y) * 0.5;
+        const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+
+        const panDx = midX - tr.pinchMidX;
+        const panDy = midY - tr.pinchMidY;
+        if (Math.abs(panDx) > 0.1 || Math.abs(panDy) > 0.1) {
+          ctrl.rig.panByScreenDelta(panDx, panDy, h);
+        }
+
+        const scaleRatio = dist / Math.max(1, tr.pinchDist);
+        if (Math.abs(scaleRatio - 1) > 0.002) {
+          let anchor = null;
+          if (rect && rect.width > 0 && rect.height > 0) {
+            const ndcX = ((midX - rect.left) / rect.width) * 2 - 1;
+            const ndcY = -((midY - rect.top) / rect.height) * 2 + 1;
+            anchor = ctrl.rig.intersectFocusPlane(ndcX, ndcY);
+          }
+          ctrl.rig.zoomByPinch(scaleRatio, anchor);
+        }
+
+        let dAng = ang - tr.pinchAngle;
+        if (dAng > Math.PI) dAng -= Math.PI * 2;
+        if (dAng < -Math.PI) dAng += Math.PI * 2;
+        if (!tr.pinchRotateActive) {
+          let totalAng = ang - tr.pinchStartAngle;
+          if (totalAng > Math.PI) totalAng -= Math.PI * 2;
+          if (totalAng < -Math.PI) totalAng += Math.PI * 2;
+          if (Math.abs(totalAng) > 0.12) tr.pinchRotateActive = true;
+        }
+        if (tr.pinchRotateActive && Math.abs(dAng) > 0.001) {
+          ctrl.rig.orbitByPixels(-dAng * 140, 0);
+        }
+
+        tr.pinchDist = dist;
+        tr.pinchMidX = midX;
+        tr.pinchMidY = midY;
+        tr.pinchAngle = ang;
+        return;
+      }
+
+      if (tr.pointers.size === 1 && !tr.hadMultiTouch && ctrl) {
+        const dx = e.clientX - tr.lastX;
+        const dy = e.clientY - tr.lastY;
+        tr.lastX = e.clientX;
+        tr.lastY = e.clientY;
+        if (!tr.moved && Math.hypot(e.clientX - tr.startX, e.clientY - tr.startY) >= 8) {
+          tr.moved = true;
+          ctrl.setCameraDragging(true);
+        }
+        if (tr.moved) {
+          if (stateRef.current.mobileCamMode === 'orbit' || stateRef.current.cleanView) {
+            ctrl.rig.orbitByPixels(dx, dy);
+          } else {
+            ctrl.rig.panByScreenDelta(dx, dy, h);
+          }
+        }
+      }
+      return;
+    }
+
+    if (stateRef.current.isMobile) {
+      // Avoid ghost/hover cursor artifacts on mobile viewports
+      return;
+    }
+
     const d = dragRef.current;
     if (d.kind === 'orbit' || d.kind === 'clean-orbit' || d.kind === 'pan') {
       pendingPointerRef.current = null;
@@ -2141,6 +2411,29 @@ export const App: React.FC = () => {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const tr = touchRef.current;
+    if (tr.pointers.has(e.pointerId)) {
+      tr.pointers.delete(e.pointerId);
+      if (tr.pointers.size === 1) {
+        const rem = Array.from(tr.pointers.values())[0];
+        tr.lastX = rem.x;
+        tr.lastY = rem.y;
+        return;
+      }
+      if (tr.pointers.size === 0) {
+        sceneRef.current?.setCameraDragging(false);
+        if (!tr.moved && !tr.hadMultiTouch) {
+          handleMobileTap(e.clientX, e.clientY);
+        } else if (tr.moved && (stateRef.current.mobileCamMode === 'orbit' || tr.pinchRotateActive || stateRef.current.cleanView)) {
+          sceneRef.current?.rig.snapAngles();
+        }
+        tr.moved = false;
+        tr.hadMultiTouch = false;
+        tr.pinchRotateActive = false;
+      }
+      return;
+    }
+
     const d = dragRef.current;
     if (d.kind === 'orbit' || d.kind === 'clean-orbit' || d.kind === 'pan') {
       sceneRef.current?.setCameraDragging(false);
@@ -2892,8 +3185,280 @@ export const App: React.FC = () => {
   }, [activeTool, beltHudFlags.reverse, beltHudFlags.tunnel, beltSessionMode, doc.category, isEn, isShip, lang, shipFreeRotate, t]);
 
   return (
-    <div className={`cad-shell ${cleanView ? 'clean-view' : ''}`} data-theme={theme}>
+    <div className={`cad-shell ${cleanView ? 'clean-view' : ''} ${isMobile ? 'mobile-mode' : ''}`} data-theme={theme}>
       <header className="cad-topbar" aria-hidden={cleanView || undefined}>
+        {isMobile ? (
+          <>
+            <div className="topbar-group mobile-top-left">
+              <button
+                type="button"
+                className="cad-btn"
+                onClick={() => setLibraryModalOpen(true)}
+                aria-label={t('蓝图库', 'Blueprint Library')}
+              >
+                {t('蓝图库', 'Library')}
+              </button>
+              {isShip ? (
+                <button
+                  type="button"
+                  className="mobile-doc-pill"
+                  onClick={() => openSaveDialog(false)}
+                  aria-label={t('保存或重命名', 'Save or rename')}
+                >
+                  <span className={`doc-status-dot ${dirty ? 'dirty' : 'clean'}`} />
+                  <span className="mobile-doc-name">{doc.name}</span>
+                </button>
+              ) : (
+                <div className="segmented">
+                  <button
+                    type="button"
+                    className={`seg-btn ${viewMode === 'station' ? 'active' : ''}`}
+                    onClick={() => switchViewMode('station')}
+                  >
+                    {t('空间站', 'Station')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`seg-btn ${viewMode === 'building' ? 'active' : ''}`}
+                    onClick={() => switchViewMode('building')}
+                  >
+                    {t('建筑', 'Build')}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="topbar-group right-aligned mobile-top-right">
+              {isShip ? (
+                <>
+                  <button
+                    type="button"
+                    className="cad-btn mobile-undo-btn"
+                    disabled={history.past.length === 0}
+                    onClick={() => setHistory((h) => undoHistory(h))}
+                    aria-label={t('撤销', 'Undo')}
+                  >
+                    ↶
+                  </button>
+                  {shipStats && (
+                    <button
+                      type="button"
+                      className={`cad-btn mobile-specs-btn ${mobileSpecsOpen ? 'accent' : ''}`}
+                      onClick={() => setMobileSpecsOpen((v) => !v)}
+                    >
+                      <span
+                        className={`mobile-specs-dot ${
+                          shipStats.power.status === 'cruise-deficit' || shipStats.power.status === 'no-power'
+                            ? 'err'
+                            : shipStats.power.status === 'peak-warn'
+                              ? 'warn'
+                              : shipStats.power.status === 'surplus'
+                                ? 'ok'
+                                : 'idle'
+                        }`}
+                      />
+                      <span>
+                        {Math.round(shipStats.totalWeightT)}t · {Math.round(shipStats.maxSpeedMS)}m/s
+                      </span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={`cad-btn ${simOpen ? (simReport?.passed ? 'sim-ok' : 'sim-err') : ''}`}
+                  onClick={() => setSimOpen((v) => !v)}
+                >
+                  {simOpen
+                    ? !simReport?.passed
+                      ? t(`体检·${simReport?.errorCount ?? 0}错`, `Chk·${simReport?.errorCount ?? 0}`)
+                      : (simReport?.warnCount ?? 0) > 0
+                        ? t(`体检·${simReport?.warnCount ?? 0}警`, `Chk·${simReport?.warnCount ?? 0}`)
+                        : t('体检·正', 'Chk·OK')
+                    : t('体检', 'Check')}
+                </button>
+              )}
+
+              <div className="interop-anchor" ref={prefsMenuRef}>
+                <button
+                  type="button"
+                  className={`cad-btn ${prefsMenuOpen ? 'accent' : ''}`}
+                  onClick={togglePrefsMenu}
+                  aria-label={t('菜单与视角', 'Menu & View')}
+                  aria-expanded={prefsMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  {t('更多 ▾', 'More ▾')}
+                </button>
+                {prefsMenuOpen && (
+                  <div className="prefs-popover mobile-prefs-popover">
+                    <div className="prefs-section">
+                      <div className="prefs-title">{t('蓝图', 'Blueprint')}</div>
+                      <div className="prefs-row">
+                        {isShip && (
+                          <button
+                            type="button"
+                            className="cad-btn accent"
+                            onClick={() => {
+                              setPrefsMenuOpen(false);
+                              openSaveDialog(false);
+                            }}
+                          >
+                            {t('保存', 'Save')}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="cad-btn"
+                          onClick={() => {
+                            setPrefsMenuOpen(false);
+                            handleNewBlueprint('ship');
+                          }}
+                        >
+                          {t('+ 飞船', '+ Ship')}
+                        </button>
+                        <button
+                          type="button"
+                          className="cad-btn"
+                          onClick={() => mobileImportRef.current?.click()}
+                        >
+                          {t('导入', 'Import')}
+                        </button>
+                      </div>
+                      <div className="prefs-row">
+                        <button
+                          type="button"
+                          className="cad-btn"
+                          onClick={() => {
+                            setPrefsMenuOpen(false);
+                            handleExportCanonicalJson();
+                          }}
+                        >
+                          {t('导出 JSON', 'Export JSON')}
+                        </button>
+                        {!isShip && (
+                          <button
+                            type="button"
+                            className="cad-btn"
+                            onClick={() => {
+                              setPrefsMenuOpen(false);
+                              void handleExportNativeSav('station');
+                            }}
+                          >
+                            {t('导出 .sav', 'Export .sav')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="prefs-section">
+                      <div className="prefs-title">{t('视角', 'Camera')}</div>
+                      <div className="prefs-row">
+                        <button
+                          type="button"
+                          className={`cad-btn ${snapEnabled ? 'accent' : ''}`}
+                          onClick={() => {
+                            const next = !snapEnabled;
+                            setSnapEnabled(next);
+                            sceneRef.current?.rig.setSnapEnabled(next);
+                          }}
+                        >
+                          {snapEnabled ? t('吸附 · 开', 'Snap · On') : t('自由', 'Free')}
+                        </button>
+                        <button
+                          type="button"
+                          className="cad-btn"
+                          onClick={() => sceneRef.current?.rig.stepYawCardinal(1)}
+                        >
+                          ↻90°
+                        </button>
+                        <button
+                          type="button"
+                          className="cad-btn"
+                          onClick={() => {
+                            fitAllStation();
+                            setPrefsMenuOpen(false);
+                          }}
+                        >
+                          {t('适配', 'Fit')}
+                        </button>
+                      </div>
+                      <div className="pitch-pills prefs-pitch">
+                        {PITCH_SNAP_PRESETS.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className="mini-pill"
+                            onClick={() => sceneRef.current?.rig.setPitchPreset(p.rad)}
+                          >
+                            {isEn ? p.labelEn.split(' ')[0] : p.label.slice(0, 2)}
+                          </button>
+                        ))}
+                      </div>
+                      {isShip && (
+                        <button
+                          type="button"
+                          className={`cad-btn prefs-full ${shipFreeRotate ? 'accent' : ''}`}
+                          onClick={() => {
+                            setShipFreeRotate((v) => {
+                              const next = !v;
+                              showToast(
+                                next
+                                  ? t('已开启飞船自由旋转（解除原版朝向锁）', 'Ship Free Rotate: ON')
+                                  : t('已恢复原版飞船朝向锁定', 'Ship Free Rotate: OFF')
+                              );
+                              return next;
+                            });
+                          }}
+                        >
+                          {shipFreeRotate
+                            ? t('飞船自由旋转 · 开', 'Free Rotate · On')
+                            : t('飞船自由旋转 · 关（原版）', 'Free Rotate · Off')}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="prefs-section">
+                      <div className="prefs-title">{t('外观与语言', 'Appearance')}</div>
+                      <div className="prefs-row">
+                        <button
+                          type="button"
+                          className="cad-btn"
+                          onClick={() => {
+                            const next: CadThemeId = theme === 'platinum-gold' ? 'stealth-cad' : 'platinum-gold';
+                            setTheme(next);
+                            saveTheme(next);
+                          }}
+                        >
+                          {isEn ? CAD_THEMES[theme].nameEn : CAD_THEMES[theme].nameZh}
+                        </button>
+                        <button type="button" className="cad-btn" onClick={toggleLang}>
+                          {isEn ? '中文' : 'EN'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <input
+                ref={mobileImportRef}
+                type="file"
+                accept=".json,.sav,application/json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setPrefsMenuOpen(false);
+                    void handleImportJsonFile(file);
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </div>
+          </>
+        ) : (
+          <>
           <div className="topbar-group">
             <span className="brand-mark">MS · CAD</span>
             <div className="doc-title-wrap">
@@ -3133,22 +3698,26 @@ export const App: React.FC = () => {
               ?
             </button>
           </div>
+          </>
+        )}
       </header>
 
       <div className="cad-main">
-        <LibrarySidebar
-          open={libraryOpen}
-          onToggleOpen={() => setLibraryOpen((o) => !o)}
-          onOpenModal={() => setLibraryModalOpen(true)}
-          driverMode={driver.mode}
-          rootLabel={driver.rootLabel}
-          tree={libraryTree}
-          activeSourcePath={activeSourcePath}
-          stampingPath={stampingLibPath}
-          onNewBlueprint={handleNewBlueprint}
-          onStampFromLibrary={handleStampFromLibrary}
-          onOpenFromLibrary={handleOpenFromLibrary}
-        />
+        {!isMobile && (
+          <LibrarySidebar
+            open={libraryOpen}
+            onToggleOpen={() => setLibraryOpen((o) => !o)}
+            onOpenModal={() => setLibraryModalOpen(true)}
+            driverMode={driver.mode}
+            rootLabel={driver.rootLabel}
+            tree={libraryTree}
+            activeSourcePath={activeSourcePath}
+            stampingPath={stampingLibPath}
+            onNewBlueprint={handleNewBlueprint}
+            onStampFromLibrary={handleStampFromLibrary}
+            onOpenFromLibrary={handleOpenFromLibrary}
+          />
+        )}
 
         <div
           ref={viewportRef}
@@ -3170,7 +3739,13 @@ export const App: React.FC = () => {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onPointerCancel={() => {
+          onPointerCancel={(e) => {
+            touchRef.current.pointers.delete(e.pointerId);
+            if (touchRef.current.pointers.size === 0) {
+              touchRef.current.moved = false;
+              touchRef.current.hadMultiTouch = false;
+              touchRef.current.pinchRotateActive = false;
+            }
             pendingPointerRef.current = null;
             dragRef.current.kind = 'none';
             dragRef.current.moved = false;
@@ -3185,7 +3760,7 @@ export const App: React.FC = () => {
             updateLiveCursor(null);
             hideHoverTip();
           }}
-          onDoubleClick={handleDoubleClick}
+          onDoubleClick={isMobile ? undefined : handleDoubleClick}
         />
 
         <div className="cad-focal-vignette" aria-hidden="true" />
@@ -3196,46 +3771,93 @@ export const App: React.FC = () => {
           <div ref={hoverNoteRef} className="cad-hover-tip-note" />
         </div>
 
-        <div className={`cad-hud-topright ${hasRightPanel ? 'shifted' : ''}`} aria-live="off" aria-hidden={cleanView || undefined}>
-          <div className="hud-row primary">
-            <span className="hud-coord" ref={hudCoordRef}>X --  Y --</span>
-            <span className="hud-sep">·</span>
-            <span className="hud-grid" ref={hudGridRef}>G(-,-)</span>
-            <span className="hud-floor">{formatFloorTag(focusFloor)}</span>
+        {isMobile && !isShip && (
+          <div className="mobile-station-badge" aria-hidden={cleanView || undefined}>
+            <span className="mobile-station-name">{doc.name}</span>
+            <span className="mobile-ro-tag">{t('只读', 'RO')}</span>
           </div>
-          <div className="hud-row secondary">
-            <span>
-              {isShip ? t('飞船', 'Ship') : viewMode === 'station' ? t('空间站', 'Station') : t('建筑', 'Building')}
-            </span>
-            <span ref={hudCamRef}>0°/64° · 76m</span>
-            <span>{snapEnabled ? t('吸附', 'Snap') : t('自由', 'Free')}</span>
-            <span>
-              {isShip
-                ? isEn
-                  ? `${doc.modules.length}M`
-                  : `${doc.modules.length}模`
-                : isEn
-                  ? `${doc.modules.length}M · ${doc.buildings.length}B`
-                  : `${doc.modules.length}模 · ${doc.buildings.length}建`}
-            </span>
-            {lastAutosaveAt && (
-              <span title={t('自动恢复点', 'Autosave')}>{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
-            )}
+        )}
+
+        {!isMobile && (
+          <div className={`cad-hud-topright ${hasRightPanel ? 'shifted' : ''}`} aria-live="off" aria-hidden={cleanView || undefined}>
+            <div className="hud-row primary">
+              <span className="hud-coord" ref={hudCoordRef}>X --  Y --</span>
+              <span className="hud-sep">·</span>
+              <span className="hud-grid" ref={hudGridRef}>G(-,-)</span>
+              <span className="hud-floor">{formatFloorTag(focusFloor)}</span>
+            </div>
+            <div className="hud-row secondary">
+              <span>
+                {isShip ? t('飞船', 'Ship') : viewMode === 'station' ? t('空间站', 'Station') : t('建筑', 'Building')}
+              </span>
+              <span ref={hudCamRef}>0°/64° · 76m</span>
+              <span>{snapEnabled ? t('吸附', 'Snap') : t('自由', 'Free')}</span>
+              <span>
+                {isShip
+                  ? isEn
+                    ? `${doc.modules.length}M`
+                    : `${doc.modules.length}模`
+                  : isEn
+                    ? `${doc.modules.length}M · ${doc.buildings.length}B`
+                    : `${doc.modules.length}模 · ${doc.buildings.length}建`}
+              </span>
+              {lastAutosaveAt && (
+                <span title={t('自动恢复点', 'Autosave')}>{new Date(lastAutosaveAt).toLocaleTimeString()}</span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        <FloorStackRail
-          doc={doc}
-          focusFloor={focusFloor}
-          hideAbove={hideAbove}
-          shifted={hasRightPanel}
-          onSelectFloor={setFocusFloor}
-          onToggleHideAbove={() => setHideAbove((v) => !v)}
-        />
+        {isMobile ? (
+          <div className="mobile-right-stack" aria-hidden={cleanView || undefined}>
+            <FloorStackRail
+              doc={doc}
+              focusFloor={focusFloor}
+              hideAbove={hideAbove}
+              shifted={false}
+              onSelectFloor={setFocusFloor}
+              onToggleHideAbove={() => setHideAbove((v) => !v)}
+            />
+            <div className="mobile-cam-rail" aria-label={t('触控视角', 'Touch camera')}>
+              <button
+                type="button"
+                className={`mobile-cam-btn ${mobileCamMode === 'orbit' ? 'active' : ''}`}
+                onClick={() => setMobileCamMode((m) => (m === 'pan' ? 'orbit' : 'pan'))}
+                aria-label={mobileCamMode === 'orbit' ? t('切换为平移', 'Switch to pan') : t('切换为旋转视角', 'Switch to orbit')}
+              >
+                {mobileCamMode === 'orbit' ? t('旋', '3D') : t('移', '2D')}
+              </button>
+              <button
+                type="button"
+                className="mobile-cam-btn"
+                onClick={fitAllStation}
+                aria-label={t('居中适配', 'Fit view')}
+              >
+                ⌖
+              </button>
+            </div>
+          </div>
+        ) : (
+          <FloorStackRail
+            doc={doc}
+            focusFloor={focusFloor}
+            hideAbove={hideAbove}
+            shifted={hasRightPanel}
+            onSelectFloor={setFocusFloor}
+            onToggleHideAbove={() => setHideAbove((v) => !v)}
+          />
+        )}
 
-        {isShip && shipStats && <ShipParamsHud stats={shipStats} />}
+        {isShip && shipStats && (
+          <ShipParamsHud
+            stats={shipStats}
+            mobile={isMobile}
+            mobileOpen={mobileSpecsOpen}
+            onMobileClose={() => setMobileSpecsOpen(false)}
+          />
+        )}
 
-        {!isShip && (
+        {!isShip && !isMobile && (
           <InspectorPanel
             doc={doc}
             selection={selection}
@@ -3274,6 +3896,7 @@ export const App: React.FC = () => {
             onFocusTarget={(target: CheckFocusTarget) => {
               setActiveSimIssueId(target.id);
               setFocusFloor(target.floor);
+              if (isMobile) setSimOpen(false);
               if (target.moduleId && !target.buildingId) {
                 switchViewMode('station', [target.x + 0.5, target.y + 0.5]);
                 setSelection({ moduleIds: [target.moduleId], buildingIds: [] });
@@ -3287,31 +3910,75 @@ export const App: React.FC = () => {
           />
         )}
 
-        {toolBannerSpec && (
-          <ToolActionBar
-            mode={toolBannerSpec.mode}
-            badge={toolBannerSpec.badge}
-            tone={toolBannerSpec.tone}
-            hints={toolBannerSpec.hints}
-          />
-        )}
+        {isMobile ? (
+          <div className="mobile-bottom-stack">
+            {(!simOpen || isShip) && (
+              <MobileInspectBar
+                doc={doc}
+                selection={selection}
+                activeTool={activeTool}
+                shipFreeRotate={shipFreeRotate}
+                simReport={simReport}
+                onRotate={() => applyRotateAction(1)}
+                onMirror={() => applyMirrorAction(false)}
+                onDeleteSelection={() => {
+                  requestDeleteSelection(selection);
+                  setSelection(EMPTY_SELECTION);
+                }}
+                onClearSelection={() => setSelection(EMPTY_SELECTION)}
+                onExitTool={() => setActiveTool({ kind: 'select' })}
+              />
+            )}
+            {isShip && (
+              <PaletteDock
+                viewMode={viewMode}
+                docCategory={doc.category}
+                shipFreeRotate={shipFreeRotate}
+                mobile
+                activeTool={activeTool}
+                lastGroupMember={lastGroupMember}
+                onSelectEntity={(id) => {
+                  setSelection(EMPTY_SELECTION);
+                  selectEntityTool(id);
+                }}
+                onSelectTool={(tTool) => {
+                  setActiveTool(tTool);
+                  setStampingLibPath(null);
+                  setSelection(EMPTY_SELECTION);
+                }}
+              />
+            )}
+          </div>
+        ) : (
+          <>
+            {toolBannerSpec && (
+              <ToolActionBar
+                mode={toolBannerSpec.mode}
+                badge={toolBannerSpec.badge}
+                tone={toolBannerSpec.tone}
+                hints={toolBannerSpec.hints}
+              />
+            )}
 
-        <PaletteDock
-          viewMode={viewMode}
-          docCategory={doc.category}
-          shipFreeRotate={shipFreeRotate}
-          activeTool={activeTool}
-          lastGroupMember={lastGroupMember}
-          onSelectEntity={(id) => selectEntityTool(id)}
-          onSelectTool={(tTool) => {
-            setActiveTool(tTool);
-            setStampingLibPath(null);
-          }}
-        />
+            <PaletteDock
+              viewMode={viewMode}
+              docCategory={doc.category}
+              shipFreeRotate={shipFreeRotate}
+              activeTool={activeTool}
+              lastGroupMember={lastGroupMember}
+              onSelectEntity={(id) => selectEntityTool(id)}
+              onSelectTool={(tTool) => {
+                setActiveTool(tTool);
+                setStampingLibPath(null);
+              }}
+            />
+          </>
+        )}
       </div>
 
       <BlueprintLibraryModal
         open={libraryModalOpen}
+        mobile={isMobile}
         onClose={() => setLibraryModalOpen(false)}
         driver={driver}
         fsSupported={FileSystemFolderDriver.isSupported()}
