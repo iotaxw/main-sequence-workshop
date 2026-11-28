@@ -736,8 +736,17 @@ test("ui theme produces SlateColor structs, resolves HUD canvas and respects exc
     equal(theme.find_canvas_in_hud(hud1), canvas1)
 
     local canvas2 = mock_widget("CanvasPanel", 301)
+    local wrapper_overlay = mock_widget("Overlay", 305, {
+        GetChildrenCount = function() return 1 end,
+        GetChildAt = function(_, idx) return idx == 0 and canvas2 or nil end,
+    })
+    -- Simulate UE4SS 4.0.0 strict UObject:IsA(UClass*) which rejects string arguments!
+    canvas2.IsA = function(_, arg)
+        if type(arg) == "string" then error("No overload found for IsA(string)") end
+        return false
+    end
     local hud2 = mock_widget("WBP_CharacterHUD_C", 300, {
-        WidgetTree = mock_widget("WidgetTree", 302, { RootWidget = canvas2 }),
+        WidgetTree = mock_widget("WidgetTree", 302, { RootWidget = wrapper_overlay }),
         GetOwningPlayer = function() return mock_widget("BP_PlayerController_C", 303) end,
     })
     equal(theme.find_canvas_in_hud(hud2), canvas2)
@@ -745,7 +754,12 @@ test("ui theme produces SlateColor structs, resolves HUD canvas and respects exc
     local prev_find_all = _G.FindAllOf
     local prev_flags = _G.EObjectFlags
     _G.EObjectFlags = { RF_ClassDefaultObject = 1, RF_ArchetypeObject = 2 }
+    local userwidget_queried = false
     _G.FindAllOf = function(cls)
+        if cls == "UserWidget" then
+            userwidget_queried = true
+            error("FindAllOf('UserWidget') must NEVER be called (crashes UE4SS 4.0.0 on UE 5.7.4)")
+        end
         if cls == "WBP_DesignerHUD_C" then return { hud1 } end
         if cls == "WBP_CharacterHUD_C" then return { hud2 } end
         return {}
@@ -753,12 +767,19 @@ test("ui theme produces SlateColor structs, resolves HUD canvas and respects exc
     local ok, host = pcall(theme.find_active_hud_host, {
         exclude_classes = { WBP_DesignerHUD_C = true },
     })
+    -- Also test empty world case: must STILL never call FindAllOf("UserWidget")!
+    local ok_empty, empty_host = pcall(theme.find_active_hud_host, {
+        exclude_classes = { WBP_DesignerHUD_C = true, WBP_CharacterHUD_C = true },
+    })
     _G.FindAllOf = prev_find_all
     _G.EObjectFlags = prev_flags
+    equal(userwidget_queried, false)
     truthy(ok, tostring(host))
     truthy(host)
     equal(host.hud:GetAddress(), 300)
     equal(host.canvas:GetAddress(), 301)
+    truthy(ok_empty)
+    equal(empty_host, nil)
 end)
 
 test("ssb_ui mounts same-tree drawer without touching OpenButton/DesignerPopup and registers pooled subfolder actions", function()

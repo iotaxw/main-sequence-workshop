@@ -325,29 +325,62 @@ end
 
 function M.is_canvas_panel(widget)
     if not native.is_valid(widget) then return false end
-    local ok, is_canvas = pcall(function()
-        if type(widget.IsA) == "function" then
-            return widget:IsA(M.CLASSES.CANVAS_PANEL)
+    if native.class_name(widget) == "CanvasPanel" then
+        return true
+    end
+    local cls = native.find_type(M.CLASSES.CANVAS_PANEL)
+    if cls and type(widget.IsA) == "function" then
+        local ok, is_canvas = pcall(function() return widget:IsA(cls) end)
+        if ok and is_canvas == true then
+            return true
         end
-        return native.class_name(widget) == "CanvasPanel"
-    end)
-    return ok and is_canvas == true
+    end
+    return false
 end
 
 function M.find_canvas_in_hud(hud)
     if not native.is_valid(hud) then return nil end
-    local ok_c, direct = pcall(function() return hud.Canvas end)
-    if ok_c and M.is_canvas_panel(direct) then
-        return direct
+    for _, field in ipairs({ "Canvas", "CanvasPanel", "CanvasPanel_0" }) do
+        local ok_c, direct = pcall(function() return hud[field] end)
+        if ok_c and M.is_canvas_panel(direct) then
+            return direct
+        end
     end
     local ok_root, root = pcall(function() return hud.WidgetTree and hud.WidgetTree.RootWidget end)
-    if ok_root and M.is_canvas_panel(root) then
+    if not ok_root or not native.is_valid(root) then
+        return nil
+    end
+    if M.is_canvas_panel(root) then
         return root
     end
-    if ok_root and native.is_valid(root) then
-        local ok_child, first = pcall(function() return root:GetChildAt(0) end)
-        if ok_child and M.is_canvas_panel(first) then
-            return first
+    -- Bounded local BFS (max depth 3, max 16 nodes) in case RootWidget is an Overlay/ScaleBox wrapping CanvasPanel.
+    local queue = { { node = root, depth = 0 } }
+    local head, visited = 1, 0
+    while head <= #queue and visited < 16 do
+        local item = queue[head]
+        head = head + 1
+        visited = visited + 1
+        if item.depth < 3 then
+            local ok_cnt, count = pcall(function() return item.node:GetChildrenCount() end)
+            if ok_cnt and type(count) == "number" and count > 0 then
+                for i = 0, math.min(count - 1, 7) do
+                    local ok_ch, child = pcall(function() return item.node:GetChildAt(i) end)
+                    if ok_ch and native.is_valid(child) then
+                        if M.is_canvas_panel(child) then
+                            return child
+                        end
+                        queue[#queue + 1] = { node = child, depth = item.depth + 1 }
+                    end
+                end
+            else
+                local ok_ch, first = pcall(function() return item.node:GetChildAt(0) end)
+                if ok_ch and native.is_valid(first) then
+                    if M.is_canvas_panel(first) then
+                        return first
+                    end
+                    queue[#queue + 1] = { node = first, depth = item.depth + 1 }
+                end
+            end
         end
     end
     return nil
@@ -374,34 +407,76 @@ function M.is_widget_visible(widget)
     return true
 end
 
+-- Exact concrete Blueprint HUD classes only.
+-- NEVER query broad base classes like "UserWidget" via FindAllOf (crashes UE4SS 4.0.0 on UE 5.7.4).
 M.PREFERRED_HUD_CLASSES = {
     "WBP_DesignerHUD_C",
     "WBP_CharacterHUD_C",
-    "WBP_Character_HUD_C",
-    "WBP_ShipHUD_C",
-    "WBP_Ship_HUD_C",
+    "WBP_HUDMarkerManager_C",
+    "WBP_PlayStateStatus_C",
+    "WBP_DisassemblyHUD_C",
     "WBP_MainMenu_C",
 }
 
--- Locates a live, visible in-viewport HUD with a CanvasPanel using FindAllOf only (UE4SS 4.0.0 safe).
+local CONTROLLER_HUD_FIELDS = {
+    "CharacterHUDWidget",
+    "HUDMarkerManager",
+    "PlayStateWidget",
+    "DisassemblyHUD",
+}
+
+-- Locates a live, visible in-viewport HUD with a CanvasPanel using exact leaf classes only (UE4SS 4.0.0 / UE 5.7 safe).
 -- opts.exclude_classes: optional map { [class_name] = true } to skip specific HUDs (e.g. DesignerHUD in world mode).
 function M.find_active_hud_host(opts)
     if type(FindAllOf) ~= "function" then return nil end
     opts = opts or {}
     local excluded = opts.exclude_classes or {}
-    local function try_hud(widget)
+    local function try_hud(widget, fallback_owner)
         if not M.is_widget_visible(widget) then return nil end
         local cname = native.class_name(widget)
         if excluded[cname] then return nil end
         local canvas = M.find_canvas_in_hud(widget)
         if not canvas or not native.is_valid(widget.WidgetTree) then return nil end
-        local ok_owner, owner = pcall(function() return widget:GetOwningPlayer() end)
-        if not ok_owner or not is_live_object(owner) then return nil end
+        local owner = nil
+        local ok_owner, owned = pcall(function() return widget:GetOwningPlayer() end)
+        if ok_owner and is_live_object(owned) then
+            owner = owned
+        elseif is_live_object(fallback_owner) then
+            owner = fallback_owner
+        end
+        if not owner then return nil end
         return { hud = widget, canvas = canvas, widget_tree = widget.WidgetTree, owner = owner, class_name = cname }
     end
 
+    -- 1. Direct controller HUD references (O(1), touches only 1-2 controller instances).
+    for _, ctrl_cls in ipairs({ "BP_PlayerController_C", "BP_DesignerController_C" }) do
+        local ok_pc, list = pcall(FindAllOf, ctrl_cls)
+        if ok_pc and type(list) == "table" then
+            for _, pc in ipairs(list) do
+                if is_live_object(pc) then
+                    local ok_pawn, pawn = pcall(function() return pc.Pawn end)
+                    if ok_pawn and is_live_object(pawn) then
+                        local ok_dh, dh = pcall(function() return pawn.DesignerHUD end)
+                        if ok_dh and dh then
+                            local found = try_hud(dh, pc)
+                            if found then return found end
+                        end
+                    end
+                    for _, field in ipairs(CONTROLLER_HUD_FIELDS) do
+                        local ok_w, w = pcall(function() return pc[field] end)
+                        if ok_w and w then
+                            local found = try_hud(w, pc)
+                            if found then return found end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. Exact concrete HUD Blueprint classes only (never base class "UserWidget").
     for _, cls in ipairs(opts.preferred_classes or M.PREFERRED_HUD_CLASSES) do
-        if not excluded[cls] then
+        if type(cls) == "string" and cls ~= "UserWidget" and not excluded[cls] then
             local ok, list = pcall(FindAllOf, cls)
             if ok and type(list) == "table" then
                 for _, hud in ipairs(list) do
@@ -412,16 +487,6 @@ function M.find_active_hud_host(opts)
         end
     end
 
-    local ok_any, widgets = pcall(FindAllOf, "UserWidget")
-    if ok_any and type(widgets) == "table" then
-        for _, widget in ipairs(widgets) do
-            local cname = native.class_name(widget)
-            if cname:find("HUD", 1, true) then
-                local found = try_hud(widget)
-                if found then return found end
-            end
-        end
-    end
     return nil
 end
 

@@ -10,6 +10,7 @@ local DEFAULT_TTL = 3.5
 local MAX_VISIBLE = 4
 local TICK_MS = 50
 local TOAST_WIDTH = 360
+local HOST_RETRY_INTERVAL = 0.50
 
 -- Pure testable TTL queue state machine
 function M.new_manager(options)
@@ -96,6 +97,8 @@ if not runtime then
         host = nil,
         views = {},
         ticking = false,
+        last_host_probe = 0,
+        logged_no_host = false,
     }
     _G.__StationSectionBlueprintsToastRuntime = runtime
 end
@@ -108,21 +111,30 @@ local function teardown_host()
     runtime.views = {}
 end
 
-local function ensure_host()
+local function ensure_host(force_probe)
+    -- Fast path: reuse live visible host with ZERO FindAllOf calls during 50ms TTL bar animation.
+    if runtime.host
+        and theme.is_widget_visible(runtime.host.hud)
+        and native.is_valid(runtime.host.canvas)
+        and native.is_valid(runtime.host.stack) then
+        return runtime.host
+    end
+    local now = os.clock()
+    if not force_probe and (now - (runtime.last_host_probe or 0)) < HOST_RETRY_INTERVAL then
+        return nil
+    end
+    runtime.last_host_probe = now
+
     local target = theme.find_active_hud_host()
     if not target then
         teardown_host()
+        if not runtime.logged_no_host then
+            runtime.logged_no_host = true
+            print("[StationSectionBlueprints Toast] no visible HUD CanvasPanel found; toast queued silently\n")
+        end
         return nil
     end
-    if runtime.host and native.is_valid(runtime.host.hud) and native.is_valid(runtime.host.stack) then
-        local ok_same, same = pcall(function()
-            return runtime.host.hud:GetAddress() == target.hud:GetAddress()
-                and runtime.host.canvas:GetAddress() == target.canvas:GetAddress()
-        end)
-        if ok_same and same then
-            return runtime.host
-        end
-    end
+    runtime.logged_no_host = false
     teardown_host()
     local stack = theme.construct(target.widget_tree, theme.CLASSES.VERTICAL_BOX)
     if not stack then return nil end
@@ -138,6 +150,7 @@ local function ensure_host()
     theme.set_visibility(stack, true, theme.VISIBILITY.HitTestInvisible)
     target.stack = stack
     runtime.host = target
+    print("[StationSectionBlueprints Toast] mounted overlay on " .. tostring(target.class_name) .. "\n")
     for _, item in ipairs(runtime.manager.items) do
         item.dirty = true
     end
@@ -207,12 +220,12 @@ local function remove_view(host, view)
     end
 end
 
-local function sync_views()
+local function sync_views(force_probe)
     if #runtime.manager.items == 0 then
         teardown_host()
         return
     end
-    local host = ensure_host()
+    local host = ensure_host(force_probe)
     if not host then return end
 
     local alive = {}
@@ -287,7 +300,10 @@ function M.show(title, detail, tone, ttl_seconds, tag)
     end
     if type(ExecuteInGameThread) == "function" then
         ExecuteInGameThread(function()
-            pcall(sync_views)
+            local ok, err = pcall(sync_views, true)
+            if not ok then
+                print("[StationSectionBlueprints Toast] sync failed: " .. tostring(err) .. "\n")
+            end
             start_loop()
         end)
     end

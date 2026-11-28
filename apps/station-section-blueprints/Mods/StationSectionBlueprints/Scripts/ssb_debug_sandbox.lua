@@ -2,6 +2,7 @@
 -- Excluded from release packages by scripts/package.ps1. Never runs during normal gameplay.
 
 local native = require("ssb_native")
+local designer_native = require("ssb_native_designer")
 local toast = require("ssb_toast")
 
 local M = {}
@@ -31,24 +32,32 @@ end
 
 local function find_local_controller()
     if type(FindAllOf) ~= "function" then return nil, "FindAllOf_unavailable" end
-    local ok, controllers = pcall(FindAllOf, "DMSPlayerController")
-    if not ok or type(controllers) ~= "table" then return nil, "controller_scan_failed" end
-    local candidates = {}
-    for _, pc in ipairs(controllers) do
-        if is_live(pc) then
-            local loc_ok, is_local = pcall(function() return pc:IsLocalController() end)
-            if loc_ok and is_local == true then
-                candidates[#candidates + 1] = pc
+    -- Prefer exact leaf class BP_PlayerController_C to avoid scanning base classes or colliding with DesignerController.
+    for _, cls in ipairs({ "BP_PlayerController_C", "DMSPlayerController" }) do
+        local ok, controllers = pcall(FindAllOf, cls)
+        if ok and type(controllers) == "table" and #controllers > 0 then
+            local candidates = {}
+            for _, pc in ipairs(controllers) do
+                if is_live(pc) then
+                    local loc_ok, is_local = pcall(function() return pc:IsLocalController() end)
+                    if loc_ok and is_local == true then
+                        candidates[#candidates + 1] = pc
+                    end
+                end
+            end
+            if #candidates == 0 then
+                for _, pc in ipairs(controllers) do
+                    if is_live(pc) then candidates[#candidates + 1] = pc end
+                end
+            end
+            if #candidates == 1 then
+                return candidates[1]
+            elseif #candidates > 1 then
+                return nil, "controller_not_unique:" .. cls .. ":" .. tostring(#candidates)
             end
         end
     end
-    if #candidates == 0 then
-        for _, pc in ipairs(controllers) do
-            if is_live(pc) then candidates[#candidates + 1] = pc end
-        end
-    end
-    if #candidates ~= 1 then return nil, "controller_not_unique:" .. tostring(#candidates) end
-    return candidates[1]
+    return nil, "controller_not_found"
 end
 
 local function find_local_player()
@@ -64,11 +73,16 @@ local function find_local_player()
     return nil
 end
 
-local function read_creative_flag()
+local function read_creative_flag(pc)
     local player = find_local_player()
-    if not player then return nil end
-    local ok_read, val = pcall(function() return player.bCreative end)
-    if ok_read and type(val) == "boolean" then return val end
+    if player then
+        local ok_read, val = pcall(function() return player.bCreative end)
+        if ok_read and type(val) == "boolean" then return val end
+    end
+    if is_live(pc) then
+        local ok_pc, val = pcall(function() return pc.bCreative end)
+        if ok_pc and type(val) == "boolean" then return val end
+    end
     return nil
 end
 
@@ -88,7 +102,7 @@ function M.toggle_creative()
         toast.show("创造模式切换", "请先加载或进入一个存档世界后再按 F9", "warn", 3.5, "debug_creative")
         return false, err
     end
-    local current = read_creative_flag() or false
+    local current = read_creative_flag(pc) or false
     local next_state = not current
     local ok_call, call_err = pcall(function()
         pc:SetCreativeMode(next_state)
@@ -98,7 +112,12 @@ function M.toggle_creative()
         toast.show("创造模式切换失败", tostring(call_err), "error", 4.0, "debug_creative")
         return false, call_err
     end
-    log("SetCreativeMode(" .. tostring(next_state) .. ") dispatched (takes effect next simulation tick)")
+    -- Also sync active Designer session's bCreativeMode if toggled while inside Station Designer.
+    local session = designer_native.find_session()
+    if session and native.is_valid(session.designer) then
+        pcall(function() session.designer.bCreativeMode = next_state end)
+    end
+    log("SetCreativeMode(" .. tostring(next_state) .. ") dispatched (before=" .. tostring(current) .. ")")
     toast.show(
         "创造模式",
         next_state and "正在开启创造模式（等待下帧确认）..." or "正在关闭创造模式（等待下帧确认）...",
@@ -109,7 +128,7 @@ function M.toggle_creative()
     if type(ExecuteWithDelay) == "function" and type(ExecuteInGameThread) == "function" then
         ExecuteWithDelay(READBACK_DELAY_MS, function()
             ExecuteInGameThread(function()
-                local actual = read_creative_flag()
+                local actual = read_creative_flag(pc)
                 if actual == nil then actual = next_state end
                 toast.show(
                     "创造模式",
