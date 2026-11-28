@@ -16,16 +16,19 @@
 git clone https://github.com/iotaxw/main-sequence-workshop.git
 cd main-sequence-workshop
 
-# 1. 自动编译 ms-blueprint-codec.exe + 从 test-blueprints/ 播种全套 5 份测试蓝图 + 免改游戏目录直接拉起游戏：
-pwsh -NoProfile -File apps/station-section-blueprints/scripts/start-debug.ps1 -SeedTestBlueprints
+# 1. 自动编译 ms-blueprint-codec.exe + 从 test-blueprints/ 播种全套 5 份测试蓝图 + 开启调试沙盒快捷键(F9)并免改游戏目录拉起游戏：
+pwsh -NoProfile -File apps/station-section-blueprints/scripts/start-debug.ps1 -SeedTestBlueprints -EnableDebugSandbox
 ```
 
 ### Agent 跨机自助配置清单
 1. **核对 UE4SS 版本**：确认 `<游戏>\Windows\MainSequence\Binaries\Win64\ue4ss\` 为 **UE4SS `4.0.0`**（如为旧版 `3.0.1-beta` 在 Build `26885430`+ 上会秒崩）。
-2. **一键编译并播种测试蓝图**：运行上述 `start-debug.ps1 -SeedTestBlueprints`（若只需编译与播种不启动游戏，加 `-BuildOnly`）。仓库内 [test-blueprints/](test-blueprints/README.md) 已直接附带全部 5 份原创合成测试蓝图（Canonical JSON v2），脚本会自动将其编码并安装到：
+2. **一键编译并播种测试蓝图**：运行上述 `start-debug.ps1 -SeedTestBlueprints -EnableDebugSandbox`（若只需编译与播种不启动游戏，加 `-BuildOnly`）。仓库内 [test-blueprints/](test-blueprints/README.md) 已直接附带全部 5 份原创合成测试蓝图（Canonical JSON v2），脚本会自动将其编码并安装到：
    - 原版整站设计：`%LOCALAPPDATA%\MainSequence\Saved\SaveGames\Designs\局部蓝图测试母站.sav`
    - 局部蓝图库：`%LOCALAPPDATA%\MainSequence\Saved\SaveGames\StationSectionBlueprints\`（含 `基础对接/` 与 `异形与多层/` 共 4 套局部蓝图与校验过的 `index.ssb`）
-3. **快速进入创造模式测试**：公开仓库遵循隐私与存档边界**不提交玩家世界存档文件（`*_M.sav` / `*_S.sav`）**；游戏启动后在主菜单直接 **新建游戏 → 勾选创造模式**（约 3 秒），进任意空间站规划器先用原版载入 **`局部蓝图测试母站`**，即可完整测试全部 5 类场景（具体验收项见 [test-blueprints/README.md](test-blueprints/README.md)）。
+3. **如何免材料进入测试（两种真实可用路径）**：
+   - 《主星序 Main Sequence》当前抢先体验版的「新游戏」菜单里**没有**内置创造模式勾选框，且公开仓库遵循隐私与存档边界不提交玩家世界存档（`*_M.sav` / `*_S.sav`）。
+   - **路径 A（实机世界完整测两阶段：壳体 + 退出后建室内机台，推荐）**：带 `-EnableDebugSandbox` 启动后，加载任意已有存档或新建一个普通存档进入世界，按 **`F9`** 调用游戏原生 `DMSPlayerController:SetCreativeMode(true/false)` 切换创造模式、按 **`Shift + F9`** 调用 `SetCreativeUnlockAllResearch()` 解锁全部科技（该辅助模块 `ssb_debug_sandbox.lua` 仅在显式开启调试参数时加载，**绝不进入发布包**），随后走进空间站控制台进规划器载入 **`局部蓝图测试母站`** 即可完整实测全部 5 类场景与两阶段室内机台搭建！
+   - **路径 B（纯规划器内交互快速试玩）**：直接在游戏主菜单点击原版 **「设计器 / Designer」** 按钮，即可零门槛免费载入 **`局部蓝图测试母站`** 并测试 `Shift+左键` 多选、含机器保存（跨边界剔除报告）、目标块悬浮快贴、`Tab`/`R`/`H` 锁定微调与 4 套局部蓝图预览（注：独立设计器内无真实世界空间站，不触发退出后的第二阶段室内机台搭建）。
 4. **零侵入热重载调试**：启动脚本通过 `UE4SS_MODS_PATHS` 挂载本仓库的 `apps/station-section-blueprints/Mods`，**不修改游戏安装目录**；修改 `Mods/StationSectionBlueprints/Scripts/*.lua` 后在 UE4SS 控制台按 `Ctrl+R` 即可热重载，日志位于 `<游戏Win64目录>\ue4ss\UE4SS.log`。
 5. **自定义路径或仅打包**：可显式传 `-GameExe "<路径>"` 或设 `$env:MAIN_SEQUENCE_EXE`；仅编译并打发布 zip：
    ```powershell

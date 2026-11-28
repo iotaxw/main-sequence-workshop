@@ -8,6 +8,7 @@ param(
     [string]$PackageVersion = '0.2.0',
     [switch]$SeedTestBlueprints,
     [switch]$IncludeMotherDesign,
+    [switch]$EnableDebugSandbox,
     [switch]$SkipRunningCheck
 )
 
@@ -166,12 +167,20 @@ if (-not (Test-Path -LiteralPath (Join-Path $gameWin64 'ue4ss') -PathType Contai
 $env:UE4SS_MODS_PATHS = "$localModsDir;$gameUe4ssMods"
 Remove-Item Env:SSB_DISABLE_UI -ErrorAction SilentlyContinue
 Remove-Item Env:SSB_DEV_COMMAND_FILE -ErrorAction SilentlyContinue
+if ($EnableDebugSandbox) {
+    $env:SSB_DEBUG_SANDBOX = '1'
+} else {
+    Remove-Item Env:SSB_DEBUG_SANDBOX -ErrorAction SilentlyContinue
+}
 
 $saveLibrary = Join-Path $env:LOCALAPPDATA 'MainSequence\Saved\SaveGames\StationSectionBlueprints'
 Write-Host "[SSB Debug] Game Exe          : $($gameItem.FullName)"
 Write-Host "[SSB Debug] UE4SS_MODS_PATHS  : $env:UE4SS_MODS_PATHS"
 Write-Host "[SSB Debug] Blueprint Library : $saveLibrary"
 Write-Host "[SSB Debug] UE4SS Log         : $(Join-Path $gameWin64 'ue4ss\UE4SS.log')"
+if ($EnableDebugSandbox) {
+    Write-Host '[SSB Debug] Debug Sandbox     : ENABLED (F9 = toggle Creative Mode, Shift+F9 = unlock all research)'
+}
 Write-Host '[SSB Debug] Tip: Edit Lua scripts directly in Mods/StationSectionBlueprints/Scripts/ and press Ctrl+R in UE4SS to hot-reload.'
 
 if ($GameArgs.Count -gt 0) {

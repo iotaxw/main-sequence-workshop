@@ -31,7 +31,7 @@ New-Item -ItemType Directory -Path $binariesTarget -Force | Out-Null
 Copy-Item -LiteralPath $payload -Destination $binariesTarget
 
 Get-ChildItem -LiteralPath $source -Recurse -File -Filter '*.lua' | Where-Object {
-    $_.Name -notin @('ssb_dev_runner.lua', 'ssb_designer_probe.lua', 'ssb_probe.lua')
+    $_.Name -notin @('ssb_dev_runner.lua', 'ssb_designer_probe.lua', 'ssb_probe.lua', 'ssb_debug_sandbox.lua')
 } | ForEach-Object {
     $relative = [IO.Path]::GetRelativePath($source, $_.FullName)
     $destination = Join-Path $scriptsTarget $relative

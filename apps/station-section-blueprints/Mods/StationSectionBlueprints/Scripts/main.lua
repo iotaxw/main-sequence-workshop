@@ -144,4 +144,13 @@ if development then
     load_module("ssb_dev_runner").start(development_command_file)
 end
 
+if os.getenv("SSB_DEBUG_SANDBOX") == "1" then
+    local ok_sb, sb_mod = pcall(load_module, "ssb_debug_sandbox")
+    if ok_sb and type(sb_mod) == "table" and type(sb_mod.start) == "function" then
+        sb_mod.start()
+    else
+        print("[StationSectionBlueprints] Debug sandbox helper unavailable: " .. tostring(sb_mod) .. "\n")
+    end
+end
+
 print("[StationSectionBlueprints] Loaded native section blueprint library\n")
