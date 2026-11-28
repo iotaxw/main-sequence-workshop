@@ -486,19 +486,31 @@ export const EntityGlyph: React.FC<{ id: string; size?: number; rotation?: Rotat
       );
     }
     if (id === 'BPO_Frame_01' || id.startsWith('BPO_FrameSlope_')) {
+      const isBot = id.endsWith('B');
       return (
         <g transform="rotate(180 12 12)">
           {id === 'BPO_Frame_01' ? (
             <>
-              {/* Real open cross-shaped (+) tubular corridor */}
-              <polygon points="9,4 15,4 15,9 20,9 20,15 15,15 15,20 9,20 9,15 4,15 4,9 9,9" {...s} />
-              <rect x="9.5" y="9.5" width="5" height="5" rx="1" {...dim} />
+              {/* Authentic open octagonal 6-way truss hub */}
+              <polygon points="8.5,3.5 15.5,3.5 20.5,8.5 20.5,15.5 15.5,20.5 8.5,20.5 3.5,15.5 3.5,8.5" {...dim} />
+              <rect x="8.5" y="8.5" width="7" height="7" rx="1" {...s} />
+              <line x1="8.5" y1="3.5" x2="8.5" y2="8.5" {...s} />
+              <line x1="15.5" y1="3.5" x2="15.5" y2="8.5" {...s} />
+              <line x1="20.5" y1="8.5" x2="15.5" y2="8.5" {...s} />
+              <line x1="20.5" y1="15.5" x2="15.5" y2="15.5" {...s} />
+              <line x1="15.5" y1="20.5" x2="15.5" y2="15.5" {...s} />
+              <line x1="8.5" y1="20.5" x2="8.5" y2="15.5" {...s} />
+              <line x1="3.5" y1="15.5" x2="8.5" y2="15.5" {...s} />
+              <line x1="3.5" y1="8.5" x2="8.5" y2="8.5" {...s} />
             </>
           ) : (
             <>
-              {/* Real cantilever triangular frame slope */}
-              <path d="M5,7 V17 H10 L19,14 V10 L10,7 Z" {...s} />
-              <line x1="9" y1="8.5" x2="17" y2="12" {...dim} />
+              {/* Authentic PAK cantilever A-frame bracket: rear collar (-X) + twin tie rods + triangular foot */}
+              <rect x="3.5" y="7.5" width="2.8" height="9" rx="0.6" {...s} />
+              <line x1="6.3" y1="8.8" x2="13.5" y2="8.8" {...s} />
+              <line x1="6.3" y1="15.2" x2="13.5" y2="15.2" {...s} />
+              <path d="M12.5,7.2 H18.2 Q20,7.2 20,12 Q20,16.8 18.2,16.8 H12.5 Z" {...(isBot ? dim : s)} />
+              <line x1="14.5" y1="7.8" x2="14.5" y2="16.2" {...(isBot ? s : dim)} />
             </>
           )}
         </g>
@@ -729,26 +741,37 @@ export const EntityGlyph: React.FC<{ id: string; size?: number; rotation?: Rotat
       );
     }
     if (id.startsWith('BPO_Armour_01')) {
+      // Authentic PAK aerodynamic side wing: straight mount rail, tapered bow prow (left), aft notch & diagonal seam
       const isLeft = id.endsWith('L');
       return (
         <g transform={isLeft ? 'translate(0 24) scale(1 -1)' : undefined}>
-          <polygon points="3.5,16.5 20.5,16.5 17.5,8.5 6.5,8.5" {...s} />
-          <line x1="12" y1="8.5" x2="12" y2="16.5" {...dim} />
+          <path d="M3,15.5 L20.5,15.5 L21,12.5 L19,9.2 L16,9.2 L15,11 L11.5,11 L10.5,9.2 L8,9.2 L3,13.5 Z" {...s} />
+          <line x1="9.5" y1="9.5" x2="12" y2="15.5" {...dim} />
         </g>
       );
     }
     if (id.startsWith('BPO_ArmourSlope_')) {
+      // Authentic PAK faceted beveled slope (1x1 or 2x1), sloping downward toward bow LEFT (+X)
       const isBot = id.endsWith('B');
+      const isLong = id.includes('_02');
       return (
-        <>
-          <polygon points="4,17 20,17 16,7 7,7" {...(isBot ? dim : s)} />
-          <line x1="12" y1="7" x2="12" y2="17" {...(isBot ? s : dim)} />
-          {isBot ? (
-            <polyline points="9.5,11 12,14 14.5,11" {...s} />
+        <g transform="rotate(180 12 12)">
+          {isLong ? (
+            <>
+              <polygon points="3,6 19,6 21,8.2 21,15.8 19,18 3,18" {...(isBot ? dim : s)} />
+              <line x1="3" y1="8.2" x2="21" y2="8.2" {...dim} />
+              <line x1="3" y1="15.8" x2="21" y2="15.8" {...dim} />
+              <polygon points="4.5,9.4 14.5,10.4 14.5,13.6 4.5,14.6" {...(isBot ? s : dim)} />
+            </>
           ) : (
-            <polyline points="9.5,13 12,10 14.5,13" {...s} />
+            <>
+              <polygon points="4.5,5 18.5,5 20,7.2 20,16.8 18.5,19 4.5,19" {...(isBot ? dim : s)} />
+              <line x1="4.5" y1="7.5" x2="20" y2="7.5" {...dim} />
+              <line x1="4.5" y1="16.5" x2="20" y2="16.5" {...dim} />
+              <line x1="16.5" y1="7.5" x2="16.5" y2="16.5" {...(isBot ? s : dim)} />
+            </>
           )}
-        </>
+        </g>
       );
     }
 

@@ -277,46 +277,143 @@ function addAftNozzle(
   }
 }
 
-/** True sloped wedge prism sloping along X from yBack (at x0) to yFront (at x1) */
-function addSlopedWedge(
+/**
+ * Build a clean closed watertight 3D lofted solid from ordered 2D (y, z) cross-section rings along X.
+ * Each ring must have the same vertex count in consistent winding order.
+ */
+function addLoftedSolidX(
   target: THREE.Group,
-  x0: number,
-  x1: number,
-  z0: number,
-  z1: number,
-  yBase: number,
-  yBack: number,
-  yFront: number,
+  rings: Array<{ x: number; pts: Array<[number, number]> }>,
+  fillMat: THREE.Material
+): void {
+  if (rings.length < 2) return;
+  const n = rings[0].pts.length;
+  if (n < 3) return;
+  const pos: number[] = [];
+  const pushTri = (
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+    cx: number, cy: number, cz: number
+  ) => {
+    pos.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+  };
+
+  // Side quads between adjacent rings
+  for (let r = 0; r < rings.length - 1; r++) {
+    const a = rings[r];
+    const b = rings[r + 1];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const [ay0, az0] = a.pts[i];
+      const [ay1, az1] = a.pts[j];
+      const [by0, bz0] = b.pts[i];
+      const [by1, bz1] = b.pts[j];
+      pushTri(a.x, ay0, az0, b.x, by0, bz0, b.x, by1, bz1);
+      pushTri(a.x, ay0, az0, b.x, by1, bz1, a.x, ay1, az1);
+    }
+  }
+
+  // End caps (fan from centroid)
+  const capRing = (ring: { x: number; pts: Array<[number, number]> }, reverse: boolean) => {
+    let cy = 0;
+    let cz = 0;
+    for (const [py, pz] of ring.pts) {
+      cy += py;
+      cz += pz;
+    }
+    cy /= n;
+    cz /= n;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const [y0, z0] = ring.pts[i];
+      const [y1, z1] = ring.pts[j];
+      if (reverse) pushTri(ring.x, cy, cz, ring.x, y1, z1, ring.x, y0, z0);
+      else pushTri(ring.x, cy, cz, ring.x, y0, z0, ring.x, y1, z1);
+    }
+  };
+  capRing(rings[0], true);
+  capRing(rings[rings.length - 1], false);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  const mat = fillMat.clone();
+  mat.side = THREE.DoubleSide;
+  target.add(new THREE.Mesh(geo, mat));
+}
+
+/** Add a slim structural girder beam between two 3D points with aligned outer CAD silhouette edges */
+function addTrussStrut(
+  target: THREE.Group,
+  x1: number, y1: number, z1: number,
+  x2: number, y2: number, z2: number,
+  thickness: number,
+  fillMat: THREE.Material,
+  edgePts: number[]
+): void {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dz = z2 - z1;
+  const len = Math.hypot(dx, dy, dz);
+  if (len <= 0.02) return;
+  const geo = new THREE.BoxGeometry(thickness, len, thickness);
+  const mesh = new THREE.Mesh(geo, fillMat);
+  mesh.position.set((x1 + x2) * 0.5, (y1 + y2) * 0.5, (z1 + z2) * 0.5);
+  const dir = new THREE.Vector3(dx / len, dy / len, dz / len);
+  const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  mesh.quaternion.copy(quat);
+  target.add(mesh);
+
+  // Draw the 4 exact outer longitudinal corners of the box beam so front edges are never occluded by the fill!
+  const r = thickness * 0.506;
+  const u = new THREE.Vector3(1, 0, 0).applyQuaternion(quat).multiplyScalar(r);
+  const v = new THREE.Vector3(0, 0, 1).applyQuaternion(quat).multiplyScalar(r);
+  for (const su of [-1, 1]) {
+    for (const sv of [-1, 1]) {
+      const ox = u.x * su + v.x * sv;
+      const oy = u.y * su + v.y * sv;
+      const oz = u.z * su + v.z * sv;
+      pushSeg(edgePts, x1 + ox, z1 + oz, x2 + ox, z2 + oz, y1 + oy, y2 + oy);
+    }
+  }
+}
+
+/** Add an open rectangular bulkhead frame ring on a constant-X or constant-Z plane */
+function addOpenCollarFrame(
+  target: THREE.Group,
+  axis: 'x' | 'z',
+  pos: number,
+  halfSpan: number,
+  y0: number,
+  y1: number,
+  bar: number,
   fillMat: THREE.Material,
   primaryPts: number[],
   detailPts: number[]
 ): void {
-  const w = z1 - z0;
-  const shape = new THREE.Shape();
-  shape.moveTo(x0, yBase);
-  shape.lineTo(x1, yBase);
-  shape.lineTo(x1, yFront);
-  shape.lineTo(x0, yBack);
-  shape.closePath();
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false, curveSegments: 1 });
-  // ExtrudeGeometry extrudes along +Z from 0..w, shift to z0..z1
-  geo.translate(0, 0, z0);
-  target.add(new THREE.Mesh(geo, fillMat));
-
-  // Top sloped face outline
-  pushSeg(primaryPts, x0, z0, x1, z0, yBack, yFront);
-  pushSeg(primaryPts, x0, z1, x1, z1, yBack, yFront);
-  pushSeg(primaryPts, x0, z0, x0, z1, yBack, yBack);
-  pushSeg(primaryPts, x1, z0, x1, z1, yFront, yFront);
-  // Base & side edges
-  pushSeg(detailPts, x0, z0, x1, z0, yBase, yBase);
-  pushSeg(detailPts, x0, z1, x1, z1, yBase, yBase);
-  pushSeg(detailPts, x0, z0, x0, z1, yBase, yBase);
-  pushSeg(detailPts, x1, z0, x1, z1, yBase, yBase);
-  pushSeg(detailPts, x0, z0, x0, z0, yBase, yBack);
-  pushSeg(detailPts, x0, z1, x0, z1, yBase, yBack);
-  pushSeg(detailPts, x1, z0, x1, z0, yBase, yFront);
-  pushSeg(detailPts, x1, z1, x1, z1, yBase, yFront);
+  const inner = Math.max(0.2, halfSpan - bar);
+  const iy0 = y0 + bar;
+  const iy1 = y1 - bar;
+  if (axis === 'x') {
+    // 4 bars on YZ plane at X=pos
+    addTrussStrut(target, pos, y0 + bar * 0.5, -halfSpan, pos, y0 + bar * 0.5, halfSpan, bar, fillMat, primaryPts);
+    addTrussStrut(target, pos, y1 - bar * 0.5, -halfSpan, pos, y1 - bar * 0.5, halfSpan, bar, fillMat, primaryPts);
+    addTrussStrut(target, pos, y0, -halfSpan + bar * 0.5, pos, y1, -halfSpan + bar * 0.5, bar, fillMat, primaryPts);
+    addTrussStrut(target, pos, y0, halfSpan - bar * 0.5, pos, y1, halfSpan - bar * 0.5, bar, fillMat, primaryPts);
+    pushSeg(detailPts, pos, -inner, pos, inner, iy0, iy0);
+    pushSeg(detailPts, pos, -inner, pos, inner, iy1, iy1);
+    pushSeg(detailPts, pos, -inner, pos, -inner, iy0, iy1);
+    pushSeg(detailPts, pos, inner, pos, inner, iy0, iy1);
+  } else {
+    addTrussStrut(target, -halfSpan, y0 + bar * 0.5, pos, halfSpan, y0 + bar * 0.5, pos, bar, fillMat, primaryPts);
+    addTrussStrut(target, -halfSpan, y1 - bar * 0.5, pos, halfSpan, y1 - bar * 0.5, pos, bar, fillMat, primaryPts);
+    addTrussStrut(target, -halfSpan + bar * 0.5, y0, pos, -halfSpan + bar * 0.5, y1, pos, bar, fillMat, primaryPts);
+    addTrussStrut(target, halfSpan - bar * 0.5, y0, pos, halfSpan - bar * 0.5, y1, pos, bar, fillMat, primaryPts);
+    pushSeg(detailPts, -inner, pos, inner, pos, iy0, iy0);
+    pushSeg(detailPts, -inner, pos, inner, pos, iy1, iy1);
+    pushSeg(detailPts, -inner, pos, -inner, pos, iy0, iy1);
+    pushSeg(detailPts, inner, pos, inner, pos, iy0, iy1);
+  }
 }
 
 /** Add subtle dashed collision footprint outline + corner ticks for modules whose visual overhangs collision bounds */
@@ -540,45 +637,105 @@ export function buildShipModuleArt(
     pushSeg(accentPts, x1, -1.05, x1, 1.05, roofHeight - 0.35);
     pushSeg(accentPts, x1, 0, x1, 0, 1.05, roofHeight - 0.35);
   } else if (id === 'BPO_Frame_01') {
-    // Real open cross-shaped (+) structural girder corridor (all 4 corners cleanly open!)
+    // Authentic PAK open 3D octagonal space-truss hub: 6-way open connector collars + tapered diagonal girder struts!
     roofHeight = 4.0;
-    const arm = 1.65;
-    const e = hw - 0.06;
-    const crossLoop: Array<[number, number]> = [
-      [-arm, -e], [arm, -e], [arm, -arm],
-      [e, -arm], [e, arm], [arm, arm],
-      [arm, e], [-arm, e], [-arm, arm],
-      [-e, arm], [-e, -arm], [-arm, -arm],
-    ];
-    addExtrudedLoop(extrudeGroup, crossLoop, 0, roofHeight, fillBase, primaryPts, detailPts);
-    pushLoop(detailPts, getChamferLoop(1.25, 1.25, 0.35), roofHeight + 0.02);
-    // Open truss diagonal cross-bracing along each arm
-    for (const s of [-1, 1]) {
-      pushSeg(detailPts, s * 1.65, -arm, s * e, arm, roofHeight + 0.02);
-      pushSeg(detailPts, -arm, s * 1.65, arm, s * e, roofHeight + 0.02);
+    const hub = 1.72;
+    const end = hw - 0.14;
+    const bar = 0.22;
+    const yMid0 = 0.92;
+    const yMid1 = 3.08;
+
+    // Top & bottom horizontal square connector rings (flush at y=0 and y=4.0 with open center!)
+    for (const ry of [0.12, 3.88]) {
+      addTrussStrut(extrudeGroup, -hub, ry, -hub, hub, ry, -hub, bar, fillBase, primaryPts);
+      addTrussStrut(extrudeGroup, hub, ry, -hub, hub, ry, hub, bar, fillBase, primaryPts);
+      addTrussStrut(extrudeGroup, hub, ry, hub, -hub, ry, hub, bar, fillBase, primaryPts);
+      addTrussStrut(extrudeGroup, -hub, ry, hub, -hub, ry, -hub, bar, fillBase, primaryPts);
+    }
+    // 4 central vertical stanchions connecting top & bottom rings
+    for (const sx of [-hub, hub]) {
+      for (const sz of [-hub, hub]) {
+        addTrussStrut(extrudeGroup, sx, 0.12, sz, sx, 3.88, sz, bar * 0.9, fillUpper, detailPts);
+      }
+    }
+    // 4-way outboard open square connector collars at ±X and ±Z
+    addOpenCollarFrame(extrudeGroup, 'x', end, 1.56, yMid0, yMid1, bar, fillBase, primaryPts, detailPts);
+    addOpenCollarFrame(extrudeGroup, 'x', -end, 1.56, yMid0, yMid1, bar, fillBase, primaryPts, detailPts);
+    addOpenCollarFrame(extrudeGroup, 'z', end, 1.56, yMid0, yMid1, bar, fillBase, primaryPts, detailPts);
+    addOpenCollarFrame(extrudeGroup, 'z', -end, 1.56, yMid0, yMid1, bar, fillBase, primaryPts, detailPts);
+
+    // 16 tapered upper/lower truss arms linking central hub corners to the 4 outboard collars
+    for (const dir of [-1, 1]) {
+      for (const side of [-1, 1]) {
+        // ±X arms
+        addTrussStrut(extrudeGroup, dir * hub, 3.86, side * hub, dir * end, yMid1 - 0.11, side * 1.48, bar * 0.85, fillUpper, primaryPts);
+        addTrussStrut(extrudeGroup, dir * hub, 0.14, side * hub, dir * end, yMid0 + 0.11, side * 1.48, bar * 0.85, fillUpper, primaryPts);
+        // ±Z arms
+        addTrussStrut(extrudeGroup, side * hub, 3.86, dir * hub, side * 1.48, yMid1 - 0.11, dir * end, bar * 0.85, fillUpper, primaryPts);
+        addTrussStrut(extrudeGroup, side * hub, 0.14, dir * hub, side * 1.48, yMid0 + 0.11, dir * end, bar * 0.85, fillUpper, primaryPts);
+      }
+    }
+    // 8 diagonal corner brace struts tying adjacent arms into the iconic octagonal truss silhouette
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        addTrussStrut(extrudeGroup, sx * 2.85, yMid1 - 0.08, sz * 1.54, sx * 1.54, yMid1 - 0.08, sz * 2.85, bar * 0.72, fillUpper, detailPts);
+        addTrussStrut(extrudeGroup, sx * 2.85, yMid0 + 0.08, sz * 1.54, sx * 1.54, yMid0 + 0.08, sz * 2.85, bar * 0.72, fillUpper, detailPts);
+      }
     }
   } else if (id === 'BPO_FrameSlope_01T' || id === 'BPO_FrameSlope_01B') {
-    // Real cantilever open triangular truss: flush on -X (-4) and y=0 (T) or y=4.0 (B)!
+    // Authentic PAK open cantilever A-frame bracket: rear -X collar frame + 4 parallel struts + triangular foot bracket!
     const isBot = id === 'BPO_FrameSlope_01B';
     roofHeight = isBot ? 4.0 : 3.28;
-    const loop: Array<[number, number]> = [
-      [lx(-4.0), -1.95],
-      [lx(-2.2), -1.95],
-      [lx(1.95), -1.35],
-      [lx(1.95), 1.35],
-      [lx(-2.2), 1.95],
-      [lx(-4.0), 1.95],
-    ];
-    addExtrudedLoop(extrudeGroup, loop, isBot ? 2.4 : 0, isBot ? 4.0 : 1.6, fillBase, primaryPts, detailPts);
-    // Sloping triangular cantilever girder struts
-    const yRear = isBot ? 0.72 : 3.28;
-    const yTip = isBot ? 3.25 : 0.75;
-    for (const sz of [-1.2, 1.2]) {
-      pushSeg(primaryPts, lx(-3.95), sz, lx(1.9), sz * 0.8, yRear, yTip);
-      pushSeg(detailPts, lx(-3.95), sz, lx(-3.95), sz, isBot ? 0.72 : 0, isBot ? 4.0 : 3.28);
+    const bar = 0.2;
+    const xCollar = lx(-3.86);
+    const yCol0 = 0.92;
+    const yCol1 = 3.08;
+    const zSpan = 1.62;
+
+    // 1. Rear (-X) open rectangular connector collar frame
+    addOpenCollarFrame(extrudeGroup, 'x', xCollar, zSpan, yCol0, yCol1, bar, fillBase, primaryPts, detailPts);
+
+    // 2. Forward triangular A-frame mounting bracket (flush on y=0 for 01T, flush on y=4.0 for 01B!)
+    const yFoot = isBot ? 3.88 : 0.12;
+    const yApex = isBot ? 1.38 : 2.62;
+    const xFootBack = lx(-1.45);
+    const xFootFront = lx(1.92);
+    const xApex = lx(0.55);
+
+    // Horizontal rectangular mounting base plate rails
+    addTrussStrut(extrudeGroup, xFootBack, yFoot, -zSpan, xFootFront, yFoot, -zSpan, bar, fillBase, primaryPts);
+    addTrussStrut(extrudeGroup, xFootBack, yFoot, zSpan, xFootFront, yFoot, zSpan, bar, fillBase, primaryPts);
+    addTrussStrut(extrudeGroup, xFootBack, yFoot, -zSpan, xFootBack, yFoot, zSpan, bar, fillBase, primaryPts);
+    addTrussStrut(extrudeGroup, xFootFront, yFoot, -zSpan, xFootFront, yFoot, zSpan, bar, fillBase, primaryPts);
+
+    // Twin side A-frame triangular brackets + solid side gusset plates + cross axle at apex
+    for (const sz of [-zSpan, zSpan]) {
+      addTrussStrut(extrudeGroup, xFootBack, yFoot, sz, xApex, yApex, sz, bar * 0.95, fillUpper, primaryPts);
+      addTrussStrut(extrudeGroup, xFootFront, yFoot, sz, xApex, yApex, sz, bar * 0.95, fillUpper, primaryPts);
+      // Thin triangular gusset fill plate on each A-frame cheek matching PAK SIDE view
+      const triGeo = new THREE.BufferGeometry();
+      triGeo.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute([xFootBack, yFoot, sz, xFootFront, yFoot, sz, xApex, yApex, sz], 3)
+      );
+      triGeo.computeVertexNormals();
+      const plateMat = fillBase.clone();
+      plateMat.side = THREE.DoubleSide;
+      extrudeGroup.add(new THREE.Mesh(triGeo, plateMat));
     }
-    pushSeg(primaryPts, lx(-3.95), -1.2, lx(-3.95), 1.2, yRear, yRear);
-    pushSeg(primaryPts, lx(1.9), -0.96, lx(1.9), 0.96, yTip, yTip);
+    addTrussStrut(extrudeGroup, xApex, yApex, -zSpan, xApex, yApex, zSpan, bar * 0.95, fillUpper, primaryPts);
+
+    // 3. Four parallel cantilever tie-rods from rear collar corners to A-frame apex & base
+    for (const sz of [-zSpan + 0.08, zSpan - 0.08]) {
+      if (!isBot) {
+        addTrussStrut(extrudeGroup, xCollar, yCol1 - 0.1, sz, xApex, yApex, sz, bar * 0.8, fillUpper, primaryPts);
+        addTrussStrut(extrudeGroup, xCollar, yCol0 + 0.1, sz, xFootBack + 0.15, yFoot + 0.16, sz, bar * 0.8, fillUpper, primaryPts);
+      } else {
+        addTrussStrut(extrudeGroup, xCollar, yCol0 + 0.1, sz, xApex, yApex, sz, bar * 0.8, fillUpper, primaryPts);
+        addTrussStrut(extrudeGroup, xCollar, yCol1 - 0.1, sz, xFootBack + 0.15, yFoot - 0.16, sz, bar * 0.8, fillUpper, primaryPts);
+      }
+      pushSeg(detailPts, xCollar, sz, xApex, sz, (yCol0 + yCol1) * 0.5, yApex);
+    }
   } else if (id === 'BPO_LadderBlock') {
     roofHeight = 8.0;
     addBox(extrudeGroup, 0, 0, hw - 0.06, hd - 0.06, 0, roofHeight, fillBase, primaryPts, detailPts, 0.45, true);
@@ -862,69 +1019,182 @@ export function buildShipModuleArt(
     }
 
   // =========================================================================
-  // 6. ARMOUR WINGS & TRUE SLOPED ARMOUR WEDGES (verified PAK mounting edges!)
+  // 6. ARMOUR WINGS & BEVELED STREAMLINED ARMOUR SLOPES (1:1 PAK 4-view!)
   // =========================================================================
   } else if (id === 'BPO_Armour_01R' || id === 'BPO_Armour_01L') {
-    // Verified PAK: 01R mounts flush on +Z (+4.0, edgesNear(+4)=51, 4m wide [0..+4]); 01L mounts on -Z (-4.0, [-4..0])!
+    // Authentic PAK 16x4m aerodynamic side armour wing: thick on hull-side zMount, tapered knife-edge outboard + notched aft vent!
     const isLeft = id === 'BPO_Armour_01L';
-    const sz = isLeft ? -1 : 1; // +1 mounts at +Z (01R), -1 mounts at -Z (01L)
-    roofHeight = 3.47;
-    const zBase = sz * hd; // Flush with outer cell boundary (+4 for R, -4 for L)
-    const zTip = sz * 0.1; // Half-cell (4m) true aerodynamic wing width matching PAK MeshY!
-    const wingLoop: Array<[number, number]> = [
-      [-hw + 0.08, zBase],
-      [hw - 0.08, zBase],
-      [hw - 1.2, zBase - sz * 1.1],
-      [hw - 4.8, zTip],
-      [-hw + 3.2, zTip],
-      [-hw + 0.9, zBase - sz * 1.4],
+    const sz = isLeft ? -1 : 1; // +1 mounts flush at +Z (01R), -1 mounts flush at -Z (01L)
+    roofHeight = 3.45;
+    const zBase = sz * hd; // Flush with hull wall (+4 for R, -4 for L)
+    const zOut = sz * 0.12; // Full outboard edge (4m wide)
+    const zNotch = sz * 0.95; // Recessed aft panel notch
+    const zNose = sz * 3.15; // Tapered bow edge near +X=8
+    const zTail = sz * 2.45; // Tapered stern edge near -X=-8
+    const yIn0 = 0.56;
+    const yIn1 = 3.44;
+    const yOut0 = 1.32;
+    const yOut1 = 2.68;
+
+    // Lofted 3D tapered aerodynamic prism along X from stern (-8) to bow (+8)
+    const makeWingRing = (zEdge: number, yE0: number, yE1: number): Array<[number, number]> =>
+      sz > 0
+        ? [
+            [yIn0, zBase],
+            [yE0, zEdge],
+            [yE1, zEdge],
+            [yIn1, zBase],
+          ]
+        : [
+            [yIn0, zBase],
+            [yIn1, zBase],
+            [yE1, zEdge],
+            [yE0, zEdge],
+          ];
+    const wingSections: Array<{ x: number; zEdge: number; yE0: number; yE1: number }> = [
+      { x: -hw + 0.08, zEdge: zTail, yE0: 1.05, yE1: 2.95 },
+      { x: -hw + 1.4, zEdge: zOut, yE0: yOut0, yE1: yOut1 },
+      { x: -hw + 5.6, zEdge: zOut, yE0: yOut0, yE1: yOut1 },
+      { x: -hw + 6.2, zEdge: zNotch, yE0: 1.18, yE1: 2.82 },
+      { x: -hw + 9.4, zEdge: zNotch, yE0: 1.18, yE1: 2.82 },
+      { x: -hw + 10.2, zEdge: zOut, yE0: yOut0, yE1: yOut1 },
+      { x: 0.8, zEdge: zOut, yE0: yOut0, yE1: yOut1 },
+      { x: hw - 0.1, zEdge: zNose, yE0: 1.0, yE1: 3.0 },
     ];
-    addExtrudedLoop(extrudeGroup, wingLoop, 0.54, roofHeight, fillBase, primaryPts, detailPts);
-    pushSeg(detailPts, -hw + 3.5, (zBase + zTip) * 0.5, hw - 4.2, (zBase + zTip) * 0.5, roofHeight + 0.02);
+    addLoftedSolidX(
+      extrudeGroup,
+      wingSections.map((s) => ({ x: s.x, pts: makeWingRing(s.zEdge, s.yE0, s.yE1) })),
+      fillBase
+    );
+    // Crisp top/bottom outline ridges & diagonal panel seam matching PAK TOP/SIDE views
+    for (let i = 0; i < wingSections.length - 1; i++) {
+      const a = wingSections[i];
+      const b = wingSections[i + 1];
+      pushSeg(primaryPts, a.x, a.zEdge, b.x, b.zEdge, a.yE1 + 0.02, b.yE1 + 0.02);
+      pushSeg(primaryPts, a.x, a.zEdge, b.x, b.zEdge, a.yE0 - 0.02, b.yE0 - 0.02);
+      pushSeg(primaryPts, a.x, zBase, b.x, zBase, yIn1 + 0.02, yIn1 + 0.02);
+      pushSeg(detailPts, a.x, zBase, b.x, zBase, yIn0 - 0.02, yIn0 - 0.02);
+    }
+    // End vertical ridges & signature diagonal armor plate seam + aft vent ribs
+    for (const idx of [0, 2, 5, 6, 7]) {
+      const s = wingSections[idx];
+      pushSeg(primaryPts, s.x, zBase, s.x, s.zEdge, yIn1 + 0.02, s.yE1 + 0.02);
+      pushSeg(detailPts, s.x, zBase, s.x, s.zEdge, yIn0 - 0.02, s.yE0 - 0.02);
+      pushSeg(detailPts, s.x, s.zEdge, s.x, s.zEdge, s.yE0, s.yE1);
+    }
+    // Signature swept diagonal panel crease separating forward prow wedge from main flank
+    pushSeg(primaryPts, 0.8, zOut, -1.6, zBase, yOut1 + 0.03, yIn1 + 0.03);
+    pushSeg(detailPts, 0.8, zOut, -1.6, zBase, yOut0 - 0.03, yIn0 - 0.03);
+    pushSeg(detailPts, -hw + 6.2, zNotch, -hw + 9.4, zNotch, 2.0, 2.0);
   } else if (id.startsWith('BPO_ArmourSlope_')) {
-    // Real mesh: true wedge-shaped sloped armour plate spanning exact 4.0m deck height!
+    // Authentic PAK chamfered faceted armour wedge (1x1 or 2x1, top slope T or underside slope B!)
     const isBot = id.endsWith('B');
+    const isLong = id.includes('_02');
     roofHeight = 4.0;
-    if (!isBot) {
-      addSlopedWedge(
-        extrudeGroup,
-        -hw + 0.06,
-        hw - 0.06,
-        -hd + 0.06,
-        hd - 0.06,
-        0,
-        4.0,
-        0.75,
-        fillBase,
-        primaryPts,
-        detailPts
-      );
-      pushSeg(detailPts, 0, -hd + 0.25, 0, hd - 0.25, 2.38);
+    const xBack = -hw + 0.06;
+    const xFront = hw - 0.06;
+    const zFull = hd - 0.06;
+    const zChamfBack = hd - 1.15; // 45-degree chamfered shoulders
+    const zChamfFront = isLong ? hd - 1.75 : hd - 1.25;
+    const zNoseOuter = isLong ? hd - 0.72 : hd - 0.24;
+
+    // Cross-section builder (6-vertex beveled trapezoid in YZ plane: flat mounting face + 45° chamfered side skirts + sloped deck!)
+    const makeSlopeRing = (yFlat: number, ySlope: number, yShoulder: number, zOut: number, zTop: number): Array<[number, number]> =>
+      !isBot
+        ? [
+            [yFlat, -zOut],
+            [yFlat, zOut],
+            [yShoulder, zOut],
+            [ySlope, zTop],
+            [ySlope, -zTop],
+            [yShoulder, -zOut],
+          ]
+        : [
+            [yFlat, -zOut],
+            [yShoulder, -zOut],
+            [ySlope, -zTop],
+            [ySlope, zTop],
+            [yShoulder, zOut],
+            [yFlat, zOut],
+          ];
+
+    const yFlat = isBot ? 4.0 : 0.0;
+    const yBackSlope = isBot ? 0.02 : 3.98;
+    const yBackShoulder = isBot ? 1.05 : 2.95;
+    const yMidX = isLong ? 1.6 : 0.0;
+    const yMidSlope = isBot ? 2.15 : 1.85;
+    const yMidShoulder = isBot ? 2.65 : 1.35;
+    const yFrontSlope = isBot ? 3.35 : 0.65;
+    const yFrontShoulder = isBot ? 3.55 : 0.45;
+
+    const slopeRings = isLong
+      ? [
+          { x: xBack, zOut: zFull, zTop: zChamfBack, yS: yBackSlope, ySh: yBackShoulder },
+          { x: yMidX, zOut: zFull, zTop: zChamfBack + 0.15, yS: yMidSlope, ySh: yMidShoulder },
+          { x: xFront - 0.75, zOut: zFull - 0.25, zTop: zChamfFront, yS: isBot ? 3.25 : 0.75, ySh: isBot ? 3.48 : 0.52 },
+          { x: xFront, zOut: zNoseOuter, zTop: zChamfFront - 0.25, yS: yFrontSlope, ySh: yFrontShoulder },
+        ]
+      : [
+          { x: xBack, zOut: zFull, zTop: zChamfBack, yS: yBackSlope, ySh: yBackShoulder },
+          { x: xFront - 0.55, zOut: zFull, zTop: zChamfFront, yS: isBot ? 3.18 : 0.82, ySh: isBot ? 3.42 : 0.58 },
+          { x: xFront, zOut: zNoseOuter, zTop: zChamfFront - 0.15, yS: yFrontSlope, ySh: yFrontShoulder },
+        ];
+
+    addLoftedSolidX(
+      extrudeGroup,
+      slopeRings.map((r) => ({ x: r.x, pts: makeSlopeRing(yFlat, r.yS, r.ySh, r.zOut, r.zTop) })),
+      fillBase
+    );
+
+    const eps = isBot ? -0.025 : 0.025;
+    // Longitudinal chamfered ridge lines & outer gunwale edges
+    for (let i = 0; i < slopeRings.length - 1; i++) {
+      const a = slopeRings[i];
+      const b = slopeRings[i + 1];
+      for (const s of [-1, 1]) {
+        pushSeg(primaryPts, a.x, s * a.zTop, b.x, s * b.zTop, a.yS + eps, b.yS + eps);
+        pushSeg(primaryPts, a.x, s * a.zOut, b.x, s * b.zOut, a.ySh + eps, b.ySh + eps);
+        pushSeg(detailPts, a.x, s * a.zOut, b.x, s * b.zOut, yFlat, yFlat);
+      }
+    }
+    // Back bulkhead perimeter, front beveled lip, and rear inset connector port outline (seen in PAK FRONT/ISO!)
+    const firstR = slopeRings[0];
+    const lastR = slopeRings[slopeRings.length - 1];
+    pushSeg(primaryPts, firstR.x, -firstR.zTop, firstR.x, firstR.zTop, firstR.yS + eps, firstR.yS + eps);
+    pushSeg(primaryPts, lastR.x, -lastR.zTop, lastR.x, lastR.zTop, lastR.yS + eps, lastR.yS + eps);
+    for (const s of [-1, 1]) {
+      pushSeg(primaryPts, firstR.x, s * firstR.zTop, firstR.x, s * firstR.zOut, firstR.yS + eps, firstR.ySh + eps);
+      pushSeg(primaryPts, lastR.x, s * lastR.zTop, lastR.x, s * lastR.zOut, lastR.yS + eps, lastR.ySh + eps);
+      pushSeg(detailPts, firstR.x, s * firstR.zOut, firstR.x, s * firstR.zOut, yFlat, firstR.ySh);
+      pushSeg(detailPts, lastR.x, s * lastR.zOut, lastR.x, s * lastR.zOut, yFlat, lastR.ySh);
+    }
+    // Rear recessed square bulkhead collar on -X face
+    const portY0 = isBot ? 1.55 : 0.95;
+    const portY1 = isBot ? 3.05 : 2.45;
+    pushSeg(detailPts, xBack - 0.03, -1.25, xBack - 0.03, 1.25, portY0, portY0);
+    pushSeg(detailPts, xBack - 0.03, -1.25, xBack - 0.03, 1.25, portY1, portY1);
+    pushSeg(detailPts, xBack - 0.03, -1.25, xBack - 0.03, -1.25, portY0, portY1);
+    pushSeg(detailPts, xBack - 0.03, 1.25, xBack - 0.03, 1.25, portY0, portY1);
+
+    if (isLong) {
+      // Iconic PAK central tapered dorsal/ventral armor spine groove on 2x1 slope!
+      const spineRearX = xBack + 0.6;
+      const spineTipX = 1.9;
+      const spineRearY = isBot ? 0.25 : 3.75;
+      const spineTipY = isBot ? 2.22 : 1.78;
+      pushSeg(primaryPts, spineRearX, -1.85, spineTipX, -1.05, spineRearY + eps, spineTipY + eps);
+      pushSeg(primaryPts, spineRearX, 1.85, spineTipX, 1.05, spineRearY + eps, spineTipY + eps);
+      pushSeg(primaryPts, spineTipX, -1.05, spineTipX, 1.05, spineTipY + eps, spineTipY + eps);
+      pushSeg(detailPts, spineRearX, -1.85, spineRearX, 1.85, spineRearY + eps, spineRearY + eps);
+      // Mid transverse hull rib across the 2x1 deck
+      const mR = slopeRings[1];
+      pushSeg(detailPts, mR.x, -mR.zTop, mR.x, mR.zTop, mR.yS + eps, mR.yS + eps);
     } else {
-      // Inverted underside wedge: flat top flush at y=4.0, sloping underside from y=0.05 (-X) to y=3.25 (+X)
-      const x0 = -hw + 0.06;
-      const x1 = hw - 0.06;
-      const z0 = -hd + 0.06;
-      const z1 = hd - 0.06;
-      const shape = new THREE.Shape();
-      shape.moveTo(x0, 4.0);
-      shape.lineTo(x1, 4.0);
-      shape.lineTo(x1, 3.25);
-      shape.lineTo(x0, 0.05);
-      shape.closePath();
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: z1 - z0, bevelEnabled: false, curveSegments: 1 });
-      geo.translate(0, 0, z0);
-      extrudeGroup.add(new THREE.Mesh(geo, fillBase));
-      pushLoop(primaryPts, [[x0, z0], [x1, z0], [x1, z1], [x0, z1]], 4.01);
-      pushSeg(primaryPts, x0, z0, x1, z0, 0.05, 3.25);
-      pushSeg(primaryPts, x0, z1, x1, z1, 0.05, 3.25);
-      pushSeg(detailPts, x0, z0, x0, z1, 0.05, 0.05);
-      pushSeg(detailPts, x1, z0, x1, z1, 3.25, 3.25);
-      pushSeg(detailPts, x0, z0, x0, z0, 0.05, 4.0);
-      pushSeg(detailPts, x0, z1, x0, z1, 0.05, 4.0);
-      pushSeg(detailPts, x1, z0, x1, z0, 3.25, 4.0);
-      pushSeg(detailPts, x1, z1, x1, z1, 3.25, 4.0);
-      pushSeg(detailPts, 0, -hd + 0.25, 0, hd - 0.25, 4.02);
+      // 1x1 forward beveled lip crease matching PAK TOP/ISO view
+      const pR = slopeRings[1];
+      pushSeg(detailPts, pR.x, -pR.zTop, pR.x, pR.zTop, pR.yS + eps, pR.yS + eps);
+      pushSeg(detailPts, firstR.x + 0.85, -1.65, pR.x, -1.35, (isBot ? 0.65 : 3.35) + eps, pR.yS + eps);
+      pushSeg(detailPts, firstR.x + 0.85, 1.65, pR.x, 1.35, (isBot ? 0.65 : 3.35) + eps, pR.yS + eps);
     }
 
   // =========================================================================
