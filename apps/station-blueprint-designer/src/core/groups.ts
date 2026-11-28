@@ -175,7 +175,7 @@ export const SHIP_GROUPS: PaletteGroupDef[] = [
     slot: 1,
     name: '驾驶核心',
     nameEn: 'Bridge',
-    members: ['BPO_Cockpit_01', 'BPO_Cockpit_02', 'BPO_Cockpit_03', 'BPO_DockingCollar'],
+    members: ['BPO_Cockpit_01', 'BPO_Cockpit_02', 'BPO_Cockpit_03', 'BPO_DockingCollar', 'BPO_WorkstationBlock'],
   },
   {
     id: 'sh-hull',
@@ -210,7 +210,6 @@ export const SHIP_GROUPS: PaletteGroupDef[] = [
       'BPO_WarpDriveBlock',
       'BPO_InterstellarWarpDriveBlock',
       'BPO_ShipContainerBlock',
-      'BPO_WorkstationBlock',
       'BPO_Hangar_2',
       'BPO_AstronomicScanner',
       'BPO_BiosampleCollector',
@@ -487,6 +486,21 @@ export function getGroupName(group: PaletteGroupDef, lang: Lang): string {
 export function getGroupsForView(viewMode: ViewMode, category: BlueprintCategory = 'station'): PaletteGroupDef[] {
   if (category === 'ship') return SHIP_GROUPS;
   return viewMode === 'station' ? STATION_GROUPS : BUILDING_GROUPS;
+}
+
+export function getCanonicalGroupMember(entityId: string, docCategory: BlueprintCategory = 'station'): string {
+  const groups = getGroupsForView(docCategory === 'ship' ? 'station' : 'station', docCategory);
+  for (const g of groups) {
+    if (g.members.includes(entityId)) return entityId;
+  }
+  const def = getModuleDef(entityId);
+  if (def?.mirrorId) {
+    for (const g of groups) {
+      if (g.members.includes(def.mirrorId)) return def.mirrorId;
+    }
+  }
+  if (entityId === 'BPO_StationArmour_01B') return 'BPO_StationArmour_01';
+  return entityId;
 }
 
 export function findGroupForEntity(

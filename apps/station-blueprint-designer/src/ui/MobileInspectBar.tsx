@@ -85,12 +85,12 @@ export const MobileInspectBar: React.FC<MobileInspectBarProps> = ({
       const title = def ? getModuleName(def, lang) : first.type;
       const spec = fmtShipSpec(first.type);
       const canRot = canModuleRotate(first.type, shipFreeRotate);
-      const hasMirror = Boolean(def?.mirrorId) || canRot;
+      const hasMirror = Boolean(def?.mirrorId);
       const mirrorLabel = getMirrorActionLabel(first.type, isEn);
       return (
         <div className="mobile-ctx-bar ship-docked" role="region" aria-label={t('部件操作', 'Block Actions')}>
           <div className="mobile-ctx-info">
-            <EntityGlyph id={first.type} size={20} />
+            <EntityGlyph id={first.type} size={20} rotation={first.rotation} />
             <div className="mobile-ctx-text">
               <div className="mobile-ctx-title">{title}</div>
               <div className="mobile-ctx-sub">
@@ -133,12 +133,12 @@ export const MobileInspectBar: React.FC<MobileInspectBarProps> = ({
       const title = def ? getModuleName(def, lang) : activeTool.moduleType;
       const spec = fmtShipSpec(activeTool.moduleType);
       const canRot = canModuleRotate(activeTool.moduleType, shipFreeRotate);
-      const hasMirror = Boolean(def?.mirrorId) || canRot;
+      const hasMirror = Boolean(def?.mirrorId);
       const mirrorLabel = getMirrorActionLabel(activeTool.moduleType, isEn);
       return (
         <div className="mobile-ctx-bar ship-docked" role="region" aria-label={t('放置部件', 'Place Block')}>
           <div className="mobile-ctx-info">
-            <EntityGlyph id={activeTool.moduleType} size={20} />
+            <EntityGlyph id={activeTool.moduleType} size={20} rotation={activeTool.rotation} />
             <div className="mobile-ctx-text">
               <div className="mobile-ctx-title">
                 {title}

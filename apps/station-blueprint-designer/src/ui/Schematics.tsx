@@ -1,10 +1,15 @@
 import React from 'react';
+import type { Rotation } from '../core/types';
 
 /**
  * Monochrome architectural line-art SVG glyphs for the compact shapez-2-inspired dock.
- * Matches the 3D planar line-art silhouettes 1-to-1!
+ * Matches the 3D planar line-art silhouettes 1-to-1 and rotates live with tool orientation!
  */
-export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size = 24 }) => {
+export const EntityGlyph: React.FC<{ id: string; size?: number; rotation?: Rotation }> = ({
+  id,
+  size = 24,
+  rotation = 0,
+}) => {
   const s = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.35, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   const dim = { ...s, strokeOpacity: 0.45, strokeWidth: 1.05 };
 
@@ -723,11 +728,26 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
         </>
       );
     }
-    if (id.startsWith('BPO_Armour_01') || id.startsWith('BPO_ArmourSlope_')) {
+    if (id.startsWith('BPO_Armour_01')) {
+      const isLeft = id.endsWith('L');
+      return (
+        <g transform={isLeft ? 'translate(0 24) scale(1 -1)' : undefined}>
+          <polygon points="3.5,16.5 20.5,16.5 17.5,8.5 6.5,8.5" {...s} />
+          <line x1="12" y1="8.5" x2="12" y2="16.5" {...dim} />
+        </g>
+      );
+    }
+    if (id.startsWith('BPO_ArmourSlope_')) {
+      const isBot = id.endsWith('B');
       return (
         <>
-          <polygon points="4,17 20,17 16,7 7,7" {...s} />
-          <line x1="12" y1="7" x2="12" y2="17" {...dim} />
+          <polygon points="4,17 20,17 16,7 7,7" {...(isBot ? dim : s)} />
+          <line x1="12" y1="7" x2="12" y2="17" {...(isBot ? s : dim)} />
+          {isBot ? (
+            <polyline points="9.5,11 12,14 14.5,11" {...s} />
+          ) : (
+            <polyline points="9.5,13 12,10 14.5,13" {...s} />
+          )}
         </>
       );
     }
@@ -743,7 +763,7 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
 
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className="cad-glyph-svg" aria-hidden="true">
-      {renderShape()}
+      <g transform={rotation ? `rotate(${rotation * 90} 12 12)` : undefined}>{renderShape()}</g>
     </svg>
   );
 };

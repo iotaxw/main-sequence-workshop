@@ -15,7 +15,7 @@ import {
 import { canModuleRotate, getBuildableDef, getItemName, getModuleDef, getRecipeDef, getRecipeName } from './core/catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './core/codec';
 import { DEFAULT_LIBRARY_PRESETS } from './core/presets';
-import { cycleVariantInGroup, findGroupForEntity, getGroupsForView, getShortLabel } from './core/groups';
+import { cycleVariantInGroup, findGroupForEntity, getCanonicalGroupMember, getGroupsForView, getShortLabel } from './core/groups';
 import { formatFloorTag, useI18n } from './core/i18n';
 import {
   boxSelectEntities,
@@ -149,6 +149,8 @@ export const App: React.FC = () => {
   const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
   const [activeTool, setActiveTool] = useState<ActiveTool>({ kind: 'select' });
   const [lastGroupMember, setLastGroupMember] = useState<Record<string, string>>({});
+  const [lastMirrorVariant, setLastMirrorVariant] = useState<Record<string, string>>({});
+  const [lastEntityRotation, setLastEntityRotation] = useState<Record<string, Rotation>>({});
   const [stampingLibPath, setStampingLibPath] = useState<string | null>(null);
   const [clipboardBp, setClipboardBp] = useState<BlueprintDocument | null>(null);
 
@@ -499,6 +501,8 @@ export const App: React.FC = () => {
     selectionLayerMode,
     activeTool,
     lastGroupMember,
+    lastMirrorVariant,
+    lastEntityRotation,
     clipboardBp,
     simReport,
     showIoSpots,
@@ -518,6 +522,8 @@ export const App: React.FC = () => {
     selectionLayerMode,
     activeTool,
     lastGroupMember,
+    lastMirrorVariant,
+    lastEntityRotation,
     clipboardBp,
     simReport,
     showIoSpots,
@@ -1033,6 +1039,7 @@ export const App: React.FC = () => {
       entityId: string,
       opts?: {
         rotation?: Rotation;
+        explicitVariant?: boolean;
         undergroundMode?: 'in' | 'out';
         recipeId?: string;
         label?: string;
@@ -1045,29 +1052,47 @@ export const App: React.FC = () => {
     ) => {
       setStampingLibPath(null);
       clearBeltSession();
-      const modDef = getModuleDef(entityId);
+      const docCat = stateRef.current.doc.category ?? 'station';
+      const canonical = getCanonicalGroupMember(entityId, docCat);
+      const resolvedId = opts?.explicitVariant
+        ? entityId
+        : stateRef.current.lastMirrorVariant[canonical] ?? entityId;
+
+      const modDef = getModuleDef(resolvedId);
       if (modDef) {
-        const docCat = stateRef.current.doc.category ?? 'station';
-        const grp = findGroupForEntity('station', entityId, docCat);
-        if (grp) setLastGroupMember((prev) => ({ ...prev, [grp.id]: entityId }));
+        const grp = findGroupForEntity('station', resolvedId, docCat);
+        if (grp) setLastGroupMember((prev) => ({ ...prev, [grp.id]: resolvedId }));
+        if (opts?.explicitVariant || resolvedId !== canonical) {
+          setLastMirrorVariant((prev) => ({ ...prev, [canonical]: resolvedId }));
+        }
         const lockOrient =
           docCat === 'ship' && !stateRef.current.shipFreeRotate && modDef.canRotate === false;
-        setActiveTool((prev) => ({
+        const savedRot = stateRef.current.lastEntityRotation[canonical] ?? 0;
+        const nextRot: Rotation = lockOrient ? 0 : opts?.rotation ?? savedRot;
+        if (opts?.rotation !== undefined && !lockOrient) {
+          setLastEntityRotation((prev) => ({ ...prev, [canonical]: nextRot }));
+        }
+        setActiveTool({
           kind: 'place-module',
-          moduleType: entityId,
-          rotation: lockOrient ? 0 : opts?.rotation ?? (prev.kind === 'place-module' ? prev.rotation : 0),
+          moduleType: resolvedId,
+          rotation: nextRot,
           ...(opts?.label ? { label: opts.label } : {}),
-        }));
+        });
         return;
       }
-      const bldDef = getBuildableDef(entityId);
+      const bldDef = getBuildableDef(resolvedId);
       if (bldDef) {
-        const grp = findGroupForEntity('building', entityId);
-        if (grp) setLastGroupMember((prev) => ({ ...prev, [grp.id]: entityId }));
+        const grp = findGroupForEntity('building', resolvedId);
+        if (grp) setLastGroupMember((prev) => ({ ...prev, [grp.id]: resolvedId }));
+        const savedRot = stateRef.current.lastEntityRotation[resolvedId] ?? 0;
+        const nextRot: Rotation = opts?.rotation ?? savedRot;
+        if (opts?.rotation !== undefined) {
+          setLastEntityRotation((prev) => ({ ...prev, [resolvedId]: nextRot }));
+        }
         setActiveTool((prev) => ({
           kind: 'place-building',
-          buildingType: entityId,
-          rotation: opts?.rotation ?? (prev.kind === 'place-building' ? prev.rotation : 0),
+          buildingType: resolvedId,
+          rotation: nextRot,
           undergroundMode:
             bldDef.kind === 'underground'
               ? opts?.undergroundMode ?? (prev.kind === 'place-building' ? prev.undergroundMode : undefined) ?? 'in'
@@ -1105,21 +1130,23 @@ export const App: React.FC = () => {
         const def = getModuleDef(tool.moduleType);
         // Native MirrorClass swap (covers all 11 ship mirror pairs & station armour top/bottom!)
         if (def?.mirrorId) {
-          selectEntityTool(def.mirrorId, { rotation: tool.rotation, label: tool.label });
+          selectEntityTool(def.mirrorId, { rotation: tool.rotation, label: tool.label, explicitVariant: true });
           return;
         }
         if (tool.moduleType === 'BPO_StationArmour_01' || tool.moduleType === 'BPO_StationArmour_01B') {
           const flipped =
             tool.moduleType === 'BPO_StationArmour_01' ? 'BPO_StationArmour_01B' : 'BPO_StationArmour_01';
-          selectEntityTool(flipped, { rotation: tool.rotation, label: tool.label });
+          selectEntityTool(flipped, { rotation: tool.rotation, label: tool.label, explicitVariant: true });
           return;
         }
-        if (curDoc.category === 'ship' && !stateRef.current.shipFreeRotate && def?.canRotate === false) {
-          showToast(t('该飞船部件无原版镜像', 'No native mirror for this ship block'), 'info');
+        // In ship mode, only blocks with native MirrorClass pairs support mirroring
+        if (curDoc.category === 'ship') {
           return;
         }
         const nextRot = getMirroredModuleRotation(def, tool.rotation, axis);
         if (nextRot !== tool.rotation) {
+          const canonical = getCanonicalGroupMember(tool.moduleType, curDoc.category ?? 'station');
+          setLastEntityRotation((prev) => ({ ...prev, [canonical]: nextRot }));
           setActiveTool({ ...tool, rotation: nextRot });
         }
         return;
@@ -1134,6 +1161,7 @@ export const App: React.FC = () => {
           priorityOut: tool.priorityOut,
           portFilters: tool.portFilters,
         });
+        setLastEntityRotation((prev) => ({ ...prev, [tool.buildingType]: nextRot }));
         setActiveTool({
           ...tool,
           rotation: nextRot,
@@ -1170,16 +1198,21 @@ export const App: React.FC = () => {
         if (curDoc.category === 'ship' && !canModuleRotate(tool.moduleType, freeRot)) {
           showToast(
             t(
-              '原版锁定朝向（镜像切换，或在「视角」开启自由旋转）',
-              'Orientation locked (mirror instead, or enable Free Rotate in View)'
+              '原版锁定朝向（可在「视角」开启自由旋转）',
+              'Orientation locked (enable Free Rotate in View)'
             ),
             'info'
           );
           return;
         }
-        setActiveTool({ ...tool, rotation: normalizeRotation(tool.rotation + delta) });
+        const nextRot = normalizeRotation(tool.rotation + delta);
+        const canonical = getCanonicalGroupMember(tool.moduleType, curDoc.category ?? 'station');
+        setLastEntityRotation((prev) => ({ ...prev, [canonical]: nextRot }));
+        setActiveTool({ ...tool, rotation: nextRot });
       } else if (tool.kind === 'place-building') {
-        setActiveTool({ ...tool, rotation: normalizeRotation(tool.rotation + delta) });
+        const nextRot = normalizeRotation(tool.rotation + delta);
+        setLastEntityRotation((prev) => ({ ...prev, [tool.buildingType]: nextRot }));
+        setActiveTool({ ...tool, rotation: nextRot });
       } else if (tool.kind === 'stamp-blueprint') {
         setActiveTool({
           ...tool,
@@ -1229,7 +1262,7 @@ export const App: React.FC = () => {
       if (vm === 'station') {
         const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
         if (!m) return;
-        selectEntityTool(m.type, { rotation: m.rotation, label: m.label });
+        selectEntityTool(m.type, { rotation: m.rotation, label: m.label, explicitVariant: true });
       } else {
         const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), fl);
         if (!b) return;
@@ -3871,6 +3904,8 @@ export const App: React.FC = () => {
                 mobile
                 activeTool={activeTool}
                 lastGroupMember={lastGroupMember}
+                lastMirrorVariant={lastMirrorVariant}
+                lastEntityRotation={lastEntityRotation}
                 onSelectEntity={(id) => {
                   setSelection(EMPTY_SELECTION);
                   selectEntityTool(id);
@@ -3900,6 +3935,8 @@ export const App: React.FC = () => {
               shipFreeRotate={shipFreeRotate}
               activeTool={activeTool}
               lastGroupMember={lastGroupMember}
+              lastMirrorVariant={lastMirrorVariant}
+              lastEntityRotation={lastEntityRotation}
               onSelectEntity={(id) => selectEntityTool(id)}
               onSelectTool={(tTool) => {
                 setActiveTool(tTool);

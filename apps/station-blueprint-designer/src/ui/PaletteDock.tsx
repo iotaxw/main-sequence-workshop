@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { getBuildableDef, getBuildableName, getModuleDef, getModuleName } from '../core/catalog';
 import {
   findGroupForEntity,
+  getCanonicalGroupMember,
   getGroupName,
   getGroupsForView,
   getShortLabel,
   type PaletteGroupDef,
 } from '../core/groups';
 import { useI18n } from '../core/i18n';
-import type { ActiveTool, BlueprintCategory, ViewMode } from '../core/types';
+import type { ActiveTool, BlueprintCategory, Rotation, ViewMode } from '../core/types';
 import { KeyHintList, type KeyHintItem } from './KeyHintBar';
 import { EntityGlyph } from './Schematics';
 
@@ -19,6 +20,8 @@ interface PaletteDockProps {
   mobile?: boolean;
   activeTool: ActiveTool;
   lastGroupMember: Record<string, string>;
+  lastMirrorVariant?: Record<string, string>;
+  lastEntityRotation?: Record<string, Rotation>;
   onSelectEntity: (entityId: string) => void;
   onSelectTool: (tool: ActiveTool) => void;
 }
@@ -37,6 +40,8 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
   mobile = false,
   activeTool,
   lastGroupMember,
+  lastMirrorVariant = {},
+  lastEntityRotation = {},
   onSelectEntity,
   onSelectTool,
 }) => {
@@ -51,6 +56,23 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
       : viewMode === 'building' && activeTool.kind === 'place-building'
         ? activeTool.buildingType
         : null;
+
+  const getDisplayRotation = (entityId: string): Rotation => {
+    const canonical = getCanonicalGroupMember(entityId, docCategory);
+    if (activeEntityId) {
+      const activeCanonical = getCanonicalGroupMember(activeEntityId, docCategory);
+      if (activeCanonical === canonical) {
+        if (activeTool.kind === 'place-module') return activeTool.rotation;
+        if (activeTool.kind === 'place-building') return activeTool.rotation;
+      }
+    }
+    const saved = lastEntityRotation[canonical] ?? 0;
+    if (isShip && !shipFreeRotate) {
+      const mDef = getModuleDef(entityId);
+      if (mDef?.canRotate === false) return 0;
+    }
+    return saved;
+  };
 
   const activeGroup: PaletteGroupDef | undefined = activeEntityId
     ? findGroupForEntity(viewMode, activeEntityId, docCategory)
@@ -155,17 +177,20 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
               const activeDef = activeEntityId ? getModuleDef(activeEntityId) : undefined;
               const isCur =
                 activeEntityId === memberId ||
-                Boolean(isShip && activeDef?.mirrorId && activeDef.mirrorId === memberId);
+                Boolean(activeDef?.mirrorId && activeDef.mirrorId === memberId) ||
+                (memberId === 'BPO_StationArmour_01' && activeEntityId === 'BPO_StationArmour_01B');
+              const resolvedId = isCur && activeEntityId ? activeEntityId : lastMirrorVariant[memberId] ?? memberId;
+              const rot = getDisplayRotation(resolvedId);
               return (
                 <button
                   key={memberId}
                   type="button"
                   className={`s2-tile sub ${isCur ? 'active' : ''}`}
-                  onClick={() => onSelectEntity(memberId)}
-                  onMouseEnter={mobile ? undefined : () => setHoverMeta(buildMeta(memberId, true))}
+                  onClick={() => onSelectEntity(resolvedId)}
+                  onMouseEnter={mobile ? undefined : () => setHoverMeta(buildMeta(resolvedId, true))}
                 >
-                  <EntityGlyph id={memberId} size={20} />
-                  <span className="s2-tile-label">{getShortLabel(memberId, undefined, lang)}</span>
+                  <EntityGlyph id={resolvedId} size={20} rotation={rot} />
+                  <span className="s2-tile-label">{getShortLabel(resolvedId, undefined, lang)}</span>
                 </button>
               );
             })}
@@ -229,10 +254,16 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
 
         {groups.map((group) => {
           const isGroupActive = activeGroup?.id === group.id;
-          const displayId =
+          const baseId =
             isGroupActive && activeEntityId
               ? activeEntityId
               : lastGroupMember[group.id] ?? group.members[0];
+          const canonical = getCanonicalGroupMember(baseId, docCategory);
+          const displayId =
+            isGroupActive && activeEntityId
+              ? activeEntityId
+              : lastMirrorVariant[canonical] ?? baseId;
+          const rot = getDisplayRotation(displayId);
           return (
             <button
               key={group.id}
@@ -242,7 +273,7 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
               onMouseEnter={mobile ? undefined : () => setHoverMeta(buildMeta(displayId, group.members.length > 1))}
             >
               {!mobile && <span className="s2-slot-num">{group.slot}</span>}
-              <EntityGlyph id={displayId} size={22} />
+              <EntityGlyph id={displayId} size={22} rotation={rot} />
               <span className="s2-tile-label">{getShortLabel(displayId, undefined, lang)}</span>
               {group.members.length > 1 && <span className="s2-group-dots" aria-hidden="true" />}
             </button>
