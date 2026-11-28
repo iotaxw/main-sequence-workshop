@@ -100,9 +100,15 @@ local function dispatch_hovered()
     for address, action in pairs(runtime.actions) do
         if action.state.detached or not native.is_valid(action.widget) then
             runtime.actions[address] = nil
-        elseif native.is_valid(action.widget.Button) then
+        else
             local ok, hovered = pcall(function()
-                return action.widget.Button:IsHovered()
+                if native.is_valid(action.widget.Button) and type(action.widget.Button.IsHovered) == "function" then
+                    return action.widget.Button:IsHovered()
+                end
+                if type(action.widget.IsHovered) == "function" then
+                    return action.widget:IsHovered()
+                end
+                return false
             end)
             if not ok then
                 if not action.hover_failed then
@@ -219,7 +225,14 @@ end
 
 local function button(state, caption, callback, opts)
     trace("button create start " .. tostring(caption))
-    local widget, err = theme.create_button(state.hud, state.owner, caption, opts)
+    local merged = {}
+    if type(opts) == "table" then
+        for k, v in pairs(opts) do merged[k] = v end
+    end
+    if not merged.reference and state.native_button_ref and native.is_valid(state.native_button_ref.button) then
+        merged.reference = state.native_button_ref.button
+    end
+    local widget, err = theme.create_button(state.hud, state.owner, caption, merged)
     if not widget then return nil, err end
     trace("button create ok " .. tostring(caption))
     register_action(state, widget, callback)
@@ -1221,6 +1234,7 @@ local function attach_internal(hud, designer, store_api, store)
         active = false,
         drawer_open = false,
         drawer_mode = nil,
+        native_button_ref = theme.find_sibling_button(hud, hud.SaveOptionsContainer),
         mounted = {},
         action_records = {},
         list_pool = {},
@@ -1228,6 +1242,9 @@ local function attach_internal(hud, designer, store_api, store)
         entry_baseline_blocks = baseline,
         last_blocks = baseline,
     }
+    if state.native_button_ref then
+        log("cloning native Designer button class: " .. tostring(state.native_button_ref.class_name))
+    end
     attaching_state = state
 
     local save_form, save_form_error = build_save_form(state)
@@ -1282,10 +1299,23 @@ local function attach_internal(hud, designer, store_api, store)
     end)
     if not state.library_button then return fail_attach(state, "library_entry_button_failed") end
 
-    local mounted, mount_error = mount(state, hud.SaveOptionsContainer, state.save_button, "mount/save_entry")
-    if not mounted then return fail_attach(state, mount_error) end
-    mounted, mount_error = mount(state, hud.SaveOptionsContainer, state.library_button, "mount/library_entry")
-    if not mounted then return fail_attach(state, mount_error) end
+    local ref_slot = nil
+    local ref_wrapper = nil
+    if state.native_button_ref then
+        ref_wrapper = state.native_button_ref.wrapper
+        local ok_rs, rs = pcall(function() return state.native_button_ref.slot_holder.Slot end)
+        if ok_rs and native.is_valid(rs) then ref_slot = rs end
+    end
+
+    local save_entry_widget = theme.wrap_like(state.widget_tree, state.save_button, ref_wrapper)
+    local save_slot, mount_error = mount(state, hud.SaveOptionsContainer, save_entry_widget, "mount/save_entry")
+    if not save_slot then return fail_attach(state, mount_error) end
+    theme.copy_slot_layout(save_slot, ref_slot)
+
+    local lib_entry_widget = theme.wrap_like(state.widget_tree, state.library_button, ref_wrapper)
+    local lib_slot, lib_mount_error = mount(state, hud.SaveOptionsContainer, lib_entry_widget, "mount/library_entry")
+    if not lib_slot then return fail_attach(state, lib_mount_error) end
+    theme.copy_slot_layout(lib_slot, ref_slot)
 
     -- Styled paste status badge mounted inside SaveOptionsContainer
     local paste_card = theme.create_framed_panel(state.widget_tree, {
@@ -1298,6 +1328,7 @@ local function attach_internal(hud, designer, store_api, store)
         size = 12, color = theme.PALETTE.text_primary,
     })
     if not state.paste_status then return fail_attach(state, "paste_status_failed") end
+    local mounted
     if paste_card and theme.add_child(paste_card.body, state.paste_status) then
         state.paste_status_box = paste_card.outer
         mounted, mount_error = mount(state, hud.SaveOptionsContainer, state.paste_status_box, "mount/paste_status")

@@ -196,19 +196,176 @@ function M.find_designer()
 end
 
 local function is_instance_of(object, class_path)
-    local has_isa, result = pcall(function()
-        if type(object.IsA) ~= "function" then
-            return nil
-        end
-        return object:IsA(class_path)
-    end)
-    if not has_isa then
+    if not native.is_valid(object) then
         return false
     end
-    if result == nil then
+    local short_expected = tostring(class_path):match("([^.]+)$")
+    if short_expected and native.class_name(object) == short_expected then
         return true
     end
-    return result == true
+    if type(object.IsA) ~= "function" then
+        return true
+    end
+    local cls = native.find_type(class_path)
+    if cls then
+        local ok, result = pcall(function()
+            return object:IsA(cls)
+        end)
+        if ok and type(result) == "boolean" then
+            return result
+        end
+    end
+    local ok_str, result_str = pcall(function()
+        return object:IsA(class_path)
+    end)
+    if ok_str and type(result_str) == "boolean" then
+        return result_str
+    end
+    return false
+end
+
+local function read_block_object(block)
+    if not is_live(block) then return nil end
+    local ok, id, cls, transform, palette_id = pcall(function()
+        return block.ID, block:GetClass(), block.GridTransform, block.PaletteID
+    end)
+    if not ok or type(id) ~= "number" or not native.is_valid(cls) or transform == nil then
+        return nil
+    end
+    local ok_t, gx, gy, height, rot = pcall(function()
+        return transform.GridLocation.X, transform.GridLocation.Y, transform.Height, transform.GridRotation
+    end)
+    if not ok_t or type(gx) ~= "number" or type(gy) ~= "number" or type(height) ~= "number" or type(rot) ~= "number" then
+        return nil
+    end
+    return {
+        id = id,
+        class_name = native.short_name(cls),
+        gx = gx,
+        gy = gy,
+        height = height,
+        rot = rot % 4,
+        palette_id = type(palette_id) == "number" and palette_id or 0,
+    }
+end
+
+local function read_blueprint_entry(entry)
+    if type(entry) ~= "table" and type(entry) ~= "userdata" then return nil end
+    local ok, id, cls, transform, palette_id = pcall(function()
+        return entry.BlockID, entry.Class, entry.Transform, entry.PaletteID
+    end)
+    if not ok or type(id) ~= "number" or not native.is_valid(cls) or transform == nil then
+        return nil
+    end
+    local ok_t, gx, gy, height, rot = pcall(function()
+        return transform.GridLocation.X, transform.GridLocation.Y, transform.Height, transform.GridRotation
+    end)
+    if not ok_t or type(gx) ~= "number" or type(gy) ~= "number" or type(height) ~= "number" or type(rot) ~= "number" then
+        return nil
+    end
+    return {
+        id = id,
+        class_name = native.short_name(cls),
+        gx = gx,
+        gy = gy,
+        height = height,
+        rot = rot % 4,
+        palette_id = type(palette_id) == "number" and palette_id or 0,
+    }
+end
+
+local function read_array_items(array_obj, max_count)
+    local items = {}
+    if array_obj == nil then return nil end
+    local ok_fe = pcall(function()
+        if type(array_obj.ForEach) == "function" then
+            array_obj:ForEach(function(_, elem)
+                if #items >= max_count then return true end
+                local ok_get, val = pcall(function()
+                    return type(elem) == "userdata" and type(elem.Get) == "function" and elem:Get() or elem
+                end)
+                if ok_get and val ~= nil then
+                    items[#items + 1] = val
+                end
+            end)
+        else
+            error("no_foreach")
+        end
+    end)
+    if ok_fe then return items end
+    local ok_len, count = pcall(function() return #array_obj end)
+    if not ok_len or type(count) ~= "number" then return nil end
+    local limit = math.min(count, max_count)
+    for index = 1, limit do
+        local ok_at, raw = pcall(function() return array_obj[index] end)
+        if ok_at and raw ~= nil then
+            local ok_get, val = pcall(function()
+                return type(raw) == "userdata" and type(raw.Get) == "function" and raw:Get() or raw
+            end)
+            if ok_get and val ~= nil then
+                items[#items + 1] = val
+            end
+        end
+    end
+    return items
+end
+
+-- Reads live station blocks directly from BuildingFrame.BuildingBlocks (or Designer.UnattachedBlueprint.Blocks)
+-- without calling Designer:GetBlueprintForSaving(), avoiding UE4SS 4.0.0 / UE 5.7.4 crashes when marshalling
+-- FBuildBlueprint.Screenshot.GreyscaleValues (TArray<uint8>) into a Lua table.
+function M.snapshot_frame_blocks(designer)
+    if not is_live(designer) then
+        return nil, "invalid_designer"
+    end
+    local station, station_error = ensure_station(designer)
+    if not station then
+        return nil, station_error
+    end
+
+    -- 1. Live attached station frame: BuildingFrame.BuildingBlocks (TArray<UBuildingBlockObject*>)
+    local ok_frame, frame = pcall(function() return designer.Frame end)
+    if ok_frame and is_live(frame) then
+        local ok_arr, blocks_arr = pcall(function() return frame.BuildingBlocks end)
+        if ok_arr and blocks_arr ~= nil then
+            local raw_items = read_array_items(blocks_arr, 65536)
+            if raw_items and #raw_items > 0 then
+                local result = {}
+                for _, block in ipairs(raw_items) do
+                    local parsed = read_block_object(block)
+                    if parsed then
+                        result[#result + 1] = parsed
+                    end
+                end
+                if #result > 0 then
+                    return result
+                end
+            end
+        end
+    end
+
+    -- 2. Standalone Designer (or empty frame): Designer.UnattachedBlueprint.Blocks (lazy StructProperty userdata, never touches Screenshot)
+    local ok_unattached, unattached_blocks = pcall(function()
+        return designer.UnattachedBlueprint and designer.UnattachedBlueprint.Blocks
+    end)
+    if ok_unattached and unattached_blocks ~= nil then
+        local raw_entries = read_array_items(unattached_blocks, 65536)
+        if raw_entries then
+            local result = {}
+            for _, entry in ipairs(raw_entries) do
+                local parsed = read_blueprint_entry(entry)
+                if parsed then
+                    result[#result + 1] = parsed
+                end
+            end
+            return result
+        end
+    end
+
+    -- If frame is valid and simply has 0 blocks (empty canvas), return empty list cleanly instead of failing attach.
+    if ok_frame and is_live(frame) then
+        return {}
+    end
+    return nil, "frame_blocks_unavailable"
 end
 
 function M.block_id_for_actor(designer, actor)
@@ -257,17 +414,13 @@ function M.block_id_for_actor(designer, actor)
         return nil, "invalid_simulation_id"
     end
 
-    local blueprint = designer:GetBlueprintForSaving(false)
-    if type(blueprint) ~= "table" then
-        return nil, "blueprint_unavailable"
+    local blocks, blocks_err = M.snapshot_frame_blocks(designer)
+    if not blocks then
+        return nil, blocks_err or "blueprint_unavailable"
     end
     local matched
-    for index, parameter in ipairs(blueprint.Blocks) do
-        if index > 65536 then
-            return nil, "blueprint_block_limit_exceeded"
-        end
-        local entry = parameter:Get()
-        if entry.BlockID == id then
+    for _, entry in ipairs(blocks) do
+        if entry.id == id then
             if matched then
                 return nil, "duplicate_blueprint_id:" .. tostring(id)
             end
@@ -277,15 +430,15 @@ function M.block_id_for_actor(designer, actor)
     if not matched then
         return nil, "simulation_id_not_in_blueprint:" .. tostring(id)
     end
-    if matched.Class:GetAddress() ~= simulation:GetClass():GetAddress() then
+    if matched.class_name ~= native.short_name(simulation:GetClass()) then
         return nil, "blueprint_class_mismatch"
     end
-    local actual, expected = simulation.GridTransform, matched.Transform
-    if actual.GridLocation.X ~= expected.GridLocation.X
-        or actual.GridLocation.Y ~= expected.GridLocation.Y
-        or actual.Height ~= expected.Height
-        or actual.GridRotation ~= expected.GridRotation
-        or simulation.PaletteID ~= matched.PaletteID then
+    local actual = simulation.GridTransform
+    if actual.GridLocation.X ~= matched.gx
+        or actual.GridLocation.Y ~= matched.gy
+        or actual.Height ~= matched.height
+        or (actual.GridRotation % 4) ~= matched.rot
+        or simulation.PaletteID ~= matched.palette_id then
         return nil, "blueprint_transform_mismatch"
     end
     return id
@@ -387,48 +540,6 @@ function M.toggle_block_in_selection(designer, actor)
     return { action = "removed", id = id, count = #designer.SelectedActors }
 end
 
-function M.snapshot_frame_blocks(designer)
-    if not is_live(designer) then
-        return nil, "invalid_designer"
-    end
-    local station, station_error = ensure_station(designer)
-    if not station then
-        return nil, station_error
-    end
-    local ok, blueprint = pcall(function()
-        return designer:GetBlueprintForSaving(false)
-    end)
-    if not ok or type(blueprint) ~= "table" then
-        return nil, "blueprint_unavailable"
-    end
-    local result = {}
-    for index, parameter in ipairs(blueprint.Blocks) do
-        if index > 65536 then
-            return nil, "blueprint_block_limit_exceeded"
-        end
-        local entry_ok, entry = pcall(function()
-            return parameter:Get()
-        end)
-        if not entry_ok or (type(entry) ~= "table" and type(entry) ~= "userdata") then
-            return nil, "blueprint_block_read_failed"
-        end
-        if not native.is_valid(entry.Class) then
-            return nil, "blueprint_block_class_invalid"
-        end
-        local transform = entry.Transform
-        result[#result + 1] = {
-            id = entry.BlockID,
-            class_name = native.short_name(entry.Class),
-            gx = transform.GridLocation.X,
-            gy = transform.GridLocation.Y,
-            height = transform.Height,
-            rot = transform.GridRotation % 4,
-            palette_id = entry.PaletteID,
-        }
-    end
-    return result
-end
-
 function M.activate_select_tool(designer, hud)
     if not native.is_valid(designer) or not native.is_valid(hud) then
         return nil, "invalid_designer_or_hud"
@@ -515,6 +626,13 @@ local function capture_blueprint(designer, include_machines, consume)
             end
             captured_value = consume(target, blueprint)
             captured_counts = counts
+            -- Prevent UE4SS 4.0.0 / UE 5.7.4 crash when ProcessEvent marshals ReturnValue.Screenshot.GreyscaleValues
+            -- (large TArray<uint8>) into a Lua table after our post-hook returns.
+            pcall(function()
+                if blueprint.Screenshot and blueprint.Screenshot.GreyscaleValues then
+                    blueprint.Screenshot.GreyscaleValues:Empty()
+                end
+            end)
         end, function(value)
             return type(value) == "string" and value or "native_blueprint_capture_failed"
         end)

@@ -133,10 +133,9 @@ function M.construct(widget_tree, class_path)
     return widget
 end
 
-function M.create_user_widget(context_object, owner, class_path)
-    local class = native.find_type(class_path)
-    if not class then
-        return nil, "missing_widget_class:" .. tostring(class_path)
+function M.create_user_widget_by_class(context_object, owner, class)
+    if not native.is_valid(class) then
+        return nil, "invalid_widget_class"
     end
     local library_class = native.find_type(M.CLASSES.WIDGET_LIBRARY)
     if not library_class then
@@ -146,17 +145,174 @@ function M.create_user_widget(context_object, owner, class_path)
         return library_class:GetCDO():Create(context_object, class, owner)
     end)
     if not ok or not native.is_valid(widget) then
-        return nil, "user_widget_creation_failed:" .. tostring(class_path) .. ":" .. tostring(widget)
+        return nil, "user_widget_creation_failed:" .. tostring(widget)
     end
     return widget
 end
 
+function M.create_user_widget(context_object, owner, class_path)
+    local class = native.find_type(class_path)
+    if not class then
+        return nil, "missing_widget_class:" .. tostring(class_path)
+    end
+    return M.create_user_widget_by_class(context_object, owner, class)
+end
+
+local function copy_button_visuals(widget, reference)
+    if not native.is_valid(widget) or not native.is_valid(reference) then return end
+    pcall(function()
+        local sz = reference.TextSize
+        if type(sz) == "number" and sz > 0 then
+            if type(widget.SetSize) == "function" then
+                widget:SetSize(sz)
+            else
+                widget.TextSize = sz
+            end
+        end
+    end)
+    for _, prop in ipairs({ "TextPadding", "DefaultColour", "HoveredColour", "PressedColour", "DisabledColour", "ColorAndOpacity" }) do
+        pcall(function()
+            local val = reference[prop]
+            if val ~= nil then
+                widget[prop] = val
+            end
+        end)
+    end
+    pcall(function()
+        if type(widget.Refresh) == "function" then
+            widget:Refresh()
+        end
+    end)
+end
+
+function M.find_sibling_button(hud, container)
+    if not native.is_valid(hud) then return nil end
+    local function inspect_candidate(candidate)
+        if not native.is_valid(candidate) then return nil end
+        local cname = native.class_name(candidate)
+        if cname == "SizeBox" or cname == "Border" then
+            local ok_ch, inner = pcall(function() return candidate:GetChildAt(0) end)
+            if ok_ch and native.is_valid(inner) then
+                local ok_txt, has_set = pcall(function() return type(inner.SetText) == "function" end)
+                if ok_txt and has_set then
+                    return { button = inner, wrapper = candidate, slot_holder = candidate, class_name = native.class_name(inner) }
+                end
+            end
+            return nil
+        end
+        local ok_txt, has_set = pcall(function() return type(candidate.SetText) == "function" end)
+        if not ok_txt or not has_set then return nil end
+        local wrapper = nil
+        local slot_holder = candidate
+        local ok_par, parent = pcall(function() return candidate:GetParent() end)
+        if ok_par and native.is_valid(parent) and native.is_valid(container)
+            and parent:GetAddress() ~= container:GetAddress() then
+            local pclass = native.class_name(parent)
+            if pclass == "SizeBox" or pclass == "Border" then
+                wrapper = parent
+                slot_holder = parent
+            end
+        end
+        return { button = candidate, wrapper = wrapper, slot_holder = slot_holder, class_name = cname }
+    end
+
+    -- Prefer direct siblings inside the exact target container first so class, wrapper SizeBox and Slot match 1:1.
+    if native.is_valid(container) then
+        local ok_cnt, count = pcall(function() return container:GetChildrenCount() end)
+        if ok_cnt and type(count) == "number" then
+            for i = 0, math.min(count - 1, 15) do
+                local ok_ch, child = pcall(function() return container:GetChildAt(i) end)
+                if ok_ch and child then
+                    local info = inspect_candidate(child)
+                    if info then return info end
+                end
+            end
+        end
+    end
+    for _, field in ipairs({ "OpenButton", "SaveButton", "SavePreset" }) do
+        local ok_f, btn = pcall(function() return hud[field] end)
+        if ok_f and btn then
+            local info = inspect_candidate(btn)
+            if info then return info end
+        end
+    end
+    return nil
+end
+
+function M.copy_slot_layout(target_slot, source_slot)
+    if not native.is_valid(target_slot) or not native.is_valid(source_slot) then return end
+    pcall(function()
+        local pad = source_slot.Padding
+        if pad ~= nil then target_slot:SetPadding(pad) end
+    end)
+    pcall(function()
+        local ha = source_slot.HorizontalAlignment
+        if ha ~= nil then target_slot:SetHorizontalAlignment(ha) end
+    end)
+    pcall(function()
+        local va = source_slot.VerticalAlignment
+        if va ~= nil then target_slot:SetVerticalAlignment(va) end
+    end)
+    pcall(function()
+        local sz = source_slot.Size
+        if sz ~= nil then target_slot:SetSize(sz) end
+    end)
+end
+
+function M.wrap_like(widget_tree, child, wrapper_ref)
+    if not native.is_valid(wrapper_ref) or not native.is_valid(widget_tree) then
+        return child
+    end
+    local wclass = native.class_name(wrapper_ref)
+    if wclass == "SizeBox" then
+        local box = M.construct(widget_tree, M.CLASSES.SIZE_BOX)
+        if box then
+            pcall(function()
+                if wrapper_ref.bOverride_WidthOverride and type(wrapper_ref.WidthOverride) == "number" then
+                    box:SetWidthOverride(wrapper_ref.WidthOverride)
+                end
+            end)
+            pcall(function()
+                if wrapper_ref.bOverride_HeightOverride and type(wrapper_ref.HeightOverride) == "number" then
+                    box:SetHeightOverride(wrapper_ref.HeightOverride)
+                end
+            end)
+            pcall(function()
+                if wrapper_ref.bOverride_MinDesiredWidth and type(wrapper_ref.MinDesiredWidth) == "number" then
+                    box:SetMinDesiredWidth(wrapper_ref.MinDesiredWidth)
+                end
+            end)
+            pcall(function()
+                if wrapper_ref.bOverride_MinDesiredHeight and type(wrapper_ref.MinDesiredHeight) == "number" then
+                    box:SetMinDesiredHeight(wrapper_ref.MinDesiredHeight)
+                end
+            end)
+            if M.add_child(box, child) then
+                return box
+            end
+        end
+    end
+    return child
+end
+
 function M.create_button(context_object, owner, caption, opts)
     opts = opts or {}
-    local preferred = opts.clean and M.CLASSES.CLEAN_BUTTON_TEXT or M.CLASSES.BUTTON_TEXT
-    local widget, err = M.create_user_widget(context_object, owner, preferred)
-    if not widget and opts.clean then
-        widget, err = M.create_user_widget(context_object, owner, M.CLASSES.BUTTON_TEXT)
+    local widget, err
+    if opts.reference and native.is_valid(opts.reference) then
+        local ok_cls, ref_cls = pcall(function() return opts.reference:GetClass() end)
+        if ok_cls and native.is_valid(ref_cls) then
+            widget, err = M.create_user_widget_by_class(context_object, owner, ref_cls)
+            if widget then
+                copy_button_visuals(widget, opts.reference)
+            end
+        end
+    end
+    if not widget then
+        local preferred = opts.clean and M.CLASSES.CLEAN_BUTTON_TEXT or M.CLASSES.BUTTON_TEXT
+        widget, err = M.create_user_widget(context_object, owner, preferred)
+        if not widget and opts.clean then
+            widget, err = M.create_user_widget(context_object, owner, M.CLASSES.BUTTON_TEXT)
+        end
     end
     if not widget then
         return nil, err

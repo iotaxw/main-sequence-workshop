@@ -969,4 +969,175 @@ test("ssb_ui mounts same-tree drawer without touching OpenButton/DesignerPopup a
     _G.__StationSectionBlueprintsUIRuntime = nil
 end)
 
+test("snapshot_frame_blocks reads Frame.BuildingBlocks and UnattachedBlueprint.Blocks without calling GetBlueprintForSaving", function()
+    local prev_flags = _G.EObjectFlags
+    _G.EObjectFlags = { RF_ClassDefaultObject = 1, RF_ArchetypeObject = 2 }
+    local function mock_obj(cls, addr, extra)
+        local o = extra or {}
+        function o:IsValid() return true end
+        function o:HasAnyFlags() return false end
+        function o:GetAddress() return addr end
+        function o:GetFullName() return cls .. " /Game/Test." .. cls end
+        function o:GetClass()
+            return {
+                IsValid = function() return true end,
+                GetFName = function() return { ToString = function() return cls end } end,
+                GetFullName = function() return "BlueprintGeneratedClass /Game/" .. cls .. "." .. cls end,
+            }
+        end
+        return o
+    end
+
+    local b1 = mock_obj("BPO_Station_01_C", 701, {
+        ID = 41637,
+        PaletteID = 2,
+        GridTransform = { GridLocation = { X = 4, Y = -8 }, Height = 2, GridRotation = 5 },
+    })
+    local frame = mock_obj("BP_StationObject_C", 700, { BuildingBlocks = { b1 } })
+    local getter_called = false
+    local designer = mock_obj("Designer", 699, {
+        Frame = frame,
+        GetBlueprintType = function() return 0 end,
+        GetBlueprintForSaving = function()
+            getter_called = true
+            error("GetBlueprintForSaving must NOT be called by snapshot_frame_blocks (GreyscaleValues crash on UE 5.7.4/UE4SS 4.0)")
+        end,
+    })
+
+    local blocks, err = designer_native.snapshot_frame_blocks(designer)
+    truthy(blocks, tostring(err))
+    equal(getter_called, false)
+    equal(#blocks, 1)
+    equal(blocks[1].id, 41637)
+    equal(blocks[1].class_name, "BPO_Station_01_C")
+    equal(blocks[1].gx, 4)
+    equal(blocks[1].gy, -8)
+    equal(blocks[1].height, 2)
+    equal(blocks[1].rot, 1)
+    equal(blocks[1].palette_id, 2)
+
+    -- Standalone Designer fallback: Frame is nil, reads UnattachedBlueprint.Blocks lazily
+    local cls_obj = {
+        IsValid = function() return true end,
+        GetFName = function() return { ToString = function() return "BPO_Dock_C" end } end,
+        GetFullName = function() return "BlueprintGeneratedClass /Game/BPO_Dock.BPO_Dock_C" end,
+    }
+    local standalone = mock_obj("Designer", 799, {
+        Frame = nil,
+        UnattachedBlueprint = {
+            Blocks = {
+                { BlockID = 99, Class = cls_obj, Transform = { GridLocation = { X = 0, Y = 4 }, Height = 0, GridRotation = 2 }, PaletteID = 0 },
+            },
+        },
+        GetBlueprintType = function() return 0 end,
+        GetBlueprintForSaving = function()
+            getter_called = true
+            error("must not call GetBlueprintForSaving")
+        end,
+    })
+    local sblocks, serr = designer_native.snapshot_frame_blocks(standalone)
+    _G.EObjectFlags = prev_flags
+    truthy(sblocks, tostring(serr))
+    equal(getter_called, false)
+    equal(#sblocks, 1)
+    equal(sblocks[1].id, 99)
+    equal(sblocks[1].class_name, "BPO_Dock_C")
+    equal(sblocks[1].rot, 2)
+end)
+
+test("ui theme clones native sibling button class, wrapper SizeBox and Slot layout", function()
+    local created_classes = {}
+    local copied_padding = nil
+    local saved_globals = {
+        FText = _G.FText,
+        StaticFindObject = _G.StaticFindObject,
+        StaticConstructObject = _G.StaticConstructObject,
+        EObjectFlags = _G.EObjectFlags,
+    }
+    _G.EObjectFlags = { RF_Public = 1, RF_Standalone = 2 }
+    _G.FText = function(s) return { _raw = tostring(s) } end
+    local native_btn_class = {
+        _name = "WBP_CleanButton_Text_C",
+        IsValid = function() return true end,
+        GetFName = function() return { ToString = function() return "WBP_CleanButton_Text_C" end } end,
+    }
+    local function mk(cls, addr, extra)
+        local w = extra or {}
+        w._addr = addr
+        function w:IsValid() return true end
+        function w:GetAddress() return self._addr end
+        function w:GetClass()
+            return cls == "WBP_CleanButton_Text_C" and native_btn_class or {
+                IsValid = function() return true end,
+                GetFName = function() return { ToString = function() return cls end } end,
+            }
+        end
+        return w
+    end
+    local widget_lib_cdo = {
+        Create = function(_, _, cls, _)
+            created_classes[#created_classes + 1] = cls._name
+            local inst = mk(cls._name, 8100, {
+                SetText = function(self, ft) self._text = ft._raw end,
+                SetSize = function(self, sz) self._size = sz end,
+                Refresh = function(self) self._refreshed = true end,
+            })
+            return inst
+        end,
+    }
+    _G.StaticFindObject = function(path)
+        return { _path = path, IsValid = function() return true end, GetCDO = function() return widget_lib_cdo end }
+    end
+    _G.StaticConstructObject = function(cls_obj)
+        return mk("SizeBox", 8200, {
+            SetWidthOverride = function(self, v) self._w = v end,
+            SetHeightOverride = function(self, v) self._h = v end,
+            AddChild = function(self, c) self._child = c; return { IsValid = function() return true end } end,
+        })
+    end
+
+    local sibling_btn = mk("WBP_CleanButton_Text_C", 8001, {
+        SetText = function() end,
+        TextSize = 14,
+        DefaultColour = { R = 0.1, G = 0.2, B = 0.3, A = 1.0 },
+    })
+    local sibling_box = mk("SizeBox", 8002, {
+        bOverride_WidthOverride = true, WidthOverride = 180,
+        bOverride_HeightOverride = true, HeightOverride = 36,
+        GetChildAt = function(_, i) return i == 0 and sibling_btn or nil end,
+        Slot = mk("HorizontalBoxSlot", 8003, { Padding = { Left = 6, Top = 2, Right = 6, Bottom = 2 } }),
+    })
+    local container = mk("HorizontalBox", 8004, {
+        GetChildrenCount = function() return 1 end,
+        GetChildAt = function(_, i) return i == 0 and sibling_box or nil end,
+    })
+    local hud = mk("WBP_DesignerHUD_C", 8000, { WidgetTree = mk("WidgetTree", 8005) })
+
+    local ref = theme.find_sibling_button(hud, container)
+    truthy(ref)
+    equal(ref.class_name, "WBP_CleanButton_Text_C")
+    equal(ref.wrapper, sibling_box)
+
+    local cloned, err = theme.create_button(hud, mk("PC", 8006), "局部蓝图库", { reference = ref.button })
+    truthy(cloned, tostring(err))
+    equal(created_classes[1], "WBP_CleanButton_Text_C")
+    equal(cloned._size, 14)
+    equal(cloned._refreshed, true)
+    equal(cloned._text, "局部蓝图库")
+
+    local wrapped = theme.wrap_like(hud.WidgetTree, cloned, ref.wrapper)
+    equal(wrapped._w, 180)
+    equal(wrapped._h, 36)
+    equal(wrapped._child, cloned)
+
+    local target_slot = mk("HorizontalBoxSlot", 8300, {
+        SetPadding = function(_, p) copied_padding = p end,
+    })
+    theme.copy_slot_layout(target_slot, ref.slot_holder.Slot)
+    truthy(copied_padding)
+    equal(copied_padding.Left, 6)
+
+    for k, v in pairs(saved_globals) do _G[k] = v end
+end)
+
 print(string.format("%d tests passed", passed))
