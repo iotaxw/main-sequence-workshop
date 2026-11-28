@@ -342,14 +342,15 @@ function addLoftedSolidX(
   target.add(new THREE.Mesh(geo, mat));
 }
 
-/** Add a slim structural girder beam between two 3D points with aligned outer CAD silhouette edges */
+/** Add a slim structural girder beam between two 3D points with subtle aligned outer CAD silhouette edges */
 function addTrussStrut(
   target: THREE.Group,
   x1: number, y1: number, z1: number,
   x2: number, y2: number, z2: number,
   thickness: number,
   fillMat: THREE.Material,
-  edgePts: number[]
+  edgePts: number[],
+  edgeCount: 2 | 4 = 2
 ): void {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -364,17 +365,19 @@ function addTrussStrut(
   mesh.quaternion.copy(quat);
   target.add(mesh);
 
-  // Draw the 4 exact outer longitudinal corners of the box beam so front edges are never occluded by the fill!
+  // Draw 2 opposite (or 4 full) aligned outer edges so front silhouette is never occluded without over-bright line stacking
   const r = thickness * 0.506;
   const u = new THREE.Vector3(1, 0, 0).applyQuaternion(quat).multiplyScalar(r);
   const v = new THREE.Vector3(0, 0, 1).applyQuaternion(quat).multiplyScalar(r);
-  for (const su of [-1, 1]) {
-    for (const sv of [-1, 1]) {
-      const ox = u.x * su + v.x * sv;
-      const oy = u.y * su + v.y * sv;
-      const oz = u.z * su + v.z * sv;
-      pushSeg(edgePts, x1 + ox, z1 + oz, x2 + ox, z2 + oz, y1 + oy, y2 + oy);
-    }
+  const pairs: Array<[number, number]> =
+    edgeCount === 4
+      ? [[-1, -1], [-1, 1], [1, -1], [1, 1]]
+      : [[-1, -1], [1, 1]];
+  for (const [su, sv] of pairs) {
+    const ox = u.x * su + v.x * sv;
+    const oy = u.y * su + v.y * sv;
+    const oz = u.z * su + v.z * sv;
+    pushSeg(edgePts, x1 + ox, z1 + oz, x2 + ox, z2 + oz, y1 + oy, y2 + oy);
   }
 }
 
@@ -637,20 +640,21 @@ export function buildShipModuleArt(
     pushSeg(accentPts, x1, -1.05, x1, 1.05, roofHeight - 0.35);
     pushSeg(accentPts, x1, 0, x1, 0, 1.05, roofHeight - 0.35);
   } else if (id === 'BPO_Frame_01') {
-    // Authentic PAK open 3D octagonal space-truss hub: 6-way open connector collars + tapered diagonal girder struts!
+    // Authentic PAK open 3D octagonal space-truss hub rendered in calm matte-titanium structural tone (armourTint + lineDetail)
     roofHeight = 4.0;
+    accentColor = palette.armourTint;
     const hub = 1.72;
     const end = hw - 0.14;
     const bar = 0.22;
     const yMid0 = 0.92;
     const yMid1 = 3.08;
 
-    // Top & bottom horizontal square connector rings (flush at y=0 and y=4.0 with open center!)
-    for (const ry of [0.12, 3.88]) {
-      addTrussStrut(extrudeGroup, -hub, ry, -hub, hub, ry, -hub, bar, fillBase, primaryPts);
-      addTrussStrut(extrudeGroup, hub, ry, -hub, hub, ry, hub, bar, fillBase, primaryPts);
-      addTrussStrut(extrudeGroup, hub, ry, hub, -hub, ry, hub, bar, fillBase, primaryPts);
-      addTrussStrut(extrudeGroup, -hub, ry, hub, -hub, ry, -hub, bar, fillBase, primaryPts);
+    // Top square connector ring (matte titanium) & bottom square ring (quiet detail ink)
+    for (const [ry, targetPts] of [[3.88, accentPts], [0.12, detailPts]] as Array<[number, number[]]>) {
+      addTrussStrut(extrudeGroup, -hub, ry, -hub, hub, ry, -hub, bar, fillBase, targetPts);
+      addTrussStrut(extrudeGroup, hub, ry, -hub, hub, ry, hub, bar, fillBase, targetPts);
+      addTrussStrut(extrudeGroup, hub, ry, hub, -hub, ry, hub, bar, fillBase, targetPts);
+      addTrussStrut(extrudeGroup, -hub, ry, hub, -hub, ry, -hub, bar, fillBase, targetPts);
     }
     // 4 central vertical stanchions connecting top & bottom rings
     for (const sx of [-hub, hub]) {
@@ -658,24 +662,24 @@ export function buildShipModuleArt(
         addTrussStrut(extrudeGroup, sx, 0.12, sz, sx, 3.88, sz, bar * 0.9, fillUpper, detailPts);
       }
     }
-    // 4-way outboard open square connector collars at ±X and ±Z
-    addOpenCollarFrame(extrudeGroup, 'x', end, 1.56, yMid0, yMid1, bar, fillBase, primaryPts, detailPts);
-    addOpenCollarFrame(extrudeGroup, 'x', -end, 1.56, yMid0, yMid1, bar, fillBase, primaryPts, detailPts);
-    addOpenCollarFrame(extrudeGroup, 'z', end, 1.56, yMid0, yMid1, bar, fillBase, primaryPts, detailPts);
-    addOpenCollarFrame(extrudeGroup, 'z', -end, 1.56, yMid0, yMid1, bar, fillBase, primaryPts, detailPts);
+    // 4-way outboard open square connector collars at ±X and ±Z (matte titanium outer frame, quiet inner ring)
+    addOpenCollarFrame(extrudeGroup, 'x', end, 1.56, yMid0, yMid1, bar, fillBase, accentPts, detailPts);
+    addOpenCollarFrame(extrudeGroup, 'x', -end, 1.56, yMid0, yMid1, bar, fillBase, accentPts, detailPts);
+    addOpenCollarFrame(extrudeGroup, 'z', end, 1.56, yMid0, yMid1, bar, fillBase, accentPts, detailPts);
+    addOpenCollarFrame(extrudeGroup, 'z', -end, 1.56, yMid0, yMid1, bar, fillBase, accentPts, detailPts);
 
-    // 16 tapered upper/lower truss arms linking central hub corners to the 4 outboard collars
+    // 16 tapered truss arms: upper ribs in matte titanium, lower ribs in quiet structural detail ink
     for (const dir of [-1, 1]) {
       for (const side of [-1, 1]) {
         // ±X arms
-        addTrussStrut(extrudeGroup, dir * hub, 3.86, side * hub, dir * end, yMid1 - 0.11, side * 1.48, bar * 0.85, fillUpper, primaryPts);
-        addTrussStrut(extrudeGroup, dir * hub, 0.14, side * hub, dir * end, yMid0 + 0.11, side * 1.48, bar * 0.85, fillUpper, primaryPts);
+        addTrussStrut(extrudeGroup, dir * hub, 3.86, side * hub, dir * end, yMid1 - 0.11, side * 1.48, bar * 0.85, fillUpper, accentPts);
+        addTrussStrut(extrudeGroup, dir * hub, 0.14, side * hub, dir * end, yMid0 + 0.11, side * 1.48, bar * 0.85, fillUpper, detailPts);
         // ±Z arms
-        addTrussStrut(extrudeGroup, side * hub, 3.86, dir * hub, side * 1.48, yMid1 - 0.11, dir * end, bar * 0.85, fillUpper, primaryPts);
-        addTrussStrut(extrudeGroup, side * hub, 0.14, dir * hub, side * 1.48, yMid0 + 0.11, dir * end, bar * 0.85, fillUpper, primaryPts);
+        addTrussStrut(extrudeGroup, side * hub, 3.86, dir * hub, side * 1.48, yMid1 - 0.11, dir * end, bar * 0.85, fillUpper, accentPts);
+        addTrussStrut(extrudeGroup, side * hub, 0.14, dir * hub, side * 1.48, yMid0 + 0.11, dir * end, bar * 0.85, fillUpper, detailPts);
       }
     }
-    // 8 diagonal corner brace struts tying adjacent arms into the iconic octagonal truss silhouette
+    // 8 diagonal corner brace struts tying adjacent arms into the octagonal truss silhouette
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         addTrussStrut(extrudeGroup, sx * 2.85, yMid1 - 0.08, sz * 1.54, sx * 1.54, yMid1 - 0.08, sz * 2.85, bar * 0.72, fillUpper, detailPts);
@@ -683,9 +687,10 @@ export function buildShipModuleArt(
       }
     }
   } else if (id === 'BPO_FrameSlope_01T' || id === 'BPO_FrameSlope_01B') {
-    // Authentic PAK open cantilever A-frame bracket: rear -X collar frame + 4 parallel struts + triangular foot bracket!
+    // Authentic PAK open cantilever A-frame bracket in calm matte-titanium structural tone (armourTint + lineDetail)
     const isBot = id === 'BPO_FrameSlope_01B';
     roofHeight = isBot ? 4.0 : 3.28;
+    accentColor = palette.armourTint;
     const bar = 0.2;
     const xCollar = lx(-3.86);
     const yCol0 = 0.92;
@@ -693,7 +698,7 @@ export function buildShipModuleArt(
     const zSpan = 1.62;
 
     // 1. Rear (-X) open rectangular connector collar frame
-    addOpenCollarFrame(extrudeGroup, 'x', xCollar, zSpan, yCol0, yCol1, bar, fillBase, primaryPts, detailPts);
+    addOpenCollarFrame(extrudeGroup, 'x', xCollar, zSpan, yCol0, yCol1, bar, fillBase, accentPts, detailPts);
 
     // 2. Forward triangular A-frame mounting bracket (flush on y=0 for 01T, flush on y=4.0 for 01B!)
     const yFoot = isBot ? 3.88 : 0.12;
@@ -702,16 +707,16 @@ export function buildShipModuleArt(
     const xFootFront = lx(1.92);
     const xApex = lx(0.55);
 
-    // Horizontal rectangular mounting base plate rails
-    addTrussStrut(extrudeGroup, xFootBack, yFoot, -zSpan, xFootFront, yFoot, -zSpan, bar, fillBase, primaryPts);
-    addTrussStrut(extrudeGroup, xFootBack, yFoot, zSpan, xFootFront, yFoot, zSpan, bar, fillBase, primaryPts);
-    addTrussStrut(extrudeGroup, xFootBack, yFoot, -zSpan, xFootBack, yFoot, zSpan, bar, fillBase, primaryPts);
-    addTrussStrut(extrudeGroup, xFootFront, yFoot, -zSpan, xFootFront, yFoot, zSpan, bar, fillBase, primaryPts);
+    // Horizontal rectangular mounting base plate rails (quiet detail ink)
+    addTrussStrut(extrudeGroup, xFootBack, yFoot, -zSpan, xFootFront, yFoot, -zSpan, bar, fillBase, detailPts);
+    addTrussStrut(extrudeGroup, xFootBack, yFoot, zSpan, xFootFront, yFoot, zSpan, bar, fillBase, detailPts);
+    addTrussStrut(extrudeGroup, xFootBack, yFoot, -zSpan, xFootBack, yFoot, zSpan, bar, fillBase, detailPts);
+    addTrussStrut(extrudeGroup, xFootFront, yFoot, -zSpan, xFootFront, yFoot, zSpan, bar, fillBase, accentPts);
 
     // Twin side A-frame triangular brackets + solid side gusset plates + cross axle at apex
     for (const sz of [-zSpan, zSpan]) {
-      addTrussStrut(extrudeGroup, xFootBack, yFoot, sz, xApex, yApex, sz, bar * 0.95, fillUpper, primaryPts);
-      addTrussStrut(extrudeGroup, xFootFront, yFoot, sz, xApex, yApex, sz, bar * 0.95, fillUpper, primaryPts);
+      addTrussStrut(extrudeGroup, xFootBack, yFoot, sz, xApex, yApex, sz, bar * 0.95, fillUpper, accentPts);
+      addTrussStrut(extrudeGroup, xFootFront, yFoot, sz, xApex, yApex, sz, bar * 0.95, fillUpper, accentPts);
       // Thin triangular gusset fill plate on each A-frame cheek matching PAK SIDE view
       const triGeo = new THREE.BufferGeometry();
       triGeo.setAttribute(
@@ -723,16 +728,16 @@ export function buildShipModuleArt(
       plateMat.side = THREE.DoubleSide;
       extrudeGroup.add(new THREE.Mesh(triGeo, plateMat));
     }
-    addTrussStrut(extrudeGroup, xApex, yApex, -zSpan, xApex, yApex, zSpan, bar * 0.95, fillUpper, primaryPts);
+    addTrussStrut(extrudeGroup, xApex, yApex, -zSpan, xApex, yApex, zSpan, bar * 0.95, fillUpper, accentPts);
 
     // 3. Four parallel cantilever tie-rods from rear collar corners to A-frame apex & base
     for (const sz of [-zSpan + 0.08, zSpan - 0.08]) {
       if (!isBot) {
-        addTrussStrut(extrudeGroup, xCollar, yCol1 - 0.1, sz, xApex, yApex, sz, bar * 0.8, fillUpper, primaryPts);
-        addTrussStrut(extrudeGroup, xCollar, yCol0 + 0.1, sz, xFootBack + 0.15, yFoot + 0.16, sz, bar * 0.8, fillUpper, primaryPts);
+        addTrussStrut(extrudeGroup, xCollar, yCol1 - 0.1, sz, xApex, yApex, sz, bar * 0.8, fillUpper, accentPts);
+        addTrussStrut(extrudeGroup, xCollar, yCol0 + 0.1, sz, xFootBack + 0.15, yFoot + 0.16, sz, bar * 0.8, fillUpper, detailPts);
       } else {
-        addTrussStrut(extrudeGroup, xCollar, yCol0 + 0.1, sz, xApex, yApex, sz, bar * 0.8, fillUpper, primaryPts);
-        addTrussStrut(extrudeGroup, xCollar, yCol1 - 0.1, sz, xFootBack + 0.15, yFoot - 0.16, sz, bar * 0.8, fillUpper, primaryPts);
+        addTrussStrut(extrudeGroup, xCollar, yCol0 + 0.1, sz, xApex, yApex, sz, bar * 0.8, fillUpper, accentPts);
+        addTrussStrut(extrudeGroup, xCollar, yCol1 - 0.1, sz, xFootBack + 0.15, yFoot - 0.16, sz, bar * 0.8, fillUpper, detailPts);
       }
       pushSeg(detailPts, xCollar, sz, xApex, sz, (yCol0 + yCol1) * 0.5, yApex);
     }
