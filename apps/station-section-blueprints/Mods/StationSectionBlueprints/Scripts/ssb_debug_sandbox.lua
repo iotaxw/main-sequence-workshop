@@ -73,16 +73,11 @@ local function find_local_player()
     return nil
 end
 
-local function read_creative_flag(pc)
+local function read_creative_flag()
     local player = find_local_player()
-    if player then
-        local ok_read, val = pcall(function() return player.bCreative end)
-        if ok_read and type(val) == "boolean" then return val end
-    end
-    if is_live(pc) then
-        local ok_pc, val = pcall(function() return pc.bCreative end)
-        if ok_pc and type(val) == "boolean" then return val end
-    end
+    if not player then return nil end
+    local ok_read, val = pcall(function() return player.bCreative end)
+    if ok_read and type(val) == "boolean" then return val end
     return nil
 end
 

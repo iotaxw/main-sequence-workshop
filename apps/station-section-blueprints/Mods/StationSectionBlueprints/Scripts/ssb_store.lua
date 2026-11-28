@@ -292,6 +292,75 @@ function M.paste(store, designer, id)
     return preview, entry, section_doc, json_path
 end
 
+local function clipboard_paths(store)
+    local slot = store.root .. "/work/clipboard"
+    local work_slot = store.root .. "/work/clipboard_tmp"
+    local json_path = store.directory .. "/work/clipboard.json"
+    return slot, work_slot, json_path
+end
+
+-- Copies the current Designer selection into an internal section clipboard buffer (without cluttering the named library).
+function M.copy_selection(store, designer, options)
+    options = options or {}
+    local ids, selection_error = native.selected_block_ids(designer)
+    if not ids then return nil, selection_error end
+    if #ids == 0 then return nil, "empty_selection" end
+    local ready, ready_error = M.ensure_directory(store, designer)
+    if not ready then return nil, ready_error end
+    local include_machines = options.includes_machines ~= false
+    local slot, work_slot, json_path = clipboard_paths(store)
+    local handle, report_or_error = payload.create_section(designer, work_slot, slot, ids, {
+        include_machines = include_machines,
+        name = "__clipboard__",
+    })
+    if not handle then
+        return nil, report_or_error
+    end
+    local report = type(report_or_error) == "table" and report_or_error or { kept_machines = 0 }
+    local entry = {
+        id = "__clipboard__",
+        name = "剪贴板选区",
+        folder = "",
+        includes_machines = include_machines,
+        blocks = #handle.blueprint.Blocks,
+        machines = report.kept_machines or 0,
+        json_path = json_path,
+        slot = slot,
+    }
+    store.clipboard_entry = entry
+    return entry, report
+end
+
+-- Starts native preview from the internal section clipboard buffer (Ctrl+V).
+function M.paste_clipboard(store, designer)
+    local slot, _, json_path = clipboard_paths(store)
+    local handle = native.load_from_slot(slot)
+    if not handle then
+        return nil, "empty_section_clipboard"
+    end
+    local section_doc = nil
+    local file = io.open(json_path, "rb")
+    if file then
+        local text = file:read("*a")
+        file:close()
+        local decoded = json.decode(text)
+        if type(decoded) == "table" and type(decoded.modules) == "table" and type(decoded.buildings) == "table" then
+            section_doc = decoded
+        end
+    end
+    local entry = store.clipboard_entry or {
+        id = "__clipboard__",
+        name = "剪贴板选区",
+        folder = "",
+        includes_machines = section_doc ~= nil and type(section_doc.buildings) == "table" and #section_doc.buildings > 0,
+        blocks = #handle.blueprint.Blocks,
+        machines = section_doc and #section_doc.buildings or #handle.blueprint.Machines,
+    }
+    local preview, preview_error = native.start_clipboard_preview(designer, handle.blueprint)
+    if not preview then return nil, preview_error end
+    return preview, entry, section_doc, json_path
+end
+
 function M.delete(store, id)
     local entry, entry_error = library.get(store.library, id)
     if not entry then return nil, entry_error end

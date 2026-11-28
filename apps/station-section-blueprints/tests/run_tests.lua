@@ -216,32 +216,60 @@ test("docking rejects transformed AABB collisions with every host block", functi
     end
 end)
 
-test("controller cycles candidates and H freezes the locked hover pose", function()
-    local controller = docking.new_controller(section_one(), { includes_machines = false })
-    local target = { id = 1, type = "BPO_Station_01", gx = 0, gy = 0, floor = 0, rotation = 0 }
-    controller:update_hover(target, { target }, { gx = 20, gy = 20, floor = 0 }, 0, false)
-    truthy(#controller.candidates > 1)
-    local first = controller.candidate_index
-    controller:cycle_candidate(1)
-    equal(controller.candidate_index, first % #controller.candidates + 1)
+test("controller uses fixed height=0 anchor, allows Arrow/[] nudge in hover and locked modes, and freezes base XY on H lock", function()
+    local multi = {
+        format = "station-blueprint-designer", formatVersion = 2,
+        id = "multi", name = "multi", gameData = { buildId = "26885430", catalogVersion = 1 },
+        modules = {
+            canonical_module("m1", "BPO_Station_01", 0, 0, 0, 0),
+            canonical_module("m2", "BPO_Station_01", 2, 0, 0, 0),
+        },
+        buildings = {},
+    }
+    local controller = docking.new_controller(multi, { includes_machines = false })
+    equal(controller.anchor.gx, 1)
+    equal(controller.anchor.gy, 0)
+    equal(controller.anchor.floor, 0)
+
+    -- Hover drives base XY on 16m grid while fixed height=0 anchor stays at floor 0 regardless of cursor Z
+    controller:update_hover(nil, {}, { gx = 5.2, gy = 3.1, floor = 9 }, nil, false)
+    equal(controller.pose.dgx, 4) -- base_gx(5) - anchor_gx(1)
+    equal(controller.pose.dgy, 3)
+    equal(controller.pose.dfloor, 0)
+
+    -- Nudge (Arrow XY + [/] floor) works BEFORE pressing H to lock!
+    controller:nudge(1, 0, 1, 0) -- yaw=0 -> forward=(1,0), right=(0,1); floor +1
+    equal(controller.pose.dgx, 4)
+    equal(controller.pose.dgy, 4)
+    equal(controller.pose.dfloor, 1)
+
+    -- Moving mouse while still hovering preserves nudge offsets & floor!
+    controller:update_hover(nil, {}, { gx = 6, gy = 3, floor = 0 }, nil, false)
+    equal(controller.pose.dgx, 5)
+    equal(controller.pose.dgy, 4)
+    equal(controller.pose.dfloor, 1)
+
+    -- Pressing H freezes base XY against mouse movement, while Arrows & [/] & R keep working!
     controller:toggle_lock()
+    equal(controller.mode, "locked")
     local locked = { dgx = controller.pose.dgx, dgy = controller.pose.dgy,
         dfloor = controller.pose.dfloor, drot = controller.pose.drot }
-    controller:update_hover(nil, {}, { gx = 99, gy = 99, floor = 9 }, 2, false)
+    controller:update_hover(nil, {}, { gx = 99, gy = 99, floor = 9 }, nil, false)
     for field, value in pairs(locked) do equal(controller.pose[field], value, field) end
-    local before_cycle = controller.candidate_index
-    controller:cycle_candidate(-1)
-    equal(controller.candidate_index, (before_cycle - 2) % #controller.candidates + 1)
+
+    controller:nudge(0, 1, -2, 0) -- forward +1 -> dgx+1; floor -2 -> dfloor=-1
+    equal(controller.pose.dgx, locked.dgx + 1)
+    equal(controller.pose.dfloor, -1)
+    truthy(controller:status_text():find("[/]", 1, true))
 end)
 
-test("controller rotates in place and nudges relative to the camera", function()
+test("controller rotates cleanly around fixed anchor and camera-relative nudges respect yaw", function()
     local controller = docking.new_controller(section_one(), {})
-    controller:update_hover(nil, {}, { gx = 2, gy = 3, floor = 1 }, nil, true)
-    controller:toggle_lock()
+    controller:update_hover(nil, {}, { gx = 2, gy = 3, floor = 0 }, nil, false)
     controller:nudge(1, 1, 1, 0)
     equal(controller.pose.dgx, 3)
     equal(controller.pose.dgy, 4)
-    equal(controller.pose.dfloor, 2)
+    equal(controller.pose.dfloor, 1)
     local x, y, floor = controller.pose.dgx, controller.pose.dgy, controller.pose.dfloor
     controller:rotate_cw()
     equal(controller.pose.drot, 1)
@@ -254,21 +282,8 @@ test("controller rotates in place and nudges relative to the camera", function()
     equal(controller.pose.dfloor, floor - 1)
 end)
 
-test("controller Alt falls back to free 16m grid snapping", function()
-    local controller = docking.new_controller(section_one(), {})
-    local target = { id = 1, type = "BPO_Station_01", gx = 0, gy = 0, floor = 0, rotation = 0 }
-    controller:update_hover(target, { target }, { gx = 1.6, gy = -2.4, floor = 0.6 }, 0, true)
-    equal(controller.pose.dgx, 2)
-    equal(controller.pose.dgy, -2)
-    equal(controller.pose.dfloor, 1)
-    equal(#controller.candidates, 0)
-    truthy(controller:status_text():find("自由悬浮", 1, true))
-end)
-
-test("controller blocks nudge while hovering and mirror with machines", function()
+test("controller blocks mirror when blueprint includes interior machines", function()
     local controller = docking.new_controller(section_one(), { includes_machines = true })
-    local _, nudge_error = controller:nudge(1, 0, 0, 0)
-    equal(nudge_error, "not_locked")
     equal(controller:can_mirror(), false)
     local shell = docking.new_controller(section_one(), { includes_machines = false })
     equal(shell:can_mirror(), true)
@@ -1136,6 +1151,76 @@ test("ui theme clones native sibling button class, wrapper SizeBox and Slot layo
     theme.copy_slot_layout(target_slot, ref.slot_holder.Slot)
     truthy(copied_padding)
     equal(copied_padding.Left, 6)
+
+    for k, v in pairs(saved_globals) do _G[k] = v end
+end)
+
+test("ui theme creates bare UButton topbar twin cloning OpenButton WidgetStyle and supports callable-table IsHovered", function()
+    local saved_globals = {
+        FText = _G.FText,
+        StaticFindObject = _G.StaticFindObject,
+        StaticConstructObject = _G.StaticConstructObject,
+        EObjectFlags = _G.EObjectFlags,
+    }
+    _G.EObjectFlags = { RF_Public = 1, RF_Standalone = 2 }
+    _G.FText = function(s) return { _raw = tostring(s) } end
+    local style_copied = nil
+    local text_created = nil
+    local slot_pad = nil
+    local widget_lib_cdo = {
+        Create = function(_, _, cls, _)
+            local w = {
+                _text = "",
+                IsValid = function() return true end,
+                GetClass = function() return { GetFName = function() return { ToString = function() return "WBP_Text_C" end } end } end,
+                SetText = function(self, ft) self._text = ft._raw end,
+                SetSize = function(self, sz) self._size = sz end,
+                SetColour = function(self, c) self._col = c end,
+            }
+            text_created = w
+            return w
+        end,
+    }
+    _G.StaticFindObject = function(path)
+        return { _path = path, IsValid = function() return true end, GetCDO = function() return widget_lib_cdo end }
+    end
+    _G.StaticConstructObject = function()
+        return {
+            _addr = 9100,
+            IsValid = function() return true end,
+            GetAddress = function(self) return self._addr end,
+            GetClass = function() return { GetFName = function() return { ToString = function() return "Button" end } end } end,
+            SetStyle = function(_, st) style_copied = st end,
+            SetVisibility = function(self, v) self._vis = v end,
+            AddChild = function(self, ch)
+                self._child = ch
+                return {
+                    IsValid = function() return true end,
+                    SetPadding = function(_, p) slot_pad = p end,
+                    SetHorizontalAlignment = function() end,
+                    SetVerticalAlignment = function() end,
+                }
+            end,
+        }
+    end
+
+    local open_style = { Normal = { Tint = { A = 0 } }, Hovered = { Tint = { R = 1, G = 0.443, B = 0, A = 1 } } }
+    local open_btn = {
+        IsValid = function() return true end,
+        WidgetStyle = open_style,
+        GetClass = function() return { GetFName = function() return { ToString = function() return "Button" end } end } end,
+        GetChildAt = function() return { IsValid = function() return true end, Size = 13 } end,
+    }
+    local wt = { IsValid = function() return true end }
+    local hud = { IsValid = function() return true end, OpenButton = open_btn, WidgetTree = wt }
+    local btn, txt = theme.create_topbar_button(hud, { IsValid = function() return true end }, wt, open_btn, "局部蓝图库")
+    truthy(btn)
+    equal(style_copied, open_style)
+    equal(txt, text_created)
+    equal(txt._text, "局部蓝图库")
+    equal(txt._size, 13)
+    equal(slot_pad.Left, 8)
+    equal(slot_pad.Right, 8)
 
     for k, v in pairs(saved_globals) do _G[k] = v end
 end)

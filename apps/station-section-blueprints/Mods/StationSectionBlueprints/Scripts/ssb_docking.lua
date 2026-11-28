@@ -415,60 +415,89 @@ local function free_pose(cursor_grid, rotation)
     }
 end
 
+local function compute_fixed_anchor(section_doc)
+    local modules = type(section_doc) == "table" and convert_modules(section_doc.modules or {}) or nil
+    if not modules or #modules == 0 then
+        return { gx = 0, gy = 0, floor = 0 }
+    end
+    local has_zero_floor = false
+    local min_floor = modules[1].floor
+    for _, module in ipairs(modules) do
+        if module.floor == 0 then has_zero_floor = true end
+        if module.floor < min_floor then min_floor = module.floor end
+    end
+    local anchor_floor = has_zero_floor and 0 or min_floor
+    local min_x, max_x, min_y, max_y
+    for _, module in ipairs(modules) do
+        if module.floor == anchor_floor then
+            local b = bounds(module)
+            min_x = min_x and math.min(min_x, b.min_x) or b.min_x
+            max_x = max_x and math.max(max_x, b.max_x - 1) or (b.max_x - 1)
+            min_y = min_y and math.min(min_y, b.min_y) or b.min_y
+            max_y = max_y and math.max(max_y, b.max_y - 1) or (b.max_y - 1)
+        end
+    end
+    return {
+        gx = math.floor(((min_x or 0) + (max_x or 0)) / 2),
+        gy = math.floor(((min_y or 0) + (max_y or 0)) / 2),
+        floor = anchor_floor,
+    }
+end
+
+local function recompute_pose(controller)
+    local rx, ry = rotate_xy(controller.anchor.gx, controller.anchor.gy, controller.drot)
+    controller.pose = {
+        dgx = controller.base_gx + controller.offset_gx - rx,
+        dgy = controller.base_gy + controller.offset_gy - ry,
+        dfloor = controller.offset_floor - controller.anchor.floor,
+        drot = controller.drot,
+    }
+    return controller.pose
+end
+
 function M.new_controller(section_doc, options)
     options = options or {}
     local includes_machines = options.includes_machines
     if includes_machines == nil then
         includes_machines = type(section_doc.buildings) == "table" and #section_doc.buildings > 0
     end
-    return setmetatable({
+    local controller = setmetatable({
         section_doc = section_doc,
+        anchor = compute_fixed_anchor(section_doc),
         mode = "hover",
         includes_machines = includes_machines == true,
         drot = (options.drot or 0) % 4,
+        base_gx = 0,
+        base_gy = 0,
+        offset_gx = 0,
+        offset_gy = 0,
+        offset_floor = 0,
         pose = { dgx = 0, dgy = 0, dfloor = 0, drot = (options.drot or 0) % 4 },
-        target_block_id = nil,
         candidates = {},
         candidate_index = 1,
-        alt_suppress = false,
     }, Controller)
+    recompute_pose(controller)
+    return controller
 end
 
-function Controller:update_hover(target_block, host_blocks, cursor_grid, hit_dir, alt_held)
+-- Unified fixed height=0 anchor placement:
+-- Mouse drives base_gx/base_gy on the 16m grid while hovering; Arrow keys & [/] floor keys apply
+-- persistent offsets BOTH before and after pressing H to lock.
+function Controller:update_hover(_, _, cursor_grid, _, _)
     if self.mode == "locked" then
-        self.alt_suppress = false
         return self.pose
     end
-    self.alt_suppress = alt_held == true
-    local previous_target = self.target_block_id
-    self.target_block_id = target_block and target_block.id or nil
-    if target_block and not alt_held then
-        local candidates, err = M.solve_target_block_candidates(
-            target_block, host_blocks, self.section_doc, self.drot, hit_dir
-        )
-        if candidates and #candidates > 0 then
-            self.candidates = candidates
-            self.last_error = nil
-            if previous_target ~= self.target_block_id then
-                self.candidate_index = 1
-            else
-                self.candidate_index = math.max(1, math.min(self.candidate_index, #candidates))
-            end
-            self.pose = copy_pose(candidates[self.candidate_index])
-            self.drot = self.pose.drot
-            return self.pose
-        end
-        self.last_error = err
+    if type(cursor_grid) == "table" then
+        local x = cursor_grid.gx or cursor_grid.x or cursor_grid.dgx
+        local y = cursor_grid.gy or cursor_grid.y or cursor_grid.dgy
+        if type(x) == "number" then self.base_gx = rounded_grid(x) end
+        if type(y) == "number" then self.base_gy = rounded_grid(y) end
     end
-    self.candidates = {}
-    self.candidate_index = 1
-    self.pose = free_pose(cursor_grid, self.drot)
-    return self.pose
+    return recompute_pose(self)
 end
 
 function Controller:toggle_lock()
     self.mode = self.mode == "locked" and "hover" or "locked"
-    self.alt_suppress = false
     return self.mode
 end
 
@@ -485,18 +514,15 @@ end
 
 function Controller:rotate_cw()
     self.drot = (self.drot + 1) % 4
-    if self.pose then
-        self.pose.drot = self.drot
-    end
-    return self.drot
+    return recompute_pose(self).drot
 end
 
 function Controller:can_mirror()
     return not self.includes_machines
 end
 
+-- Camera-relative horizontal nudge (Arrows) and vertical floor nudge ([ / ]) work in BOTH hover and locked modes.
 function Controller:nudge(right_steps, forward_steps, floor_steps, camera_yaw_deg)
-    if self.mode ~= "locked" then return nil, "not_locked" end
     right_steps = right_steps or 0
     forward_steps = forward_steps or 0
     floor_steps = floor_steps or 0
@@ -510,23 +536,22 @@ function Controller:nudge(right_steps, forward_steps, floor_steps, camera_yaw_de
     local right = (forward + 1) % 4
     local forward_vector = DIRECTIONS[forward]
     local right_vector = DIRECTIONS[right]
-    self.pose.dgx = self.pose.dgx + right_steps * right_vector.x + forward_steps * forward_vector.x
-    self.pose.dgy = self.pose.dgy + right_steps * right_vector.y + forward_steps * forward_vector.y
-    self.pose.dfloor = self.pose.dfloor + floor_steps
-    return self.pose
+    self.offset_gx = self.offset_gx + right_steps * right_vector.x + forward_steps * forward_vector.x
+    self.offset_gy = self.offset_gy + right_steps * right_vector.y + forward_steps * forward_vector.y
+    self.offset_floor = self.offset_floor + floor_steps
+    return recompute_pose(self)
 end
 
 function Controller:status_text()
-    local mode = self.mode == "locked" and "已锁定" or (self.alt_suppress and "自由悬浮" or "悬浮快贴")
-    local hints
-    if self.mode == "locked" then
-        hints = "H解锁 Tab方案 R旋转 方向键平移 PgUp/PgDn楼层 Enter确认"
-    else
-        hints = "H锁定 Tab方案 R旋转 F镜像 Alt抑制吸附"
-    end
-    return string.format("%s | 候选 %d/%d | 旋转 %d° | %s",
-        mode, #self.candidates > 0 and self.candidate_index or 0, #self.candidates,
-        self.drot * 90, hints)
+    local mode = self.mode == "locked" and "已锁定" or "悬浮微调"
+    local floor_m = self.offset_floor * 8
+    local floor_label = self.offset_floor == 0 and "0层(0m)"
+        or string.format("%+d层(%+dm)", self.offset_floor, floor_m)
+    local hints = self.mode == "locked"
+        and "方向键微调 [/]调层 R旋转 Enter确认 H解锁"
+        or "方向键微调 [/]调层 R旋转 H锁定 左键确认"
+    return string.format("%s | %s | 旋转 %d° | %s",
+        mode, floor_label, self.drot * 90, hints)
 end
 
 local function rotation_components(rot_deg)

@@ -170,14 +170,60 @@ function M.find_session()
         local hud_ok, hud = pcall(function()
             return pawn.DesignerHUD
         end)
+        local live_hud = hud_ok and is_live(hud) and hud or nil
+        -- In Main Sequence, WBP_DesignerHUD_C is persistent on GameInstance and Collapsed while in world mode.
+        -- Guard against stale/inactive DesignerPawn references unless HUD is actually visible (or mock has no GetVisibility).
+        if live_hud then
+            local ok_vis, vis = pcall(function() return live_hud:GetVisibility() end)
+            if ok_vis and (vis == 1 or vis == 2) then
+                return
+            end
+        end
         sessions[#sessions + 1] = {
             controller = controller,
             pawn = pawn,
             component = component,
             designer = designer,
-            hud = hud_ok and is_live(hud) and hud or nil,
+            hud = live_hud,
         }
     end)
+    -- Standalone Designer fallback: locate live BP_DesignerPawn_C whose DesignerHUD is visible in viewport.
+    if #sessions == 0 and type(FindAllOf) == "function" then
+        local ok_pawns, pawns = pcall(FindAllOf, "BP_DesignerPawn_C")
+        if ok_pawns and type(pawns) == "table" then
+            for _, pawn in ipairs(pawns) do
+                if is_live(pawn) then
+                    local hud_ok, hud = pcall(function() return pawn.DesignerHUD end)
+                    local live_hud = hud_ok and is_live(hud) and hud or nil
+                    local hud_visible = false
+                    if live_hud then
+                        local ok_vp, in_vp = pcall(function() return live_hud:IsInViewport() end)
+                        local ok_vis, vis = pcall(function() return live_hud:GetVisibility() end)
+                        hud_visible = ok_vp and in_vp == true and ok_vis and vis ~= 1 and vis ~= 2
+                    end
+                    if hud_visible then
+                        local comp_ok, comp = pcall(function() return pawn.BPC_Designer end)
+                        local des_ok, des = pcall(function() return comp_ok and is_live(comp) and comp.Designer or nil end)
+                        if des_ok and is_live(des) then
+                            local ctrl_ok, ctrl = pcall(function() return des.Controller end)
+                            if not ctrl_ok or not is_live(ctrl) then
+                                ctrl_ok, ctrl = pcall(function() return pawn:GetController() end)
+                            end
+                            if ctrl_ok and is_live(ctrl) then
+                                sessions[#sessions + 1] = {
+                                    controller = ctrl,
+                                    pawn = pawn,
+                                    component = comp,
+                                    designer = des,
+                                    hud = live_hud,
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
     if #sessions > 1 then
         return nil, "multiple_designer_sessions"
     end
@@ -203,9 +249,6 @@ local function is_instance_of(object, class_path)
     if short_expected and native.class_name(object) == short_expected then
         return true
     end
-    if type(object.IsA) ~= "function" then
-        return true
-    end
     local cls = native.find_type(class_path)
     if cls then
         local ok, result = pcall(function()
@@ -220,6 +263,11 @@ local function is_instance_of(object, class_path)
     end)
     if ok_str and type(result_str) == "boolean" then
         return result_str
+    end
+    -- In unit-test mocks without IsA, treat as compatible if method is absent.
+    local ok_has, fn = pcall(function() return object.IsA end)
+    if not ok_has or fn == nil then
+        return true
     end
     return false
 end
@@ -278,19 +326,19 @@ local function read_array_items(array_obj, max_count)
     local items = {}
     if array_obj == nil then return nil end
     local ok_fe = pcall(function()
-        if type(array_obj.ForEach) == "function" then
-            array_obj:ForEach(function(_, elem)
-                if #items >= max_count then return true end
-                local ok_get, val = pcall(function()
-                    return type(elem) == "userdata" and type(elem.Get) == "function" and elem:Get() or elem
-                end)
-                if ok_get and val ~= nil then
-                    items[#items + 1] = val
+        array_obj:ForEach(function(_, elem)
+            if #items >= max_count then return true end
+            local ok_get, val = pcall(function()
+                if type(elem) == "userdata" then
+                    local g_ok, inner = pcall(function() return elem:Get() end)
+                    if g_ok and inner ~= nil then return inner end
                 end
+                return elem
             end)
-        else
-            error("no_foreach")
-        end
+            if ok_get and val ~= nil then
+                items[#items + 1] = val
+            end
+        end)
     end)
     if ok_fe then return items end
     local ok_len, count = pcall(function() return #array_obj end)
@@ -299,12 +347,12 @@ local function read_array_items(array_obj, max_count)
     for index = 1, limit do
         local ok_at, raw = pcall(function() return array_obj[index] end)
         if ok_at and raw ~= nil then
-            local ok_get, val = pcall(function()
-                return type(raw) == "userdata" and type(raw.Get) == "function" and raw:Get() or raw
-            end)
-            if ok_get and val ~= nil then
-                items[#items + 1] = val
+            local val = raw
+            if type(raw) == "userdata" then
+                local g_ok, inner = pcall(function() return raw:Get() end)
+                if g_ok and inner ~= nil then val = inner end
             end
+            items[#items + 1] = val
         end
     end
     return items
@@ -541,15 +589,29 @@ function M.toggle_block_in_selection(designer, actor)
 end
 
 function M.activate_select_tool(designer, hud)
-    if not native.is_valid(designer) or not native.is_valid(hud) then
-        return nil, "invalid_designer_or_hud"
+    if not native.is_valid(designer) then
+        return nil, "invalid_designer"
     end
-    if designer:HasAnyFlags(EObjectFlags.RF_ClassDefaultObject | EObjectFlags.RF_ArchetypeObject)
-        or hud:HasAnyFlags(EObjectFlags.RF_ClassDefaultObject | EObjectFlags.RF_ArchetypeObject) then
+    if is_cdo(designer) then
         return nil, "default_object_rejected"
     end
-    if designer:GetDesignerTool() == 1 then
+    local ok_tool, current_tool = pcall(function() return designer:GetDesignerTool() end)
+    if ok_tool and current_tool == 1 then
         return true
+    end
+    -- Direct verified UFunction on /Script/MainSequence.Designer (Build 26885430 probe): SetDesignerTool(1 = SELECT).
+    local ok_set = pcall(function()
+        designer:SetDesignerTool(1)
+    end)
+    if ok_set then
+        local ok_check, after_tool = pcall(function() return designer:GetDesignerTool() end)
+        if ok_check and after_tool == 1 then
+            return true
+        end
+    end
+    -- Fallback to HUD SelectToolButton event if SetDesignerTool did not stick.
+    if not native.is_valid(hud) or is_cdo(hud) then
+        return nil, "select_tool_activation_failed"
     end
     local event_name = "BndEvt__WBP_DesignerHUD_SelectToolButton_K2Node_ComponentBoundEvent_14_OnButtonPressedEvent__DelegateSignature"
     local event
@@ -574,6 +636,30 @@ function M.activate_select_tool(designer, hud)
         return nil, "select_tool_activation_failed"
     end
     return true
+end
+
+function M.remove_selected_blocks(designer)
+    if not is_live(designer) then
+        return nil, "invalid_designer"
+    end
+    local selected = designer.SelectedActors
+    local actors = read_array_items(selected, 256)
+    if not actors or #actors == 0 then
+        return nil, "empty_selection"
+    end
+    local removed = 0
+    for _, actor in ipairs(actors) do
+        if is_live(actor) then
+            local ok = pcall(function()
+                designer:RemoveBlock(actor)
+            end)
+            if ok then
+                removed = removed + 1
+            end
+        end
+    end
+    pcall(function() designer:ResetSelection() end)
+    return removed
 end
 
 local function capture_blueprint(designer, include_machines, consume)

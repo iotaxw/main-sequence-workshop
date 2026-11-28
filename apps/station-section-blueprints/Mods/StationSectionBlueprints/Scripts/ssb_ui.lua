@@ -19,8 +19,9 @@ if not runtime then
 end
 
 local ERROR_MESSAGES = {
-    empty_selection = "请先在原生设计器中选择积木",
+    empty_selection = "请先 Shift+左键选择积木",
     empty_native_clipboard = "原生剪贴板没有可保存的积木",
+    empty_section_clipboard = "局部剪贴板为空，请先多选积木并按 Ctrl+C / Ctrl+X",
     invalid_name = "请输入有效的蓝图名称",
     invalid_folder = "文件夹路径无效",
     missing_folder = "目标文件夹不存在",
@@ -101,14 +102,16 @@ local function dispatch_hovered()
         if action.state.detached or not native.is_valid(action.widget) then
             runtime.actions[address] = nil
         else
+            -- Never gate UE4SS UFunction calls on `type(...) == "function"` (UFunctions are callable userdata).
             local ok, hovered = pcall(function()
-                if native.is_valid(action.widget.Button) and type(action.widget.Button.IsHovered) == "function" then
-                    return action.widget.Button:IsHovered()
+                if action.hover_target and native.is_valid(action.hover_target) then
+                    return action.hover_target:IsHovered()
                 end
-                if type(action.widget.IsHovered) == "function" then
-                    return action.widget:IsHovered()
+                local ok_sub, sub_btn = pcall(function() return action.widget.Button end)
+                if ok_sub and native.is_valid(sub_btn) then
+                    return sub_btn:IsHovered()
                 end
-                return false
+                return action.widget:IsHovered()
             end)
             if not ok then
                 if not action.hover_failed then
@@ -117,7 +120,7 @@ local function dispatch_hovered()
                 end
             else
                 action.hover_failed = false
-                if hovered then
+                if hovered == true then
                     dispatch_action(address, action)
                 end
             end
@@ -137,43 +140,75 @@ local function ensure_keybind()
         ExecuteInGameThread(dispatch_hovered)
     end)
     if not ok then return nil, err end
+
+    -- Resolve '[' (0xDB) and ']' (0xDD) robustly across UE4SS Key enum variants.
+    local key_lbracket = Key.OEM_FOUR or Key.OEM_4 or Key.LEFT_BRACKET or 0xDB
+    local key_rbracket = Key.OEM_SIX or Key.OEM_6 or Key.RIGHT_BRACKET or 0xDD
+    local mod_ctrl = ModifierKey and (ModifierKey.CONTROL or ModifierKey.CTRL) or nil
+
     local bindings = {
-        { key = Key.LEFT_MOUSE_BUTTON, modifiers = { ModifierKey.SHIFT }, action = "shift_left" },
-        { key = Key.H, action = "lock" },
-        { key = Key.MIDDLE_MOUSE_BUTTON, action = "lock" },
-        { key = Key.TAB, action = "next_candidate" },
-        { key = Key.TAB, modifiers = { ModifierKey.SHIFT }, action = "previous_candidate" },
-        { key = Key.R, action = "rotate" },
-        { key = Key.F, action = "mirror" },
-        { key = Key.UP_ARROW, action = "forward" },
-        { key = Key.DOWN_ARROW, action = "backward" },
-        { key = Key.LEFT_ARROW, action = "left" },
-        { key = Key.RIGHT_ARROW, action = "right" },
-        { key = Key.PAGE_UP, action = "floor_up" },
-        { key = Key.PAGE_DOWN, action = "floor_down" },
-        { key = Key.RETURN, action = "confirm" },
-        { key = Key.ALT or ModifierKey.ALT, action = "alt" },
+        { key = Key.LEFT_MOUSE_BUTTON, modifiers = { ModifierKey.SHIFT }, action = "shift_left", required = true },
+        { key = Key.H, action = "lock", required = true },
+        { key = Key.MIDDLE_MOUSE_BUTTON, action = "lock", required = false },
+        { key = Key.R, action = "rotate", required = true },
+        { key = Key.F, action = "mirror", required = false },
+        { key = Key.UP_ARROW, action = "forward", required = true },
+        { key = Key.DOWN_ARROW, action = "backward", required = true },
+        { key = Key.LEFT_ARROW, action = "left", required = true },
+        { key = Key.RIGHT_ARROW, action = "right", required = true },
+        { key = key_lbracket, action = "floor_down", required = true },
+        { key = key_rbracket, action = "floor_up", required = true },
+        { key = Key.PAGE_UP, action = "floor_up", required = false },
+        { key = Key.PAGE_DOWN, action = "floor_down", required = false },
+        { key = Key.RETURN, action = "confirm", required = true },
     }
+    if type(mod_ctrl) == "number" then
+        if type(Key.C) == "number" then
+            bindings[#bindings + 1] = { key = Key.C, modifiers = { mod_ctrl }, action = "copy", required = false }
+        end
+        if type(Key.X) == "number" then
+            bindings[#bindings + 1] = { key = Key.X, modifiers = { mod_ctrl }, action = "cut", required = false }
+        end
+        if type(Key.V) == "number" then
+            bindings[#bindings + 1] = { key = Key.V, modifiers = { mod_ctrl }, action = "paste", required = false }
+        end
+    end
+
     for _, binding in ipairs(bindings) do
         if type(binding.key) ~= "number" then
-            return nil, "missing_keybind_code:" .. tostring(binding.action)
-        end
-        local registered, register_error
-        if binding.modifiers then
-            for _, mod_key in ipairs(binding.modifiers) do
-                if type(mod_key) ~= "number" then
-                    return nil, "missing_modifier_code:" .. tostring(binding.action)
+            if binding.required then
+                return nil, "missing_keybind_code:" .. tostring(binding.action)
+            end
+        else
+            local registered, register_error
+            if binding.modifiers then
+                local mods_ok = true
+                for _, mod_key in ipairs(binding.modifiers) do
+                    if type(mod_key) ~= "number" then
+                        mods_ok = false
+                        if binding.required then
+                            return nil, "missing_modifier_code:" .. tostring(binding.action)
+                        end
+                    end
+                end
+                if mods_ok then
+                    registered, register_error = pcall(RegisterKeyBind, binding.key, binding.modifiers, function()
+                        dispatch_designer_key(binding.action)
+                    end)
+                end
+            else
+                registered, register_error = pcall(RegisterKeyBind, binding.key, function()
+                    dispatch_designer_key(binding.action)
+                end)
+            end
+            if registered == false then
+                if binding.required then
+                    return nil, register_error
+                else
+                    log("optional keybind skipped (" .. tostring(binding.action) .. "): " .. tostring(register_error))
                 end
             end
-            registered, register_error = pcall(RegisterKeyBind, binding.key, binding.modifiers, function()
-                dispatch_designer_key(binding.action)
-            end)
-        else
-            registered, register_error = pcall(RegisterKeyBind, binding.key, function()
-                dispatch_designer_key(binding.action)
-            end)
         end
-        if not registered then return nil, register_error end
     end
     runtime.keybind_registered = true
     return true
@@ -213,9 +248,9 @@ local function mount_canvas(state, canvas, child, spec, step)
     return slot
 end
 
-local function register_action(state, widget, callback)
+local function register_action(state, widget, callback, hover_target)
     local address = widget:GetAddress()
-    local record = { state = state, callback = callback, widget = widget }
+    local record = { state = state, callback = callback, widget = widget, hover_target = hover_target }
     state.action_records[address] = record
     if state.active then
         runtime.actions[address] = record
@@ -229,14 +264,27 @@ local function button(state, caption, callback, opts)
     if type(opts) == "table" then
         for k, v in pairs(opts) do merged[k] = v end
     end
-    if not merged.reference and state.native_button_ref and native.is_valid(state.native_button_ref.button) then
-        merged.reference = state.native_button_ref.button
+    if not merged.reference and native.is_valid(state.clean_button_ref) then
+        merged.reference = state.clean_button_ref
     end
     local widget, err = theme.create_button(state.hud, state.owner, caption, merged)
     if not widget then return nil, err end
     trace("button create ok " .. tostring(caption))
     register_action(state, widget, callback)
     return widget
+end
+
+local function topbar_button(state, caption, callback)
+    trace("topbar button create start " .. tostring(caption))
+    local widget, txt_or_err = theme.create_topbar_button(
+        state.hud, state.owner, state.widget_tree, state.topbar_button_ref, caption
+    )
+    if not widget then
+        return button(state, caption, callback)
+    end
+    trace("topbar button create ok " .. tostring(caption))
+    register_action(state, widget, callback, widget)
+    return widget, txt_or_err
 end
 
 local function label(state, value, opts)
@@ -813,24 +861,7 @@ local function preview_resolver(state, designer, intersect_val, hit_val)
     return { x = world.X, y = world.Y, z = world.Z, suppress_snapping = true }
 end
 
-start_paste = function(state)
-    if state.paste then
-        set_status(state, "请先确认或取消当前局部蓝图预览", "warn", "粘贴进行中", "ssb_paste")
-        return
-    end
-    local before, before_error = designer_native.snapshot_frame_blocks(state.designer)
-    if not before then
-        set_status(state, "无法记录粘贴前积木：" .. tostring(before_error), "error", "粘贴失败", "ssb_paste")
-        return
-    end
-    local preview, entry_or_error, section_doc, json_path = state.store_api.paste(
-        state.store, state.designer, state.selected_id
-    )
-    if not preview then
-        set_status(state, error_message(entry_or_error), "warn", "粘贴失败", "ssb_paste")
-        return
-    end
-    local entry = entry_or_error
+local function begin_paste_session(state, before, preview, entry, section_doc, json_path)
     local station_id_ok, station_id = pcall(function() return state.designer.Frame.ID end)
     state.paste = {
         entry = entry,
@@ -857,8 +888,89 @@ start_paste = function(state)
     close_drawer(state)
     visibility(state.paste_status_box or state.paste_status, true, theme.VISIBILITY.HitTestInvisible)
     set_text(state.paste_status, state.paste.controller:status_text())
-    set_status(state, string.format("局部预览已启动（%d 个积木）；H锁定，Tab方案，R旋转，Enter确认",
+    set_status(state, string.format("局部预览已启动（%d 个积木）；方向键平移，[/]调层，R旋转，H锁定",
         preview.previews), "info", "局部预览已启动", "ssb_paste")
+end
+
+start_paste = function(state)
+    if state.paste then
+        set_status(state, "请先确认或取消当前局部蓝图预览", "warn", "粘贴进行中", "ssb_paste")
+        return
+    end
+    local before, before_error = designer_native.snapshot_frame_blocks(state.designer)
+    if not before then
+        set_status(state, "无法记录粘贴前积木：" .. tostring(before_error), "error", "粘贴失败", "ssb_paste")
+        return
+    end
+    local preview, entry_or_error, section_doc, json_path = state.store_api.paste(
+        state.store, state.designer, state.selected_id
+    )
+    if not preview then
+        set_status(state, error_message(entry_or_error), "warn", "粘贴失败", "ssb_paste")
+        return
+    end
+    begin_paste_session(state, before, preview, entry_or_error, section_doc, json_path)
+end
+
+local function paste_from_clipboard(state)
+    if state.paste then
+        set_status(state, "请先确认或取消当前局部蓝图预览", "warn", "粘贴进行中", "ssb_paste")
+        return
+    end
+    if type(state.store_api.paste_clipboard) ~= "function" then
+        set_status(state, "剪贴板粘贴接口不可用", "warn")
+        return
+    end
+    local before, before_error = designer_native.snapshot_frame_blocks(state.designer)
+    if not before then
+        set_status(state, "无法记录粘贴前积木：" .. tostring(before_error), "error", "粘贴失败", "ssb_paste")
+        return
+    end
+    local preview, entry_or_error, section_doc, json_path = state.store_api.paste_clipboard(
+        state.store, state.designer
+    )
+    if not preview then
+        set_status(state, error_message(entry_or_error), "warn", "局部粘贴", "ssb_clipboard")
+        return
+    end
+    begin_paste_session(state, before, preview, entry_or_error, section_doc, json_path)
+end
+
+local function copy_or_cut_selection(state, is_cut)
+    if type(state.store_api.copy_selection) ~= "function" then
+        set_status(state, "局部复制接口不可用", "warn")
+        return
+    end
+    local designer = state.designer
+    -- Direct copy/cut with zero extra tool switching: if nothing selected yet, auto-select hovered block.
+    local ok_sel, sel_count = pcall(function() return #designer.SelectedActors end)
+    if not ok_sel or sel_count == 0 then
+        local actor = designer.ViewTarget
+        if native.is_valid(actor) then
+            designer_native.activate_select_tool(designer, state.hud)
+            designer_native.toggle_block_in_selection(designer, actor)
+        end
+    end
+    local has_frame = pcall(function() return native.is_valid(designer.Frame) end) and native.is_valid(designer.Frame)
+    local entry, report_or_err = state.store_api.copy_selection(state.store, designer, {
+        includes_machines = has_frame,
+    })
+    if not entry then
+        set_status(state, error_message(report_or_err), "warn", is_cut and "局部剪切失败" or "局部复制失败", "ssb_clipboard")
+        return
+    end
+    if is_cut then
+        local removed, remove_err = designer_native.remove_selected_blocks(designer)
+        if not removed then
+            set_status(state, "已复制但移除原积木失败：" .. tostring(remove_err), "warn", "局部剪切部分完成", "ssb_clipboard")
+            return
+        end
+        set_status(state, string.format("已剪切 %d 积木 / %d 机台（按 Ctrl+V 粘贴）",
+            entry.blocks, entry.machines), "success", "已剪切局部选区", "ssb_clipboard")
+    else
+        set_status(state, string.format("已复制 %d 积木 / %d 机台（按 Ctrl+V 粘贴）",
+            entry.blocks, entry.machines), "success", "已复制局部选区", "ssb_clipboard")
+    end
 end
 
 function M.poll(state)
@@ -968,6 +1080,7 @@ local function mount_pending_machine_bar(_)
     end
     local host = theme.find_active_hud_host({
         exclude_classes = { WBP_DesignerHUD_C = true },
+        require_clickable = true,
     })
     if not host then
         if runtime.pending_log_count ~= count then
@@ -1116,14 +1229,25 @@ runtime.on_key = function(action)
     if action == "shift_left" then
         local actor = designer.ViewTarget
         if not native.is_valid(actor) then return end
+        -- Direct multi-select without requiring manual mode switching first!
+        designer_native.activate_select_tool(designer, state.hud)
         local result, toggle_error = designer_native.toggle_block_in_selection(designer, actor)
         if result then
-            set_status(state, string.format("%s积木 %d；当前选中 %d 块",
+            set_status(state, string.format("%s积木 %d；当前选中 %d 块（Ctrl+C 复制 / Ctrl+X 剪切）",
                 result.action == "added" and "已选择" or "已取消", result.id, result.count),
                 "info", "局部选区", "ssb_selection")
         else
             set_status(state, "无法切换选区：" .. tostring(toggle_error), "warn", "选区切换失败", "ssb_selection")
         end
+        return
+    elseif action == "copy" then
+        copy_or_cut_selection(state, false)
+        return
+    elseif action == "cut" then
+        copy_or_cut_selection(state, true)
+        return
+    elseif action == "paste" then
+        paste_from_clipboard(state)
         return
     end
     local paste = state.paste
@@ -1132,11 +1256,8 @@ runtime.on_key = function(action)
     if action == "lock" then
         controller:toggle_lock()
         local locked = controller.mode == "locked"
-        toast.show("局部预览锁定", locked and "已锁定当前位置，可用方向键/PgUp/PgDn微调，Enter确认" or "已解除锁定，恢复目标积木悬浮吸附",
+        toast.show("局部预览锁定", locked and "已锁定基准点，可自由转视角；方向键平移 / [/]调层 / R旋转 / Enter确认" or "已解除锁定，鼠标跟随0高度锚点（方向键与[/]仍可直接微调）",
             locked and "info" or "warn", 2.5, "ssb_paste_lock")
-    elseif action == "next_candidate" or action == "previous_candidate" then
-        local _, cycle_error = controller:cycle_candidate(action == "next_candidate" and 1 or -1)
-        if cycle_error then set_status(state, "当前没有可轮换的对接候选", "warn", "无可用候选", "ssb_paste") end
     elseif action == "rotate" then
         controller:rotate_cw()
     elseif action == "mirror" then
@@ -1144,27 +1265,24 @@ runtime.on_key = function(action)
             set_status(state, "包含室内机台时禁止镜像，以保护端口方向", "warn", "已禁止镜像", "ssb_paste")
             return
         end
-    elseif action == "alt" then
-        paste.alt_held = not paste.alt_held
     elseif action == "confirm" then
-        if controller.mode ~= "locked" then
-            set_status(state, "Enter 仅在 H 锁定后确认；悬浮时可直接左键", "warn", "尚未锁定预览", "ssb_paste")
-            return
-        end
         local confirmed, confirm_error = designer_native.confirm_preview(designer)
         if not confirmed then set_status(state, "原生确认失败：" .. tostring(confirm_error), "error", "确认失败", "ssb_paste") end
     elseif action == "left" or action == "right" or action == "forward" or action == "backward"
         or action == "floor_up" or action == "floor_down" then
-        local yaw = camera_yaw(session)
-        if not yaw then
-            set_status(state, "无法读取相机朝向，未执行微调", "warn")
-            return
-        end
         local right = action == "right" and 1 or action == "left" and -1 or 0
         local forward = action == "forward" and 1 or action == "backward" and -1 or 0
         local floor = action == "floor_up" and 1 or action == "floor_down" and -1 or 0
+        local yaw = 0
+        if right ~= 0 or forward ~= 0 then
+            yaw = camera_yaw(session)
+            if not yaw then
+                set_status(state, "无法读取相机朝向，未执行微调", "warn")
+                return
+            end
+        end
         local _, nudge_error = controller:nudge(right, forward, floor, yaw)
-        if nudge_error then set_status(state, "请先按 H 锁定预览再微调", "warn", "未锁定预览", "ssb_paste") end
+        if nudge_error then set_status(state, "微调失败：" .. tostring(nudge_error), "warn", "微调失败", "ssb_paste") end
     end
     if native.is_valid(state.paste_status) then
         set_text(state.paste_status, controller:status_text())
@@ -1234,7 +1352,8 @@ local function attach_internal(hud, designer, store_api, store)
         active = false,
         drawer_open = false,
         drawer_mode = nil,
-        native_button_ref = theme.find_sibling_button(hud, hud.SaveOptionsContainer),
+        topbar_button_ref = theme.find_topbar_button_ref(hud, hud.SaveOptionsContainer),
+        clean_button_ref = theme.find_clean_button_ref(hud),
         mounted = {},
         action_records = {},
         list_pool = {},
@@ -1242,9 +1361,8 @@ local function attach_internal(hud, designer, store_api, store)
         entry_baseline_blocks = baseline,
         last_blocks = baseline,
     }
-    if state.native_button_ref then
-        log("cloning native Designer button class: " .. tostring(state.native_button_ref.class_name))
-    end
+    log("native button refs: topbar=" .. tostring(state.topbar_button_ref and native.class_name(state.topbar_button_ref) or "nil")
+        .. " clean=" .. tostring(state.clean_button_ref and native.class_name(state.clean_button_ref) or "nil"))
     attaching_state = state
 
     local save_form, save_form_error = build_save_form(state)
@@ -1274,7 +1392,7 @@ local function attach_internal(hud, designer, store_api, store)
     }, "mount/drawer")
     if not drawer_slot then return fail_attach(state, drawer_mount_error) end
 
-    state.save_button = button(state, "保存局部蓝图", function()
+    state.save_button = topbar_button(state, "保存局部蓝图", function()
         local selected, select_error = designer_native.activate_select_tool(state.designer, state.hud)
         if not selected then
             set_status(state, "无法进入原生多选模式：" .. tostring(select_error), "error", "多选模式失败", "ssb_selection")
@@ -1282,11 +1400,11 @@ local function attach_internal(hud, designer, store_api, store)
         end
         set_text(state.save_folder_input, state.current_folder)
         open_drawer(state, "save")
-        set_status(state, "已进入原生多选模式：Shift+左键选择积木后在右侧保存", "info", "进入多选模式", "ssb_selection")
+        set_status(state, "已进入多选模式：Shift+左键多选积木，在右侧保存或 Ctrl+C/X", "info", "保存局部蓝图", "ssb_selection")
     end)
     if not state.save_button then return fail_attach(state, "save_entry_button_failed") end
 
-    state.library_button = button(state, "局部蓝图库", function()
+    state.library_button = topbar_button(state, "局部蓝图库", function()
         if state.drawer_open and state.drawer_mode == "library" then
             close_drawer(state)
             return
@@ -1300,20 +1418,16 @@ local function attach_internal(hud, designer, store_api, store)
     if not state.library_button then return fail_attach(state, "library_entry_button_failed") end
 
     local ref_slot = nil
-    local ref_wrapper = nil
-    if state.native_button_ref then
-        ref_wrapper = state.native_button_ref.wrapper
-        local ok_rs, rs = pcall(function() return state.native_button_ref.slot_holder.Slot end)
+    if native.is_valid(state.topbar_button_ref) then
+        local ok_rs, rs = pcall(function() return state.topbar_button_ref.Slot end)
         if ok_rs and native.is_valid(rs) then ref_slot = rs end
     end
 
-    local save_entry_widget = theme.wrap_like(state.widget_tree, state.save_button, ref_wrapper)
-    local save_slot, mount_error = mount(state, hud.SaveOptionsContainer, save_entry_widget, "mount/save_entry")
+    local save_slot, mount_error = mount(state, hud.SaveOptionsContainer, state.save_button, "mount/save_entry", { 0, 0, 0, 0 })
     if not save_slot then return fail_attach(state, mount_error) end
     theme.copy_slot_layout(save_slot, ref_slot)
 
-    local lib_entry_widget = theme.wrap_like(state.widget_tree, state.library_button, ref_wrapper)
-    local lib_slot, lib_mount_error = mount(state, hud.SaveOptionsContainer, lib_entry_widget, "mount/library_entry")
+    local lib_slot, lib_mount_error = mount(state, hud.SaveOptionsContainer, state.library_button, "mount/library_entry", { 0, 0, 0, 0 })
     if not lib_slot then return fail_attach(state, lib_mount_error) end
     theme.copy_slot_layout(lib_slot, ref_slot)
 
