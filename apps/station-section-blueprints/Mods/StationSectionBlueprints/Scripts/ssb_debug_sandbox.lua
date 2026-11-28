@@ -2,11 +2,16 @@
 -- Excluded from release packages by scripts/package.ps1. Never runs during normal gameplay.
 
 local native = require("ssb_native")
+local toast = require("ssb_toast")
 
 local M = {}
+
+local DEBOUNCE_SECONDS = 0.30
+local READBACK_DELAY_MS = 250
+
 local runtime = _G.__StationSectionBlueprintsDebugSandbox
 if not runtime then
-    runtime = { registered = false }
+    runtime = { registered = false, last_f9 = 0, last_f10 = 0 }
     _G.__StationSectionBlueprintsDebugSandbox = runtime
 end
 
@@ -59,27 +64,63 @@ local function find_local_player()
     return nil
 end
 
+local function read_creative_flag()
+    local player = find_local_player()
+    if not player then return nil end
+    local ok_read, val = pcall(function() return player.bCreative end)
+    if ok_read and type(val) == "boolean" then return val end
+    return nil
+end
+
+local function debounced(field)
+    local now = os.clock()
+    if now - (runtime[field] or 0) < DEBOUNCE_SECONDS then
+        return true
+    end
+    runtime[field] = now
+    return false
+end
+
 function M.toggle_creative()
     local pc, err = find_local_controller()
     if not pc then
         log("toggle_creative skipped: " .. tostring(err))
+        toast.show("创造模式切换", "请先加载或进入一个存档世界后再按 F9", "warn", 3.5, "debug_creative")
         return false, err
     end
-    local player = find_local_player()
-    local current = false
-    if player then
-        local ok_read, val = pcall(function() return player.bCreative end)
-        if ok_read and type(val) == "boolean" then current = val end
-    end
+    local current = read_creative_flag() or false
     local next_state = not current
     local ok_call, call_err = pcall(function()
         pc:SetCreativeMode(next_state)
     end)
     if not ok_call then
         log("SetCreativeMode failed: " .. tostring(call_err))
+        toast.show("创造模式切换失败", tostring(call_err), "error", 4.0, "debug_creative")
         return false, call_err
     end
     log("SetCreativeMode(" .. tostring(next_state) .. ") dispatched (takes effect next simulation tick)")
+    toast.show(
+        "创造模式",
+        next_state and "正在开启创造模式（等待下帧确认）..." or "正在关闭创造模式（等待下帧确认）...",
+        "info",
+        2.5,
+        "debug_creative"
+    )
+    if type(ExecuteWithDelay) == "function" and type(ExecuteInGameThread) == "function" then
+        ExecuteWithDelay(READBACK_DELAY_MS, function()
+            ExecuteInGameThread(function()
+                local actual = read_creative_flag()
+                if actual == nil then actual = next_state end
+                toast.show(
+                    "创造模式",
+                    actual and "已开启（免材料建造；F10 可解锁全科技）" or "已关闭（恢复生存模式）",
+                    actual and "success" or "warn",
+                    3.5,
+                    "debug_creative"
+                )
+            end)
+        end)
+    end
     return true, next_state
 end
 
@@ -87,6 +128,7 @@ function M.unlock_all_research()
     local pc, err = find_local_controller()
     if not pc then
         log("unlock_all_research skipped: " .. tostring(err))
+        toast.show("全科技解锁", "请先加载或进入一个存档世界后再按 F10", "warn", 3.5, "debug_research")
         return false, err
     end
     local ok_call, call_err = pcall(function()
@@ -94,9 +136,11 @@ function M.unlock_all_research()
     end)
     if not ok_call then
         log("SetCreativeUnlockAllResearch failed: " .. tostring(call_err))
+        toast.show("全科技解锁失败", tostring(call_err), "error", 4.0, "debug_research")
         return false, call_err
     end
     log("SetCreativeUnlockAllResearch() dispatched (takes effect next simulation tick)")
+    toast.show("全科技解锁", "已解锁全部科技、配方与空间站模块（下帧生效）", "success", 3.5, "debug_research")
     return true
 end
 
@@ -107,22 +151,26 @@ function M.start()
         return false
     end
     local ok1, err1 = pcall(RegisterKeyBind, Key.F9, function()
+        if debounced("last_f9") then return end
         ExecuteInGameThread(function() M.toggle_creative() end)
     end)
     if not ok1 then
         log("F9 bind failed: " .. tostring(err1))
         return false
     end
-    if type(ModifierKey) == "table" and type(ModifierKey.SHIFT) == "number" then
-        local ok2, err2 = pcall(RegisterKeyBind, Key.F9, { ModifierKey.SHIFT }, function()
+    if type(Key.F10) == "number" then
+        local ok2, err2 = pcall(RegisterKeyBind, Key.F10, function()
+            if debounced("last_f10") then return end
             ExecuteInGameThread(function() M.unlock_all_research() end)
         end)
         if not ok2 then
-            log("Shift+F9 bind failed: " .. tostring(err2))
+            log("F10 bind failed: " .. tostring(err2))
         end
+    else
+        log("Key.F10 unavailable; unlock_all_research hotkey skipped")
     end
     runtime.registered = true
-    log("Debug sandbox hotkeys active: F9 = toggle native Creative Mode, Shift+F9 = unlock all research")
+    log("Debug sandbox hotkeys active: F9 = toggle native Creative Mode, F10 = unlock all research")
     return true
 end
 

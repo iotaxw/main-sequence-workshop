@@ -74,6 +74,8 @@ local designer_native = require("ssb_native_designer")
 local payload = require("ssb_payload")
 local machine_paste = require("ssb_machine_paste")
 local library = require("ssb_library")
+local theme = require("ssb_ui_theme")
+local toast = require("ssb_toast")
 
 test("JSON roundtrip preserves UTF-8, numbers, booleans, arrays and objects", function()
     local original = {
@@ -660,6 +662,290 @@ test("find_session prefers FindAllOf over ForEachUObject to avoid UE4SS 4.0 star
     equal(#queried, 2)
     equal(session.designer:GetAddress(), 1004)
     equal(session.hud:GetAddress(), 1005)
+end)
+
+test("toast manager handles TTL progress decay, tag refresh, eviction and clear", function()
+    local manager = toast.new_manager({ max_visible = 2, default_ttl = 4.0 })
+    local first, kind1, evicted1 = manager:push("创造模式", "已开启", "success", 2.0, "creative")
+    equal(kind1, "created")
+    equal(#evicted1, 0)
+    equal(first.progress, 1.0)
+
+    local expired0 = manager:tick(0.5)
+    equal(#expired0, 0)
+    close_enough(first.progress, 0.75)
+
+    -- Same tag refreshes existing card in-place instead of duplicating
+    local refreshed, kind2 = manager:push("创造模式", "已关闭", "warn", 2.0, "creative")
+    equal(kind2, "updated")
+    equal(refreshed.id, first.id)
+    equal(refreshed.detail, "已关闭")
+    equal(refreshed.tone, "warn")
+    equal(refreshed.progress, 1.0)
+    equal(#manager.items, 1)
+
+    -- Exceeding max_visible evicts oldest item
+    manager:push("二号", "内容", "info", 2.0, "second")
+    local third, kind3, evicted3 = manager:push("三号", "内容", "error", 1.0, "third")
+    equal(kind3, "created")
+    equal(#manager.items, 2)
+    equal(#evicted3, 1)
+    equal(evicted3[1].id, first.id)
+    equal(manager.items[1].id, third.id)
+
+    -- Tick expires 1.0s card while keeping 2.0s card at 0.5 progress
+    local expired1 = manager:tick(1.0)
+    equal(#expired1, 1)
+    equal(expired1[1].id, third.id)
+    equal(#manager.items, 1)
+    close_enough(manager.items[1].progress, 0.5)
+
+    local cleared = manager:clear()
+    equal(#cleared, 1)
+    equal(#manager.items, 0)
+end)
+
+test("ui theme produces SlateColor structs, resolves HUD canvas and respects exclude_classes", function()
+    local info = theme.tone_color("info")
+    local fallback = theme.tone_color("unknown_tone")
+    equal(info.R, fallback.R)
+    local slate = theme.slate_color(info)
+    equal(slate.ColorUseRule, 0)
+    equal(slate.SpecifiedColor.G, info.G)
+
+    local function mock_widget(cls, addr, extra)
+        local w = extra or {}
+        function w:IsValid() return true end
+        function w:HasAnyFlags() return false end
+        function w:GetAddress() return addr end
+        function w:GetClass()
+            return { GetFName = function() return { ToString = function() return cls end } end }
+        end
+        function w:IsA(path) return path == "/Script/UMG." .. cls end
+        function w:IsInViewport() return true end
+        function w:GetVisibility() return theme.VISIBILITY.SelfHitTestInvisible end
+        return w
+    end
+
+    local canvas1 = mock_widget("CanvasPanel", 201)
+    local hud1 = mock_widget("WBP_DesignerHUD_C", 200, {
+        Canvas = canvas1,
+        WidgetTree = mock_widget("WidgetTree", 202),
+        GetOwningPlayer = function() return mock_widget("BP_DesignerController_C", 203) end,
+    })
+    equal(theme.find_canvas_in_hud(hud1), canvas1)
+
+    local canvas2 = mock_widget("CanvasPanel", 301)
+    local hud2 = mock_widget("WBP_CharacterHUD_C", 300, {
+        WidgetTree = mock_widget("WidgetTree", 302, { RootWidget = canvas2 }),
+        GetOwningPlayer = function() return mock_widget("BP_PlayerController_C", 303) end,
+    })
+    equal(theme.find_canvas_in_hud(hud2), canvas2)
+
+    local prev_find_all = _G.FindAllOf
+    local prev_flags = _G.EObjectFlags
+    _G.EObjectFlags = { RF_ClassDefaultObject = 1, RF_ArchetypeObject = 2 }
+    _G.FindAllOf = function(cls)
+        if cls == "WBP_DesignerHUD_C" then return { hud1 } end
+        if cls == "WBP_CharacterHUD_C" then return { hud2 } end
+        return {}
+    end
+    local ok, host = pcall(theme.find_active_hud_host, {
+        exclude_classes = { WBP_DesignerHUD_C = true },
+    })
+    _G.FindAllOf = prev_find_all
+    _G.EObjectFlags = prev_flags
+    truthy(ok, tostring(host))
+    truthy(host)
+    equal(host.hud:GetAddress(), 300)
+    equal(host.canvas:GetAddress(), 301)
+end)
+
+test("ssb_ui mounts same-tree drawer without touching OpenButton/DesignerPopup and registers pooled subfolder actions", function()
+    local next_addr = 5000
+    local function new_addr()
+        next_addr = next_addr + 1
+        return next_addr
+    end
+    local function make_slot()
+        local s = {}
+        function s:IsValid() return true end
+        function s:SetPadding() end
+        function s:SetAnchors() end
+        function s:SetAlignment() end
+        function s:SetPosition() end
+        function s:SetSize() end
+        function s:SetAutoSize() end
+        function s:SetZOrder() end
+        function s:SetVerticalAlignment() end
+        return s
+    end
+    local function make_widget(cls, extra)
+        local addr = new_addr()
+        local w = extra or {}
+        w._cls = cls
+        w._addr = addr
+        w._children = {}
+        w._vis = theme.VISIBILITY.SelfHitTestInvisible
+        w._text = ""
+        function w:IsValid() return true end
+        function w:HasAnyFlags() return false end
+        function w:GetAddress() return self._addr end
+        function w:GetClass()
+            return { GetFName = function() return { ToString = function() return self._cls end } end }
+        end
+        function w:IsA(path) return path == "/Script/UMG." .. self._cls end
+        function w:AddChild(child)
+            self._children[#self._children + 1] = child
+            return make_slot()
+        end
+        function w:RemoveChild(child)
+            for i = #self._children, 1, -1 do
+                if self._children[i] == child then
+                    table.remove(self._children, i)
+                    return true
+                end
+            end
+            return false
+        end
+        function w:SetVisibility(v) self._vis = v end
+        function w:GetVisibility() return self._vis end
+        function w:SetText(ft) self._text = type(ft) == "table" and ft._raw or tostring(ft) end
+        function w:GetText() return { ToString = function() return self._text end } end
+        function w:SetHintText() end
+        function w:SetBrushColor() end
+        function w:SetPadding() end
+        function w:SetHeightOverride() end
+        function w:SetWidthOverride() end
+        function w:SetSize() end
+        function w:SetColour() end
+        function w:SetColorAndOpacity() end
+        function w:SetWrapLength() end
+        function w:SetAutoWrapText() end
+        function w:SetIsChecked(v) self._checked = v end
+        function w:IsChecked() return self._checked == true end
+        function w:SetIsEnabled() end
+        if cls == "WBP_Button_Text_C" or cls == "WBP_CleanButton_Text_C" then
+            w.Button = { IsValid = function() return true end, IsHovered = function() return false end }
+        end
+        return w
+    end
+
+    local saved_globals = {
+        FText = _G.FText,
+        StaticFindObject = _G.StaticFindObject,
+        StaticConstructObject = _G.StaticConstructObject,
+        RegisterKeyBind = _G.RegisterKeyBind,
+        ExecuteInGameThread = _G.ExecuteInGameThread,
+        ExecuteWithDelay = _G.ExecuteWithDelay,
+        EObjectFlags = _G.EObjectFlags,
+        Key = _G.Key,
+        ModifierKey = _G.ModifierKey,
+    }
+    _G.EObjectFlags = { RF_Public = 1, RF_Standalone = 2, RF_ClassDefaultObject = 4, RF_ArchetypeObject = 8 }
+    _G.FText = function(s) return { _raw = tostring(s), ToString = function() return tostring(s) end } end
+    _G.Key = {
+        LEFT_MOUSE_BUTTON = 1, MIDDLE_MOUSE_BUTTON = 2, H = 3, TAB = 4, R = 5, F = 6,
+        UP_ARROW = 7, DOWN_ARROW = 8, LEFT_ARROW = 9, RIGHT_ARROW = 10,
+        PAGE_UP = 11, PAGE_DOWN = 12, RETURN = 13, ALT = 14,
+    }
+    _G.ModifierKey = { SHIFT = 100, ALT = 101 }
+    _G.RegisterKeyBind = function() end
+    _G.ExecuteInGameThread = function(fn) fn() end
+    _G.ExecuteWithDelay = function(_, fn) fn() end
+
+    local widget_lib_cdo = {
+        Create = function(_, _, cls_obj, _)
+            local cname = cls_obj._path:match("([^.]+)$")
+            return make_widget(cname)
+        end,
+    }
+    _G.StaticFindObject = function(path)
+        return {
+            _path = path,
+            IsValid = function() return true end,
+            GetCDO = function() return widget_lib_cdo end,
+        }
+    end
+    _G.StaticConstructObject = function(cls_obj, _)
+        local cname = cls_obj._path:match("([^.]+)$")
+        return make_widget(cname)
+    end
+
+    local actual_designer_native = package.loaded.ssb_native_designer
+    package.loaded.ssb_native_designer = {
+        snapshot_frame_blocks = function() return { { id = 1, class_name = "BPO_Station_01_C", gx = 0, gy = 0, height = 0, rot = 0 } } end,
+        activate_select_tool = function() return true end,
+        find_session = function() return nil end,
+    }
+    _G.__StationSectionBlueprintsUIRuntime = nil
+    package.loaded.ssb_ui = nil
+    local ui = require("ssb_ui")
+
+    local canvas = make_widget("CanvasPanel")
+    local save_container = make_widget("VerticalBox")
+    local widget_tree = make_widget("WidgetTree", { RootWidget = canvas })
+    local owner = make_widget("BP_DesignerController_C")
+    local open_broadcast_called = false
+    local hud = make_widget("WBP_DesignerHUD_C", {
+        Canvas = canvas,
+        WidgetTree = widget_tree,
+        SaveOptionsContainer = save_container,
+        OpenButton = { OnPressed = { Broadcast = function() open_broadcast_called = true; error("must not broadcast") end } },
+        GetOwningPlayer = function() return owner end,
+    })
+    local designer = make_widget("Designer")
+
+    local lib_state = library.new("StationSectionBlueprints-dev")
+    library.create_folder(lib_state, "sub")
+    library.add(lib_state, { name = "bp1", folder = "sub", includes_machines = false, blocks = 1, machines = 0, game_build = "26885430" })
+    library.add(lib_state, { name = "bp2", folder = "sub", includes_machines = true, blocks = 2, machines = 3, game_build = "26885430" })
+    local store = { library = lib_state }
+    local store_api = {
+        list = function(s, folder) return library.list(s.library, folder) end,
+    }
+
+    local state, attach_err = ui.attach(hud, designer, store_api, store)
+    truthy(state, tostring(attach_err))
+    equal(#canvas._children, 1)
+    equal(state.drawer_open, false)
+    equal(state.drawer._vis, theme.VISIBILITY.Collapsed)
+
+    -- Trigger "局部蓝图库" button action: must open drawer cleanly without calling OpenButton.OnPressed:Broadcast()
+    local lib_record = _G.__StationSectionBlueprintsUIRuntime.actions[state.library_button:GetAddress()]
+    truthy(lib_record)
+    lib_record.callback()
+    equal(open_broadcast_called, false)
+    equal(state.drawer_open, true)
+    equal(state.drawer._vis, theme.VISIBILITY.Visible)
+    equal(#state.list_pool, 1) -- root has 1 subfolder "sub"
+
+    -- Enter subfolder "sub" (which has 2 blueprints -> creates a 2nd pooled button dynamically after attach)
+    local folder_record = _G.__StationSectionBlueprintsUIRuntime.actions[state.list_pool[1].widget:GetAddress()]
+    truthy(folder_record)
+    folder_record.callback()
+    equal(state.current_folder, "sub")
+    equal(#state.list_pool, 2)
+    -- Verify the newly pooled 2nd button IS registered in runtime.actions!
+    local second_bp_addr = state.list_pool[2].widget:GetAddress()
+    truthy(_G.__StationSectionBlueprintsUIRuntime.actions[second_bp_addr], "newly pooled button must be registered in runtime.actions")
+
+    -- Clicking "局部蓝图库" again toggles drawer closed
+    lib_record.callback()
+    equal(state.drawer_open, false)
+    equal(state.drawer._vis, theme.VISIBILITY.Collapsed)
+
+    -- Detach removes drawer and toolbar entries cleanly
+    truthy(ui.detach(state))
+    equal(#canvas._children, 0)
+    equal(#save_container._children, 0)
+    equal(table_count(_G.__StationSectionBlueprintsUIRuntime.actions), 0)
+
+    -- Restore globals & module cache
+    for k, v in pairs(saved_globals) do _G[k] = v end
+    package.loaded.ssb_native_designer = actual_designer_native
+    package.loaded.ssb_ui = nil
+    _G.__StationSectionBlueprintsUIRuntime = nil
 end)
 
 print(string.format("%d tests passed", passed))

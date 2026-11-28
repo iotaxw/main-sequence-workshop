@@ -27,7 +27,7 @@ pwsh -NoProfile -File apps/station-section-blueprints/scripts/start-debug.ps1 -S
    - 局部蓝图库：`%LOCALAPPDATA%\MainSequence\Saved\SaveGames\StationSectionBlueprints\`（含 `基础对接/` 与 `异形与多层/` 共 4 套局部蓝图与校验过的 `index.ssb`）
 3. **如何免材料进入测试（两种真实可用路径）**：
    - 《主星序 Main Sequence》当前抢先体验版的「新游戏」菜单里**没有**内置创造模式勾选框，且公开仓库遵循隐私与存档边界不提交玩家世界存档（`*_M.sav` / `*_S.sav`）。
-   - **路径 A（实机世界完整测两阶段：壳体 + 退出后建室内机台，推荐）**：带 `-EnableDebugSandbox` 启动后，加载任意已有存档或新建一个普通存档进入世界，按 **`F9`** 调用游戏原生 `DMSPlayerController:SetCreativeMode(true/false)` 切换创造模式、按 **`Shift + F9`** 调用 `SetCreativeUnlockAllResearch()` 解锁全部科技（该辅助模块 `ssb_debug_sandbox.lua` 仅在显式开启调试参数时加载，**绝不进入发布包**），随后走进空间站控制台进规划器载入 **`局部蓝图测试母站`** 即可完整实测全部 5 类场景与两阶段室内机台搭建！
+   - **路径 A（实机世界完整测两阶段：壳体 + 退出后建室内机台，推荐）**：带 `-EnableDebugSandbox` 启动后，加载任意已有存档或新建一个普通存档进入世界，按 **`F9`** 调用游戏原生 `DMSPlayerController:SetCreativeMode(true/false)` 切换创造模式、按 **`F10`** 调用 `SetCreativeUnlockAllResearch()` 解锁全部科技，右上角会弹出带平滑倒计时进度条（TTL）的原生深蓝科幻风格提示卡并回读真实状态（该辅助模块 `ssb_debug_sandbox.lua` 仅在显式开启调试参数时加载，**绝不进入发布包**），随后走进空间站控制台进规划器载入 **`局部蓝图测试母站`** 即可完整实测全部 5 类场景与两阶段室内机台搭建！
    - **路径 B（纯规划器内交互快速试玩）**：直接在游戏主菜单点击原版 **「设计器 / Designer」** 按钮，即可零门槛免费载入 **`局部蓝图测试母站`** 并测试 `Shift+左键` 多选、含机器保存（跨边界剔除报告）、目标块悬浮快贴、`Tab`/`R`/`H` 锁定微调与 4 套局部蓝图预览（注：独立设计器内无真实世界空间站，不触发退出后的第二阶段室内机台搭建）。
 4. **零侵入热重载调试**：启动脚本通过 `UE4SS_MODS_PATHS` 挂载本仓库的 `apps/station-section-blueprints/Mods`，**不修改游戏安装目录**；修改 `Mods/StationSectionBlueprints/Scripts/*.lua` 后在 UE4SS 控制台按 `Ctrl+R` 即可热重载，日志位于 `<游戏Win64目录>\ue4ss\UE4SS.log`。
 5. **自定义路径或仅打包**：可显式传 `-GameExe "<路径>"` 或设 `$env:MAIN_SEQUENCE_EXE`；仅编译并打发布 zip：
@@ -44,8 +44,8 @@ pwsh -NoProfile -File apps/station-section-blueprints/scripts/start-debug.ps1 -S
 
 ## 当前实测状态
 
-- **Build `26639889` 全链路实机通过**：33/33 Lua 行为单测 + 15/15 Rust 编解码测试；原生设计器严格会话、`Shift+左键` 增删复选、含机器双协议保存与删除、`UpdatePreview` 钩子接管与 `bSnapping` 恢复、UI 挂载与 15 项快捷键注册；空背包生存材料门禁拦截、1m 防重叠拦截、以及精炼厂配方（`REC_HydrogenFuel`）、二级地下带长度（`Length=6`）与二级分流器优先级/过滤槽（`PriorityOutputIndex=2`, `ITEM_HydrogenFuel`）逐机回读。
-- **Build `26885430` + UE4SS `4.0.0`**：已实测定位并修复 `find_session` 全量 `ForEachUObject` 启动崩溃（改为定向 `FindAllOf`）；Build `26885430` 完整交互与新增内容兼容性待后续按需复测。
+- **Build `26639889` 全链路实机通过**：36/36 Lua 行为单测 + 15/15 Rust 编解码测试；原生设计器严格会话、`Shift+左键` 增删复选、含机器双协议保存与删除、`UpdatePreview` 钩子接管与 `bSnapping` 恢复、UI 挂载与 15 项快捷键注册；空背包生存材料门禁拦截、1m 防重叠拦截、以及精炼厂配方（`REC_HydrogenFuel`）、二级地下带长度（`Length=6`）与二级分流器优先级/过滤槽（`PriorityOutputIndex=2`, `ITEM_HydrogenFuel`）逐机回读。
+- **Build `26885430` + UE4SS `4.0.0`**：已实测定位并修复两处兼容性崩溃：① `find_session` 全量 `ForEachUObject` 启动崩溃（改为定向 `FindAllOf`）；② 点击「局部蓝图库」触发 `EXCEPTION_ACCESS_VIOLATION (0x9f80)`（移除原生 `OpenButton.OnPressed:Broadcast()` 广播及跨 `WidgetTree` 劫持，改为复用 `WBP_Text_C` / `WBP_Button_Text_C` 的同树原生风格悬浮抽屉 + 右上角带 TTL 进度条提示系统）；Build `26885430` 完整交互与新增内容兼容性待后续按需复测。
 - **待继续复测边界**：`MachinePortInput` 端口开关、`SetPaletteInput` 非零调色板、`LogisticFilterInput`、`SetTextInputCommand`、`CreativeContainerInput` 的逐项真机回读，以及多人联机同步边界。
 
 ## 安装、单元测试与打包

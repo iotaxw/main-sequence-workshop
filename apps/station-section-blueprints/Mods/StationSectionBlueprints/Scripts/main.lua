@@ -20,6 +20,8 @@ local designer_native = load_module("ssb_native_designer")
 load_module("ssb_docking")
 local machine_paste = load_module("ssb_machine_paste")
 local store_module = load_module("ssb_store")
+load_module("ssb_ui_theme")
+load_module("ssb_toast")
 local ui = load_module("ssb_ui")
 local development_command_file = os.getenv("SSB_DEV_COMMAND_FILE")
 local development = development_command_file ~= nil and development_command_file ~= ""

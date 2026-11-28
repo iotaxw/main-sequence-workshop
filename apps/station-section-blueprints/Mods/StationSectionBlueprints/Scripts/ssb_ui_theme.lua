@@ -1,0 +1,428 @@
+-- Shared Main Sequence native UMG styling & widget factory.
+-- Reuses the game's own WBP_Text_C (Saira font) and WBP_Button_Text_C / WBP_CleanButton_Text_C
+-- so Designer panels, confirmation bars, and top-right TTL toasts share one consistent visual language.
+
+local native = require("ssb_native")
+
+local M = {}
+
+M.CLASSES = {
+    BUTTON_TEXT = "/Game/Blueprints/Widgets/Basic/WBP_Button_Text.WBP_Button_Text_C",
+    CLEAN_BUTTON_TEXT = "/Game/Blueprints/Widgets/Basic/WBP_CleanButton_Text.WBP_CleanButton_Text_C",
+    TEXT = "/Game/Blueprints/Widgets/Basic/WBP_Text.WBP_Text_C",
+    WIDGET_LIBRARY = "/Script/UMG.WidgetBlueprintLibrary",
+    BORDER = "/Script/UMG.Border",
+    VERTICAL_BOX = "/Script/UMG.VerticalBox",
+    HORIZONTAL_BOX = "/Script/UMG.HorizontalBox",
+    SCROLL_BOX = "/Script/UMG.ScrollBox",
+    SIZE_BOX = "/Script/UMG.SizeBox",
+    SPACER = "/Script/UMG.Spacer",
+    PROGRESS_BAR = "/Script/UMG.ProgressBar",
+    TEXT_BLOCK = "/Script/UMG.TextBlock",
+    EDITABLE_TEXT_BOX = "/Script/UMG.EditableTextBox",
+    CHECK_BOX = "/Script/UMG.CheckBox",
+    CANVAS_PANEL = "/Script/UMG.CanvasPanel",
+}
+
+M.VISIBILITY = {
+    Visible = 0,
+    Collapsed = 1,
+    Hidden = 2,
+    HitTestInvisible = 3,
+    SelfHitTestInvisible = 4,
+}
+
+M.PALETTE = {
+    surface = { R = 0.035, G = 0.055, B = 0.095, A = 0.93 },
+    surface_alt = { R = 0.055, G = 0.085, B = 0.145, A = 0.95 },
+    header = { R = 0.065, G = 0.115, B = 0.190, A = 0.96 },
+    input_bg = { R = 0.020, G = 0.035, B = 0.065, A = 0.96 },
+    border = { R = 0.210, G = 0.510, B = 0.720, A = 0.85 },
+    border_subtle = { R = 0.150, G = 0.300, B = 0.440, A = 0.65 },
+    divider = { R = 0.190, G = 0.410, B = 0.580, A = 0.45 },
+    text_primary = { R = 0.920, G = 0.960, B = 1.000, A = 1.00 },
+    text_secondary = { R = 0.700, G = 0.800, B = 0.900, A = 1.00 },
+    text_muted = { R = 0.540, G = 0.650, B = 0.760, A = 1.00 },
+    tones = {
+        info = { R = 0.240, G = 0.760, B = 0.960, A = 1.00 },
+        success = { R = 0.220, G = 0.840, B = 0.560, A = 1.00 },
+        warn = { R = 0.960, G = 0.730, B = 0.220, A = 1.00 },
+        error = { R = 0.950, G = 0.340, B = 0.340, A = 1.00 },
+    },
+}
+
+function M.tone_color(tone)
+    return M.PALETTE.tones[tone or "info"] or M.PALETTE.tones.info
+end
+
+function M.slate_color(color)
+    local c = type(color) == "table" and color or M.PALETTE.text_primary
+    return {
+        SpecifiedColor = {
+            R = c.R or 1.0,
+            G = c.G or 1.0,
+            B = c.B or 1.0,
+            A = c.A or 1.0,
+        },
+        ColorUseRule = 0,
+    }
+end
+
+function M.set_text_color(widget, color)
+    if not native.is_valid(widget) or type(color) ~= "table" then return end
+    local slate = M.slate_color(color)
+    local ok = pcall(function() widget:SetColour(slate) end)
+    if not ok then
+        pcall(function() widget:SetColorAndOpacity(slate) end)
+    end
+end
+
+function M.to_text(value)
+    local ok, text = pcall(FText, tostring(value or ""))
+    if not ok then
+        return nil, text
+    end
+    return text
+end
+
+function M.from_text(value)
+    local ok, text = pcall(function()
+        return value:ToString()
+    end)
+    return ok and text or ""
+end
+
+function M.set_text(widget, value)
+    if not native.is_valid(widget) then
+        return nil, "invalid_text_widget"
+    end
+    local text, err = M.to_text(value)
+    if not text then
+        return nil, err
+    end
+    local ok, set_error = pcall(function()
+        widget:SetText(text)
+    end)
+    if not ok then
+        return nil, set_error
+    end
+    return true
+end
+
+function M.set_visibility(widget, visible, mode)
+    if not native.is_valid(widget) then return end
+    local target = visible and (mode or M.VISIBILITY.SelfHitTestInvisible) or M.VISIBILITY.Collapsed
+    pcall(function()
+        widget:SetVisibility(target)
+    end)
+end
+
+function M.construct(widget_tree, class_path)
+    if not native.is_valid(widget_tree) then
+        return nil, "missing_widget_tree"
+    end
+    local class = native.find_type(class_path)
+    if not class then
+        return nil, "missing_widget_class:" .. tostring(class_path)
+    end
+    local flags = (EObjectFlags and (EObjectFlags.RF_Public | EObjectFlags.RF_Standalone)) or 0
+    local ok, widget = pcall(StaticConstructObject, class, widget_tree, 0, flags)
+    if not ok or not native.is_valid(widget) then
+        return nil, "widget_construction_failed:" .. tostring(class_path)
+    end
+    return widget
+end
+
+function M.create_user_widget(context_object, owner, class_path)
+    local class = native.find_type(class_path)
+    if not class then
+        return nil, "missing_widget_class:" .. tostring(class_path)
+    end
+    local library_class = native.find_type(M.CLASSES.WIDGET_LIBRARY)
+    if not library_class then
+        return nil, "missing_widget_library"
+    end
+    local ok, widget = pcall(function()
+        return library_class:GetCDO():Create(context_object, class, owner)
+    end)
+    if not ok or not native.is_valid(widget) then
+        return nil, "user_widget_creation_failed:" .. tostring(class_path) .. ":" .. tostring(widget)
+    end
+    return widget
+end
+
+function M.create_button(context_object, owner, caption, opts)
+    opts = opts or {}
+    local preferred = opts.clean and M.CLASSES.CLEAN_BUTTON_TEXT or M.CLASSES.BUTTON_TEXT
+    local widget, err = M.create_user_widget(context_object, owner, preferred)
+    if not widget and opts.clean then
+        widget, err = M.create_user_widget(context_object, owner, M.CLASSES.BUTTON_TEXT)
+    end
+    if not widget then
+        return nil, err
+    end
+    local text_ok, text_err = M.set_text(widget, caption)
+    if not text_ok then
+        return nil, text_err
+    end
+    return widget
+end
+
+function M.create_text(context_object, owner, widget_tree, value, opts)
+    opts = opts or {}
+    local widget = M.create_user_widget(context_object, owner, M.CLASSES.TEXT)
+    if widget then
+        M.set_text(widget, value)
+        if type(opts.size) == "number" then
+            pcall(function() widget:SetSize(opts.size) end)
+        end
+        if type(opts.color) == "table" then
+            M.set_text_color(widget, opts.color)
+        end
+        if type(opts.wrap) == "number" and opts.wrap > 0 then
+            pcall(function() widget:SetWrapLength(opts.wrap) end)
+        end
+        return widget
+    end
+    -- Clean fallback to UMG TextBlock when WBP_Text_C is unavailable (e.g. unit-test stubs)
+    local block, block_err = M.construct(widget_tree, M.CLASSES.TEXT_BLOCK)
+    if not block then
+        return nil, block_err
+    end
+    local text_ok, text_err = M.set_text(block, value)
+    if not text_ok then
+        return nil, text_err
+    end
+    if type(opts.color) == "table" then
+        M.set_text_color(block, opts.color)
+    end
+    if type(opts.wrap) == "number" and opts.wrap > 0 then
+        pcall(function() block:SetAutoWrapText(true) end)
+    end
+    return block
+end
+
+function M.add_child(parent, child, padding)
+    if not native.is_valid(parent) or not native.is_valid(child) then
+        return nil, "invalid_parent_or_child"
+    end
+    local ok, slot = pcall(function()
+        return parent:AddChild(child)
+    end)
+    if not ok or not native.is_valid(slot) then
+        return nil, "add_child_failed:" .. tostring(slot)
+    end
+    if type(padding) == "table" then
+        pcall(function()
+            slot:SetPadding({
+                Left = padding.Left or padding[1] or 0,
+                Top = padding.Top or padding[2] or 0,
+                Right = padding.Right or padding[3] or 0,
+                Bottom = padding.Bottom or padding[4] or 0,
+            })
+        end)
+    end
+    return slot
+end
+
+function M.create_border(widget_tree, color, padding)
+    local border, err = M.construct(widget_tree, M.CLASSES.BORDER)
+    if not border then return nil, err end
+    if type(color) == "table" then
+        pcall(function() border:SetBrushColor(color) end)
+    end
+    if type(padding) == "table" then
+        pcall(function()
+            border:SetPadding({
+                Left = padding.Left or padding[1] or 0,
+                Top = padding.Top or padding[2] or 0,
+                Right = padding.Right or padding[3] or 0,
+                Bottom = padding.Bottom or padding[4] or 0,
+            })
+        end)
+    end
+    return border
+end
+
+-- Creates a framed dark sci-fi card: outer accent/hairline border -> inner dark slate surface -> child VerticalBox.
+function M.create_framed_panel(widget_tree, opts)
+    opts = opts or {}
+    local frame_pad = opts.border_width or 1.5
+    local outer, outer_err = M.create_border(
+        widget_tree,
+        opts.border_color or M.PALETTE.border,
+        { frame_pad, frame_pad, frame_pad, frame_pad }
+    )
+    if not outer then return nil, outer_err end
+    local inner, inner_err = M.create_border(
+        widget_tree,
+        opts.surface_color or M.PALETTE.surface,
+        opts.padding or { 12, 10, 12, 10 }
+    )
+    if not inner then return nil, inner_err end
+    local body, body_err = M.construct(widget_tree, M.CLASSES.VERTICAL_BOX)
+    if not body then return nil, body_err end
+    local s1, e1 = M.add_child(outer, inner)
+    if not s1 then return nil, e1 end
+    local s2, e2 = M.add_child(inner, body)
+    if not s2 then return nil, e2 end
+    return { outer = outer, inner = inner, body = body }
+end
+
+function M.create_divider(widget_tree, color, height)
+    local box, err = M.construct(widget_tree, M.CLASSES.SIZE_BOX)
+    if not box then return nil, err end
+    pcall(function() box:SetHeightOverride(height or 1.0) end)
+    local line, line_err = M.create_border(widget_tree, color or M.PALETTE.divider, { 0, 0, 0, 0 })
+    if not line then return nil, line_err end
+    local slot, slot_err = M.add_child(box, line)
+    if not slot then return nil, slot_err end
+    return box
+end
+
+function M.create_input(widget_tree, hint)
+    local input, err = M.construct(widget_tree, M.CLASSES.EDITABLE_TEXT_BOX)
+    if not input then return nil, err end
+    local text, text_err = M.to_text(hint or "")
+    if not text then return nil, text_err end
+    pcall(function() input:SetHintText(text) end)
+    local frame, frame_err = M.create_border(widget_tree, M.PALETTE.border_subtle, { 1, 1, 1, 1 })
+    if not frame then return input, input end
+    local bg, bg_err = M.create_border(widget_tree, M.PALETTE.input_bg, { 6, 4, 6, 4 })
+    if not bg then return input, input end
+    if M.add_child(frame, bg) and M.add_child(bg, input) then
+        return frame, input
+    end
+    return input, input
+end
+
+function M.place_on_canvas(canvas, child, spec)
+    spec = spec or {}
+    local slot, err = M.add_child(canvas, child)
+    if not slot then return nil, err end
+    pcall(function()
+        if spec.anchors then
+            slot:SetAnchors(spec.anchors)
+        end
+        if spec.alignment then
+            slot:SetAlignment(spec.alignment)
+        end
+        if spec.position then
+            slot:SetPosition(spec.position)
+        end
+        if spec.size then
+            slot:SetSize(spec.size)
+        end
+        if spec.auto_size ~= nil then
+            slot:SetAutoSize(spec.auto_size == true)
+        end
+        if type(spec.z_order) == "number" then
+            slot:SetZOrder(spec.z_order)
+        end
+    end)
+    return slot
+end
+
+function M.is_canvas_panel(widget)
+    if not native.is_valid(widget) then return false end
+    local ok, is_canvas = pcall(function()
+        if type(widget.IsA) == "function" then
+            return widget:IsA(M.CLASSES.CANVAS_PANEL)
+        end
+        return native.class_name(widget) == "CanvasPanel"
+    end)
+    return ok and is_canvas == true
+end
+
+function M.find_canvas_in_hud(hud)
+    if not native.is_valid(hud) then return nil end
+    local ok_c, direct = pcall(function() return hud.Canvas end)
+    if ok_c and M.is_canvas_panel(direct) then
+        return direct
+    end
+    local ok_root, root = pcall(function() return hud.WidgetTree and hud.WidgetTree.RootWidget end)
+    if ok_root and M.is_canvas_panel(root) then
+        return root
+    end
+    if ok_root and native.is_valid(root) then
+        local ok_child, first = pcall(function() return root:GetChildAt(0) end)
+        if ok_child and M.is_canvas_panel(first) then
+            return first
+        end
+    end
+    return nil
+end
+
+local function is_live_object(object)
+    if not native.is_valid(object) then return false end
+    local flags = (EObjectFlags and (EObjectFlags.RF_ClassDefaultObject | EObjectFlags.RF_ArchetypeObject)) or 0
+    if flags ~= 0 then
+        local ok, flagged = pcall(function() return object:HasAnyFlags(flags) end)
+        if not ok or flagged == true then return false end
+    end
+    return true
+end
+
+function M.is_widget_visible(widget)
+    if not is_live_object(widget) then return false end
+    local ok_vp, in_vp = pcall(function() return widget:IsInViewport() end)
+    if not ok_vp or in_vp ~= true then return false end
+    local ok_vis, vis = pcall(function() return widget:GetVisibility() end)
+    if not ok_vis or vis == M.VISIBILITY.Collapsed or vis == M.VISIBILITY.Hidden then
+        return false
+    end
+    return true
+end
+
+M.PREFERRED_HUD_CLASSES = {
+    "WBP_DesignerHUD_C",
+    "WBP_CharacterHUD_C",
+    "WBP_Character_HUD_C",
+    "WBP_ShipHUD_C",
+    "WBP_Ship_HUD_C",
+    "WBP_MainMenu_C",
+}
+
+-- Locates a live, visible in-viewport HUD with a CanvasPanel using FindAllOf only (UE4SS 4.0.0 safe).
+-- opts.exclude_classes: optional map { [class_name] = true } to skip specific HUDs (e.g. DesignerHUD in world mode).
+function M.find_active_hud_host(opts)
+    if type(FindAllOf) ~= "function" then return nil end
+    opts = opts or {}
+    local excluded = opts.exclude_classes or {}
+    local function try_hud(widget)
+        if not M.is_widget_visible(widget) then return nil end
+        local cname = native.class_name(widget)
+        if excluded[cname] then return nil end
+        local canvas = M.find_canvas_in_hud(widget)
+        if not canvas or not native.is_valid(widget.WidgetTree) then return nil end
+        local ok_owner, owner = pcall(function() return widget:GetOwningPlayer() end)
+        if not ok_owner or not is_live_object(owner) then return nil end
+        return { hud = widget, canvas = canvas, widget_tree = widget.WidgetTree, owner = owner, class_name = cname }
+    end
+
+    for _, cls in ipairs(opts.preferred_classes or M.PREFERRED_HUD_CLASSES) do
+        if not excluded[cls] then
+            local ok, list = pcall(FindAllOf, cls)
+            if ok and type(list) == "table" then
+                for _, hud in ipairs(list) do
+                    local found = try_hud(hud)
+                    if found then return found end
+                end
+            end
+        end
+    end
+
+    local ok_any, widgets = pcall(FindAllOf, "UserWidget")
+    if ok_any and type(widgets) == "table" then
+        for _, widget in ipairs(widgets) do
+            local cname = native.class_name(widget)
+            if cname:find("HUD", 1, true) then
+                local found = try_hud(widget)
+                if found then return found end
+            end
+        end
+    end
+    return nil
+end
+
+return M

@@ -179,7 +179,7 @@ Write-Host "[SSB Debug] UE4SS_MODS_PATHS  : $env:UE4SS_MODS_PATHS"
 Write-Host "[SSB Debug] Blueprint Library : $saveLibrary"
 Write-Host "[SSB Debug] UE4SS Log         : $(Join-Path $gameWin64 'ue4ss\UE4SS.log')"
 if ($EnableDebugSandbox) {
-    Write-Host '[SSB Debug] Debug Sandbox     : ENABLED (F9 = toggle Creative Mode, Shift+F9 = unlock all research)'
+    Write-Host '[SSB Debug] Debug Sandbox     : ENABLED (F9 = toggle Creative Mode, F10 = unlock all research; top-right TTL toast feedback)'
 }
 Write-Host '[SSB Debug] Tip: Edit Lua scripts directly in Mods/StationSectionBlueprints/Scripts/ and press Ctrl+R in UE4SS to hot-reload.'
 
