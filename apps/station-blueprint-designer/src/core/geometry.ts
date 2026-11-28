@@ -18,7 +18,7 @@ export const FLOOR_HEIGHT_M = 8; // 1 station floor = 8 meters (real game step)
 export const FLOOR_VISUAL_SPACING = 10; // Clean visual spacing in 3D CAD view
 export const SHIP_UNIT_M = 8; // 1 ship grid unit = 8 meters (exact half of station unit)
 export const SHIP_FLOOR_HEIGHT_M = 4; // 1 ship deck = 4 meters (exact half of station floor)
-export const SHIP_FLOOR_VISUAL_SPACING = 5.5; // Clean vertical spacing for multi-deck ships
+export const SHIP_FLOOR_VISUAL_SPACING = 4.0; // Exact native 4.0m deck height so hull & top/bottom attachments dock flush
 export const BUILDING_CHUNK_SIZE_M = 64; // 64m spatial chunk size for incremental rendering & box queries
 
 export interface FrameGridSpec {

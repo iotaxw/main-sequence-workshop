@@ -3067,9 +3067,17 @@ describe('Ship Blueprint Mode (Phase 1-3)', () => {
     expect(rig.currentYawRad).toBeCloseTo(0, 4);
     rig.setFrameSpacing(SHIP_FLOOR_VISUAL_SPACING, true, Math.PI);
     expect(rig.currentYawRad).toBeCloseTo(Math.PI, 4);
-    // Switching back to station mode restores yaw = 0
+    // Ship mode allows under-hull inspection down to -89° pitch and snaps symmetrically
+    rig.setFrameSpacing(SHIP_FLOOR_VISUAL_SPACING, true, Math.PI);
+    expect(SHIP_FLOOR_VISUAL_SPACING).toBe(4);
+    rig.setPitchPreset((-45 * Math.PI) / 180);
+    expect(rig.targetPitch).toBeCloseTo((-45 * Math.PI) / 180, 4);
+    rig.snapAngles();
+    expect(rig.targetPitch).toBeCloseTo((-42 * Math.PI) / 180, 4);
+    // Switching back to station mode restores yaw = 0 and positive pitch >= 14°
     rig.setFrameSpacing(10, false, 0);
     expect(rig.currentYawRad).toBeCloseTo(0, 4);
+    expect(rig.targetPitch).toBeGreaterThanOrEqual((14 * Math.PI) / 180);
 
     // Multi-touch pinch zoom: ratio > 1 zooms in (reduces targetDistance), ratio < 1 zooms out
     const distBefore = rig.targetDistance;

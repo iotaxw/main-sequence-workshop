@@ -10,6 +10,26 @@ export const PITCH_SNAP_PRESETS = [
   { id: 'low', label: '低角 22°', labelEn: 'Low 22°', rad: (22 * Math.PI) / 180 },
 ] as const;
 
+export const SHIP_PITCH_PRESETS = [
+  { id: 'top', label: '正俯 89°', labelEn: 'Top 89°', rad: (89 * Math.PI) / 180 },
+  { id: 'iso', label: '俯测 42°', labelEn: 'Iso 42°', rad: (42 * Math.PI) / 180 },
+  { id: 'level', label: '平视 0°', labelEn: 'Level 0°', rad: 0 },
+  { id: 'under-iso', label: '仰测 -42°', labelEn: 'Under -42°', rad: (-42 * Math.PI) / 180 },
+  { id: 'bottom', label: '正仰 -89°', labelEn: 'Bot -89°', rad: (-89 * Math.PI) / 180 },
+] as const;
+
+const SHIP_PITCH_SNAP_RADS = [
+  (89 * Math.PI) / 180,
+  (64 * Math.PI) / 180,
+  (42 * Math.PI) / 180,
+  (22 * Math.PI) / 180,
+  0,
+  (-22 * Math.PI) / 180,
+  (-42 * Math.PI) / 180,
+  (-64 * Math.PI) / 180,
+  (-89 * Math.PI) / 180,
+];
+
 export const MIN_DISTANCE = 9;
 export const MAX_DISTANCE = 1200;
 export const ZOOM_ENTER_BUILDING = 44; // Crossing below enters Building View
@@ -134,6 +154,9 @@ export class CadCameraRig {
     if (lockStation && this.viewMode !== 'station') {
       this.viewMode = 'station';
     }
+    if (!lockStation && this.targetPitch < (14 * Math.PI) / 180) {
+      this.targetPitch = PITCH_SNAP_PRESETS[1].rad;
+    }
     if (modeChanged && defaultYaw !== undefined) {
       this.setYaw(defaultYaw, true);
     }
@@ -160,8 +183,16 @@ export class CadCameraRig {
     if (enabled) this.snapAngles();
   }
 
+  private getMinPitchRad(): number {
+    return this.lockStationView ? (-89.0 * Math.PI) / 180 : (14 * Math.PI) / 180;
+  }
+
+  private getMaxPitchRad(): number {
+    return this.lockStationView ? (89.0 * Math.PI) / 180 : (89.2 * Math.PI) / 180;
+  }
+
   setPitchPreset(rad: number): void {
-    this.targetPitch = THREE.MathUtils.clamp(rad, (14 * Math.PI) / 180, (89.2 * Math.PI) / 180);
+    this.targetPitch = THREE.MathUtils.clamp(rad, this.getMinPitchRad(), this.getMaxPitchRad());
   }
 
   stepYawCardinal(dir: 1 | -1): void {
@@ -183,13 +214,14 @@ export class CadCameraRig {
   }
 
   private findNearestPitch(rad: number): number {
+    const candidates = this.lockStationView ? SHIP_PITCH_SNAP_RADS : PITCH_SNAP_PRESETS.map((p) => p.rad);
     let best: number = PITCH_SNAP_PRESETS[1].rad;
     let bestDist = Infinity;
-    for (const p of PITCH_SNAP_PRESETS) {
-      const d = Math.abs(rad - p.rad);
+    for (const c of candidates) {
+      const d = Math.abs(rad - c);
       if (d < bestDist) {
         bestDist = d;
-        best = p.rad;
+        best = c;
       }
     }
     return best;
@@ -201,8 +233,8 @@ export class CadCameraRig {
     this.targetYaw = normalizeAngle(this.targetYaw - dx * yawSpeed);
     this.targetPitch = THREE.MathUtils.clamp(
       this.targetPitch + dy * pitchSpeed,
-      (14 * Math.PI) / 180,
-      (89.2 * Math.PI) / 180
+      this.getMinPitchRad(),
+      this.getMaxPitchRad()
     );
   }
 
@@ -216,10 +248,10 @@ export class CadCameraRig {
     const worldPerPx = (2 * this.curDistance * this.tanHalfFov) / Math.max(1, viewportHeight);
     const cosY = Math.cos(this.curYaw);
     const sinY = Math.sin(this.curYaw);
-    // Screen right = (+cosY, -sinY), Screen up = (-sinY, -cosY)
-    // Grab-panning: dragging right (+dxPx) moves camera left; dragging down (+dyPx) moves camera up.
+    // Screen right = (+cosY, -sinY), Screen up flips along Z-plane when viewing ship from underneath (pitch < 0).
     const moveRight = -dxPx * worldPerPx;
-    const moveUp = (dyPx * worldPerPx) / Math.max(0.35, Math.sin(this.curPitch));
+    const pitchSign = this.curPitch >= 0 ? 1 : -1;
+    const moveUp = (dyPx * worldPerPx * pitchSign) / Math.max(0.35, Math.abs(Math.sin(this.curPitch)));
     this.targetX += moveRight * cosY - moveUp * sinY;
     this.targetZ += -moveRight * sinY - moveUp * cosY;
     this.panBoostUntilMs = performance.now() + 140;
@@ -263,8 +295,8 @@ export class CadCameraRig {
       this.targetZ += (anchorWorld.z - this.targetZ) * ratio * 0.72;
     }
 
-    // Zooming in very close gently looks down toward the working floor
-    if (nextDist < 22 && this.targetPitch < (52 * Math.PI) / 180 && !this.snapEnabled) {
+    // Zooming in very close gently looks down toward the working floor (Station mode only — Ship mode allows under-hull inspection!)
+    if (!this.lockStationView && nextDist < 22 && this.targetPitch < (52 * Math.PI) / 180 && !this.snapEnabled) {
       this.targetPitch = THREE.MathUtils.lerp(this.targetPitch, (64 * Math.PI) / 180, 0.08);
     }
 

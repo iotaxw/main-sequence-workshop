@@ -525,15 +525,18 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
       const large = id === 'BPO_Thruster_05';
       const med = id === 'BPO_Thruster_03';
       const relic = id.startsWith('BPO_Thruster_04');
+      const isLeft = id.endsWith('L');
+      // Bow points LEFT; for Right (Starboard) mount sits on bottom edge (hull below), Left (Port) flips vertically
+      const xform = isLeft ? 'translate(0 24) scale(1 -1) rotate(180 12 12)' : 'rotate(180 12 12)';
       return (
-        <g transform="rotate(180 12 12)">
+        <g transform={xform}>
           {relic ? (
             <>
-              {/* Real elongated 18m relic thruster with split tail fins & dashed 1-cell hint */}
-              <path d="M4,8.5 L15,7.5 Q19.5,8 20,12 Q19.5,16 15,16.5 L4,15.5 L7,13.5 L7,10.5 Z" {...s} />
-              <line x1="2.5" y1="10.2" x2="7.5" y2="10.2" {...s} />
-              <line x1="2.5" y1="13.8" x2="7.5" y2="13.8" {...s} />
-              <rect x="11" y="6.2" width="9.5" height="11.6" rx="1" strokeDasharray="2 1.5" {...dim} />
+              {/* Real 18m relic thruster: flat mount rail along inner side, curved cowl outboard */}
+              <path d="M3.5,15.5 L17,15.5 L20,12.5 Q19,8 14.5,7.5 L7.5,8.5 L5,10.8 L8.5,12.5 L3.5,14 Z" {...s} />
+              <line x1="2.5" y1="10.8" x2="7.5" y2="10.8" {...s} />
+              <line x1="3" y1="13.8" x2="7.5" y2="13.8" {...s} />
+              <rect x="11" y="6.2" width="9.5" height="10.2" rx="1" strokeDasharray="2 1.5" {...dim} />
             </>
           ) : large ? (
             <>
@@ -550,11 +553,11 @@ export const EntityGlyph: React.FC<{ id: string; size?: number }> = ({ id, size 
             </>
           ) : (
             <>
-              {/* Real side-pod small thruster with stepped twin cones */}
-              <path d="M8,8.5 L15.5,7.5 Q19.5,8 19.8,12 Q19.5,15.5 15.5,16 H8 Z" {...s} />
-              <line x1="3.5" y1="10.2" x2="8" y2="10.2" {...s} />
+              {/* Real side-pod small thruster: flat mount rail on inner side, twin stepped cones */}
+              <path d="M8,15.5 L18.5,15.5 L19.8,12.2 Q19.2,8.5 15,8 L8,9 Z" {...s} />
+              <line x1="3.5" y1="10.6" x2="8" y2="10.6" {...s} />
               <line x1="4.5" y1="13.8" x2="8" y2="13.8" {...s} />
-              <rect x="11.5" y="6.8" width="8.8" height="10.4" rx="1" strokeDasharray="2 1.5" {...dim} />
+              <rect x="11.5" y="6.8" width="8.8" height="9.8" rx="1" strokeDasharray="2 1.5" {...dim} />
             </>
           )}
         </g>

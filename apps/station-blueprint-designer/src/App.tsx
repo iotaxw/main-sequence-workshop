@@ -12,7 +12,7 @@ import {
   type BeltStrokeTunnel,
   type BeltWaypoint,
 } from './core/belt-router';
-import { canModuleRotate, getBuildableDef, getItemName, getModuleDef, getModuleName, getRecipeDef, getRecipeName } from './core/catalog';
+import { canModuleRotate, getBuildableDef, getItemName, getModuleDef, getRecipeDef, getRecipeName } from './core/catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './core/codec';
 import { DEFAULT_LIBRARY_PRESETS } from './core/presets';
 import { cycleVariantInGroup, findGroupForEntity, getGroupsForView, getShortLabel } from './core/groups';
@@ -47,7 +47,6 @@ import {
   getMirroredModuleRotation,
   getModuleBoundsM,
   getModuleSizeUnits,
-  getToggleablePorts,
   normalizeRotation,
 } from './core/geometry';
 import {
@@ -78,7 +77,7 @@ import type {
   SelectionState,
   ViewMode,
 } from './core/types';
-import { PITCH_SNAP_PRESETS } from './renderer/camera-rig';
+import { PITCH_SNAP_PRESETS, SHIP_PITCH_PRESETS } from './renderer/camera-rig';
 import { type BoxSelectMode, CadSceneController } from './renderer/scene-controller';
 import { CAD_THEMES, type CadThemeId, loadSavedTheme, saveTheme } from './renderer/theme';
 import { BlueprintLibraryModal } from './ui/BlueprintLibraryModal';
@@ -709,7 +708,9 @@ export const App: React.FC = () => {
       try {
         const nodes = await drv.listTree();
         setLibraryTree(nodes);
-        if (notify) showToast('已刷新蓝图库');
+        if (notify) {
+          // Library tree already updates immediately; avoid noisy echo toast
+        }
       } catch (err) {
         showToast(`读取目录失败：${err instanceof Error ? err.message : String(err)}`, 'error');
       }
@@ -970,9 +971,6 @@ export const App: React.FC = () => {
           commitDoc(del.doc);
           setSelection(EMPTY_SELECTION);
         }
-        showToast('已剪切搬移（左键落位 / R旋转 / M镜像 / Q/E切层 / Ctrl+Z可撤销）');
-      } else {
-        showToast('已复制为幽灵蓝图（左键连续盖章 / R旋转 / M镜像 / 右键放下）');
       }
     },
     [commitDoc, showToast]
@@ -1096,13 +1094,10 @@ export const App: React.FC = () => {
   const applyMirrorAction = useCallback(
     (vertical = false) => {
       const axis = sceneRef.current?.rig.getScreenMirrorAxis(vertical) ?? (vertical ? 'y' : 'x');
-      const dirZh = vertical ? '垂直' : '水平';
-      const dirEn = vertical ? 'vertically' : 'horizontally';
       const { activeTool: tool, doc: curDoc, selection: sel } = stateRef.current;
 
       if (tool.kind === 'stamp-blueprint') {
         setActiveTool({ ...tool, blueprint: mirrorBlueprint(tool.blueprint, axis) });
-        showToast(t(`已${dirZh}镜像蓝图`, `Mirrored blueprint ${dirEn}`));
         return;
       }
 
@@ -1110,25 +1105,13 @@ export const App: React.FC = () => {
         const def = getModuleDef(tool.moduleType);
         // Native MirrorClass swap (covers all 11 ship mirror pairs & station armour top/bottom!)
         if (def?.mirrorId) {
-          const mirrorDef = getModuleDef(def.mirrorId);
           selectEntityTool(def.mirrorId, { rotation: tool.rotation, label: tool.label });
-          showToast(
-            t(
-              `已镜像为 ${mirrorDef ? getModuleName(mirrorDef, 'zh') : def.mirrorId}`,
-              `Mirrored to ${mirrorDef ? getModuleName(mirrorDef, 'en') : def.mirrorId}`
-            )
-          );
           return;
         }
         if (tool.moduleType === 'BPO_StationArmour_01' || tool.moduleType === 'BPO_StationArmour_01B') {
           const flipped =
             tool.moduleType === 'BPO_StationArmour_01' ? 'BPO_StationArmour_01B' : 'BPO_StationArmour_01';
           selectEntityTool(flipped, { rotation: tool.rotation, label: tool.label });
-          showToast(
-            flipped === 'BPO_StationArmour_01'
-              ? t('已翻转为顶面装甲', 'Flipped to top armour')
-              : t('已翻转为底面装甲', 'Flipped to bottom armour')
-          );
           return;
         }
         if (curDoc.category === 'ship' && !stateRef.current.shipFreeRotate && def?.canRotate === false) {
@@ -1138,7 +1121,6 @@ export const App: React.FC = () => {
         const nextRot = getMirroredModuleRotation(def, tool.rotation, axis);
         if (nextRot !== tool.rotation) {
           setActiveTool({ ...tool, rotation: nextRot });
-          showToast(t(`已${dirZh}镜像模块`, `Mirrored module ${dirEn}`));
         }
         return;
       }
@@ -1160,7 +1142,6 @@ export const App: React.FC = () => {
           priorityOut: remapped.priorityOut,
           portFilters: remapped.portFilters,
         });
-        showToast(t(`已${dirZh}镜像建筑`, `Mirrored building ${dirEn}`));
         return;
       }
 
@@ -1168,7 +1149,6 @@ export const App: React.FC = () => {
         const res = mirrorSelectionInPlaceCmd(curDoc, sel, axis);
         if (res.changed) {
           commitDoc(res.doc);
-          showToast(t(`已${dirZh}镜像选中项`, `Mirrored selection ${dirEn}`));
         } else if (res.message) {
           showToast(
             t(
@@ -1250,8 +1230,6 @@ export const App: React.FC = () => {
         const m = findModuleAtWorldPoint(curDoc, world.x, world.y, fl);
         if (!m) return;
         selectEntityTool(m.type, { rotation: m.rotation, label: m.label });
-        const title = getShortLabel(m.type, getModuleDef(m.type)?.nameZh);
-        showToast(m.label ? `吸管复制：${title} · ${m.label}` : `吸管复制：${title}`);
       } else {
         const b = findBuildingAtCell(curDoc, Math.floor(world.x), Math.floor(world.y), fl);
         if (!b) return;
@@ -1266,24 +1244,9 @@ export const App: React.FC = () => {
           portFilters: b.portFilters ? { ...b.portFilters } : undefined,
           filterItems: b.filterItems ? [...b.filterItems] : undefined,
         });
-        const def = getBuildableDef(b.type);
-        const parts: string[] = [getShortLabel(b.type, def?.nameZh)];
-        if (b.recipeId) {
-          const rec = getRecipeDef(b.recipeId);
-          if (rec) parts.push(rec.nameZh);
-        }
-        if (b.label) parts.push(b.label);
-        if (b.priorityIn !== undefined || b.priorityOut !== undefined) parts.push('含优先级');
-        if (b.portFilters && Object.keys(b.portFilters).length > 0) parts.push('含口过滤');
-        if (b.filterItems && b.filterItems.length > 0) parts.push(`过滤${b.filterItems.length}项`);
-        if (def?.configurablePorts && b.disabledPorts && b.disabledPorts.length > 0) {
-          const toggleableCount = getToggleablePorts(def).length;
-          parts.push(`${Math.max(0, toggleableCount - b.disabledPorts.length)}/${toggleableCount}口`);
-        }
-        showToast(`吸管复制：${parts.join(' · ')}`);
       }
     },
-    [selectEntityTool, showToast]
+    [selectEntityTool]
   );
 
   const handleCancelAction = useCallback(() => {
@@ -1406,7 +1369,6 @@ export const App: React.FC = () => {
           if (cb) {
             setActiveTool({ kind: 'stamp-blueprint', blueprint: cb, name: cb.name, rotation: 0, floorOffset: 0 });
             setStampingLibPath(null);
-            showToast('已唤出剪贴板蓝图');
           }
           return;
         }
@@ -1474,7 +1436,6 @@ export const App: React.FC = () => {
         setSnapEnabled((s) => {
           const next = !s;
           sceneRef.current?.rig.setSnapEnabled(next);
-          showToast(next ? '视角吸附已开启（四向 + 固定俯角）' : '已切换为自由无级 3D 视角');
           return next;
         });
         return;
@@ -1486,12 +1447,7 @@ export const App: React.FC = () => {
       }
       if (lower === 'b') {
         e.preventDefault();
-        setSelectionLayerMode((m) => {
-          const next: SelectionLayerMode = m === 'focus' ? 'visible' : m === 'visible' ? 'all' : 'focus';
-          const names = { focus: '仅当前焦点层', visible: '当前可见层', all: '全部楼层' };
-          showToast(`框选层域：${names[next]}`);
-          return next;
-        });
+        setSelectionLayerMode((m) => (m === 'focus' ? 'visible' : m === 'visible' ? 'all' : 'focus'));
         return;
       }
       if (e.key === 'Home') {
@@ -1586,24 +1542,12 @@ export const App: React.FC = () => {
           const res = toggleBeltStrokeTunnel(session.strokeCells, session.strokeTunnels);
           session.strokeTunnels = res.tunnels;
           refreshBeltSessionPreview();
-          showToast(
-            res.action === 'dive'
-              ? t('地下带潜入（再按 T 钻出）', 'Tunnel dive (T to surface)')
-              : res.action === 'surface'
-                ? t('地下带钻出', 'Tunnel surfaced')
-                : t('已取消地下带潜入', 'Tunnel dive cancelled')
-          );
           return;
         }
         if (session?.mode === 'plan') {
           e.preventDefault();
           session.planTunnel = !session.planTunnel;
           refreshBeltSessionPreview();
-          showToast(
-            session.planTunnel
-              ? t('跨障地下带：开', 'Auto tunnel: ON')
-              : t('跨障地下带：关', 'Auto tunnel: OFF')
-          );
           return;
         }
         const tool = stateRef.current.activeTool;
@@ -1612,14 +1556,12 @@ export const App: React.FC = () => {
           if (ugId) {
             e.preventDefault();
             selectEntityTool(ugId, { rotation: tool.rotation, undergroundMode: 'in' });
-            showToast(t(`地下带：${getShortLabel(ugId, undefined, lang)}`, `Tunnel: ${getShortLabel(ugId, undefined, lang)}`));
             return;
           }
           const beltId = getMatchingBeltType(tool.buildingType);
           if (beltId) {
             e.preventDefault();
             selectEntityTool(beltId, { rotation: tool.rotation });
-            showToast(t(`传送带：${getShortLabel(beltId, undefined, lang)}`, `Belt: ${getShortLabel(beltId, undefined, lang)}`));
             return;
           }
         }
@@ -2132,9 +2074,6 @@ export const App: React.FC = () => {
         if (tool.fromCut) {
           setActiveTool({ kind: 'select' });
           setStampingLibPath(null);
-          showToast(`已搬移落位「${tool.name}」（仍可按 Ctrl+V 继续粘贴）`);
-        } else {
-          showToast(`已盖章粘贴「${tool.name}」`);
         }
       } else if (res.message) {
         showToast(res.message, 'warn');
@@ -2750,7 +2689,6 @@ export const App: React.FC = () => {
         rotation: 0,
         floorOffset: 0,
       });
-      showToast(`已加载蓝图「${loaded.name}」到光标（左键盖章 / R旋转 / M镜像）`);
     } catch (err) {
       showToast(`读取蓝图失败：${err instanceof Error ? err.message : String(err)}`, 'error');
     }
@@ -2777,7 +2715,9 @@ export const App: React.FC = () => {
         setHideAbove(true);
         sceneRef.current?.rig.setYaw(0, true);
       }
-      showToast(warnings.length > 0 ? `已打开（提示：${warnings[0]}）` : `已打开「${loaded.name}」`);
+      if (warnings.length > 0) {
+        showToast(`已打开（提示：${warnings[0]}）`, 'warn');
+      }
       window.setTimeout(() => fitAllStation(), 60);
     } catch (err) {
       showToast(`打开失败：${err instanceof Error ? err.message : String(err)}`, 'error');
@@ -3081,6 +3021,9 @@ export const App: React.FC = () => {
         activeTool.moduleType === 'BPO_StationArmour_01' || activeTool.moduleType === 'BPO_StationArmour_01B';
       const canRot = !isShip || shipFreeRotate || def?.canRotate !== false;
       const showMirror = !isShip || Boolean(def?.mirrorId);
+      const isMirrored =
+        (Boolean(def?.mirrorId) || activeTool.moduleType === 'BPO_StationArmour_01B') &&
+        /(_B|01B|02B|L)$/.test(activeTool.moduleType);
       return {
         mode: getShortLabel(activeTool.moduleType, isEn ? def?.nameEn : def?.nameZh, lang),
         badge: activeTool.label || undefined,
@@ -3090,7 +3033,7 @@ export const App: React.FC = () => {
             ? [{ keys: 'R', label: t('旋转', 'Rotate') }]
             : [{ keys: 'R', label: t('原版锁向', 'Locked') }]),
           ...(showMirror
-            ? [{ keys: 'F', label: isArmour || def?.mirrorId ? t('镜像', 'Mirror') : t('镜像', 'Mirror') }]
+            ? [{ keys: 'F', label: isArmour || def?.mirrorId ? t('镜像', 'Mirror') : t('镜像', 'Mirror'), active: isMirrored }]
             : []),
           { keys: 'Q/E', label: t('切层', 'Floor') },
           ...(grp && grp.members.length > 1 ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),
@@ -3384,7 +3327,7 @@ export const App: React.FC = () => {
                         </button>
                       </div>
                       <div className="pitch-pills prefs-pitch">
-                        {PITCH_SNAP_PRESETS.map((p) => (
+                        {(isShip ? SHIP_PITCH_PRESETS : PITCH_SNAP_PRESETS).map((p) => (
                           <button
                             key={p.id}
                             type="button"
@@ -3399,17 +3342,7 @@ export const App: React.FC = () => {
                         <button
                           type="button"
                           className={`cad-btn prefs-full ${shipFreeRotate ? 'accent' : ''}`}
-                          onClick={() => {
-                            setShipFreeRotate((v) => {
-                              const next = !v;
-                              showToast(
-                                next
-                                  ? t('已开启飞船自由旋转（解除原版朝向锁）', 'Ship Free Rotate: ON')
-                                  : t('已恢复原版飞船朝向锁定', 'Ship Free Rotate: OFF')
-                              );
-                              return next;
-                            });
-                          }}
+                          onClick={() => setShipFreeRotate((v) => !v)}
                         >
                           {shipFreeRotate
                             ? t('飞船自由旋转 · 开', 'Free Rotate · On')
@@ -3584,7 +3517,7 @@ export const App: React.FC = () => {
                       </button>
                     </div>
                     <div className="pitch-pills prefs-pitch">
-                      {PITCH_SNAP_PRESETS.map((p) => (
+                      {(isShip ? SHIP_PITCH_PRESETS : PITCH_SNAP_PRESETS).map((p) => (
                         <button
                           key={p.id}
                           type="button"
@@ -3643,17 +3576,7 @@ export const App: React.FC = () => {
                       <button
                         type="button"
                         className={`cad-btn prefs-full ${shipFreeRotate ? 'accent' : ''}`}
-                        onClick={() => {
-                          setShipFreeRotate((v) => {
-                            const next = !v;
-                            showToast(
-                              next
-                                ? t('已开启飞船自由旋转（解除原版朝向锁）', 'Ship Free Rotate: ON (native lock bypassed)')
-                                : t('已恢复原版飞船朝向锁定（锁定件仅 F 镜像）', 'Ship Free Rotate: OFF (native orientation rules)')
-                            );
-                            return next;
-                          });
-                        }}
+                        onClick={() => setShipFreeRotate((v) => !v)}
                       >
                         {shipFreeRotate
                           ? t('飞船自由旋转 · 开', 'Free Rotate · On')
