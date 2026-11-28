@@ -12,7 +12,7 @@ import {
   type BeltStrokeTunnel,
   type BeltWaypoint,
 } from './core/belt-router';
-import { canModuleRotate, getBuildableDef, getItemName, getModuleDef, getRecipeDef, getRecipeName } from './core/catalog';
+import { canModuleRotate, getBuildableDef, getItemName, getModuleDef, getRecipeDef, getRecipeName, isModuleRotationSymmetric } from './core/catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './core/codec';
 import { DEFAULT_LIBRARY_PRESETS } from './core/presets';
 import { cycleVariantInGroup, findGroupForEntity, getCanonicalGroupMember, getGroupsForView, getShortLabel } from './core/groups';
@@ -1066,7 +1066,8 @@ export const App: React.FC = () => {
           setLastMirrorVariant((prev) => ({ ...prev, [canonical]: resolvedId }));
         }
         const lockOrient =
-          docCat === 'ship' && !stateRef.current.shipFreeRotate && modDef.canRotate === false;
+          isModuleRotationSymmetric(resolvedId) ||
+          (docCat === 'ship' && !stateRef.current.shipFreeRotate && modDef.canRotate === false);
         const savedRot = stateRef.current.lastEntityRotation[canonical] ?? 0;
         const nextRot: Rotation = lockOrient ? 0 : opts?.rotation ?? savedRot;
         if (opts?.rotation !== undefined && !lockOrient) {
@@ -1195,6 +1196,9 @@ export const App: React.FC = () => {
     (delta: 1 | -1 = 1) => {
       const { activeTool: tool, doc: curDoc, shipFreeRotate: freeRot, selection: curSel } = stateRef.current;
       if (tool.kind === 'place-module') {
+        if (isModuleRotationSymmetric(tool.moduleType)) {
+          return;
+        }
         if (curDoc.category === 'ship' && !canModuleRotate(tool.moduleType, freeRot)) {
           showToast(
             t(
@@ -1220,10 +1224,17 @@ export const App: React.FC = () => {
           rotation: normalizeRotation(tool.rotation + delta),
         });
       } else {
+        if (curSel.moduleIds.length > 0 && curSel.buildingIds.length === 0) {
+          const allSym = curSel.moduleIds.every((mid) => {
+            const m = curDoc.modules.find((x) => x.id === mid);
+            return m ? isModuleRotationSymmetric(m.type) : true;
+          });
+          if (allSym) return;
+        }
         if (curDoc.category === 'ship' && !freeRot && curSel.moduleIds.length > 0) {
           const hasLocked = curSel.moduleIds.some((mid) => {
             const m = curDoc.modules.find((x) => x.id === mid);
-            return m ? !canModuleRotate(m.type, false) : false;
+            return m ? !isModuleRotationSymmetric(m.type) && !canModuleRotate(m.type, false) : false;
           });
           if (hasLocked) {
             showToast(
@@ -3050,7 +3061,8 @@ export const App: React.FC = () => {
       const def = getModuleDef(activeTool.moduleType);
       const docCat = doc.category ?? 'station';
       const grp = findGroupForEntity('station', activeTool.moduleType, docCat);
-      const canRot = !isShip || shipFreeRotate || def?.canRotate !== false;
+      const sym = isModuleRotationSymmetric(activeTool.moduleType);
+      const canRot = !sym && (!isShip || shipFreeRotate || def?.canRotate !== false);
       const mirrorPairId =
         def?.mirrorId ??
         (activeTool.moduleType === 'BPO_StationArmour_01'
@@ -3075,9 +3087,11 @@ export const App: React.FC = () => {
         badge: activeTool.label || undefined,
         tone: 'accent',
         hints: [
-          ...(canRot
-            ? [{ keys: 'R', label: t('旋转', 'Rotate') }]
-            : [{ keys: 'R', label: t('原版锁向', 'Locked') }]),
+          ...(sym
+            ? []
+            : canRot
+              ? [{ keys: 'R', label: t('旋转', 'Rotate') }]
+              : [{ keys: 'R', label: t('原版锁向', 'Locked') }]),
           ...(showMirror ? [{ keys: 'F', label: mirrorLabel }] : []),
           { keys: 'Q/E', label: t('切层', 'Floor') },
           ...(grp && grp.members.length > 1 ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),

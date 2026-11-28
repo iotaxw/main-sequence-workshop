@@ -20,7 +20,34 @@ export function getModuleMirrorId(id: string): string | null {
   return moduleMap.get(id)?.mirrorId ?? null;
 }
 
+/**
+ * Modules with 4-fold (90°) rotational symmetry in functional layout & CAD footprint.
+ * Rotating these changes neither connectivity nor meaningful orientation, so rotation
+ * controls are omitted across both desktop and mobile UI regardless of Free Rotate.
+ */
+export const ROTATION_SYMMETRIC_MODULE_IDS = new Set<string>([
+  // Ship 1x1 4-fold symmetric modules
+  'BPO_Body_01',
+  'BPO_Frame_01',
+  'BPO_MissileLauncherBlock_01',
+  'BPO_LadderBlock',
+  // Station 4-fold symmetric modules
+  'BPO_Station_01',
+  'BPO_Station_02A',
+  'BPO_Station_02',
+  'BPO_Station_03',
+  'BPO_ElevatorBlock_03',
+  'BPO_ElevatorBlock_02A',
+  'BPO_StationArmour_01',
+  'BPO_StationArmour_01B',
+]);
+
+export function isModuleRotationSymmetric(id: string): boolean {
+  return ROTATION_SYMMETRIC_MODULE_IDS.has(id);
+}
+
 export function canModuleRotate(id: string, freeRotate = false): boolean {
+  if (ROTATION_SYMMETRIC_MODULE_IDS.has(id)) return false;
   if (freeRotate) return true;
   const def = moduleMap.get(id);
   if (!def) return true;

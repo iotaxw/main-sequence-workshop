@@ -27,6 +27,7 @@ import {
   getRecipeDef,
   getRecipeName,
   getRecipesForCrafter,
+  isModuleRotationSymmetric,
 } from './catalog';
 import { createStarterBlueprint, deserializeBlueprint, serializeBlueprint } from './codec';
 import { checkBlueprintWorkbench } from './workbench-check';
@@ -2898,13 +2899,16 @@ describe('Shapez 2 F / Shift+F Mirror Symmetry (geometry + commands + camera)', 
 describe('Ship Blueprint Mode (Phase 1-3)', () => {
   it('registers all 45 binary-verified ship blocks with symmetric mirror pairs, native rotate locks, and 100% dock group coverage', () => {
     expect(SHIP_MODULES.length).toBe(45);
-    let lockedCount = 0;
+    let nativeLockedCount = 0;
+    let symmetricCount = 0;
     let mirroredCount = 0;
     for (const def of SHIP_MODULES) {
       expect(getModuleDef(def.id)?.domain).toBe('ship');
-      if (!canModuleRotate(def.id, false)) lockedCount += 1;
-      // Hidden Free Rotate toggle must unlock every ship block
-      expect(canModuleRotate(def.id, true)).toBe(true);
+      const sym = isModuleRotationSymmetric(def.id);
+      if (sym) symmetricCount += 1;
+      if (def.canRotate === false) nativeLockedCount += 1;
+      // 4-fold symmetric modules never need rotation even with Free Rotate; all non-symmetric blocks unlock with Free Rotate
+      expect(canModuleRotate(def.id, true)).toBe(!sym);
       const mirror = getModuleMirrorId(def.id);
       if (mirror) {
         mirroredCount += 1;
@@ -2913,16 +2917,21 @@ describe('Ship Blueprint Mode (Phase 1-3)', () => {
       // Every single ship block (canonical or mirror variant) must resolve to one of the 6 SHIP_GROUPS
       expect(findGroupForEntity('station', def.id, 'ship'), `${def.id} group`).not.toBeNull();
     }
-    expect(lockedCount).toBe(20);
+    expect(nativeLockedCount).toBe(20);
+    expect(symmetricCount).toBe(4); // Body_01, Frame_01, MissileLauncherBlock_01, LadderBlock
     expect(mirroredCount).toBe(22); // 11 mirror pairs
     expect(SHIP_GROUPS.length).toBe(6);
 
-    // Specific native rotation lock checks (Build 26639889 bAllowRotate)
+    // Specific native rotation lock & 4-fold rotational symmetry checks
     expect(canModuleRotate('BPO_Cockpit_01', false)).toBe(false);
+    expect(canModuleRotate('BPO_Cockpit_01', true)).toBe(true);
     expect(canModuleRotate('BPO_Thruster_02R', false)).toBe(false);
     expect(canModuleRotate('BPO_CannonBlock', false)).toBe(false);
     expect(canModuleRotate('BPO_DockingCollar', false)).toBe(false);
-    expect(canModuleRotate('BPO_Body_01', false)).toBe(true);
+    expect(isModuleRotationSymmetric('BPO_Body_01')).toBe(true);
+    expect(canModuleRotate('BPO_Body_01', false)).toBe(false);
+    expect(canModuleRotate('BPO_Body_01', true)).toBe(false);
+    expect(isModuleRotationSymmetric('BPO_MissileLauncherBlock_01')).toBe(true);
     expect(canModuleRotate('BPO_ReactorBlock_Small', false)).toBe(true);
     expect(getModuleMirrorId('BPO_Thruster_02R')).toBe('BPO_Thruster_02L');
     expect(getModuleMirrorId('BPO_CannonBlock')).toBe('BPO_CannonBlock_B');

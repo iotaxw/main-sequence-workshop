@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getBuildableDef, getBuildableName, getModuleDef, getModuleName } from '../core/catalog';
+import { getBuildableDef, getBuildableName, getModuleDef, getModuleName, isModuleRotationSymmetric } from '../core/catalog';
 import {
   findGroupForEntity,
   getCanonicalGroupMember,
@@ -85,13 +85,16 @@ export const PaletteDock: React.FC<PaletteDockProps> = ({
   const buildMeta = (id: string, showTabHint: boolean): HoverMeta => {
     if (viewMode === 'station' || isShip) {
       const m = getModuleDef(id);
-      const canRot = !isShip || shipFreeRotate || m?.canRotate !== false;
+      const sym = isModuleRotationSymmetric(id);
+      const canRot = !sym && (!isShip || shipFreeRotate || m?.canRotate !== false);
       const hasMirror = Boolean(m?.mirrorId);
       const hints: KeyHintItem[] = [
         ...(showTabHint ? [{ keys: 'Tab', label: t('换型', 'Variant') }] : []),
-        ...(canRot
-          ? [{ keys: 'R', label: t('旋转', 'Rotate') }]
-          : [{ keys: 'R', label: t('原版锁向', 'Locked') }]),
+        ...(sym
+          ? []
+          : canRot
+            ? [{ keys: 'R', label: t('旋转', 'Rotate') }]
+            : [{ keys: 'R', label: t('原版锁向', 'Locked') }]),
         ...(isShip
           ? hasMirror
             ? [{ keys: 'F', label: t('镜像', 'Mirror') }]
